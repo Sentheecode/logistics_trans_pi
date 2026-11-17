@@ -1,0 +1,4 @@
+code,name,read_name,read_db,read_offset,read_type,read_length,read_reserved,write_name,write_db,write_offset,write_type,write_length,write_reserved,read_source_row_id,write_source_row_id,pairing_status,notes
+,机器人心跳 / PC心跳,机器人心跳,1900,0.1,BOOL,1,false,PC心跳,1901,0.1,BOOL,1,false,140-002,140-068,candidate,仅示例；周期、写值和动作定义未提供
+,小车二维码信息,小车二维码信息,1900,10.0,string,40,false,,,,,,,140-066,,single_sided,单侧示例，不补造写入点
+,料仓上层1请求补料 / 补料完成,料仓上层1请求补料,1900,2.0,BOOL,1,false,料仓上层1补料完成,1900,2.0,BOOL,1,false,140-017,140-083,candidate,两侧地址按原表保留为1900；不是可执行写配置
