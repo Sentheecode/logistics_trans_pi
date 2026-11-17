@@ -1,0 +1,77 @@
+{
+  "mode": "mock-only",
+  "node": "v24.22.1",
+  "directory": "/tmp/ltp-mock-demo-itdcQv",
+  "history_rows": 60,
+  "jsonl_rows": 60,
+  "pending_logs": 0,
+  "reconnects": [
+    {
+      "cycle": 1,
+      "generation": 2,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 2,
+      "generation": 3,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 3,
+      "generation": 4,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 4,
+      "generation": 5,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 5,
+      "generation": 6,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 6,
+      "generation": 7,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 7,
+      "generation": 8,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 8,
+      "generation": 9,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 9,
+      "generation": 10,
+      "resumed_samples": 2
+    },
+    {
+      "cycle": 10,
+      "generation": 11,
+      "resumed_samples": 2
+    }
+  ],
+  "subscription_loss_state": {
+    "link": "up",
+    "session": "active",
+    "subscription": "stale"
+  },
+  "final_state": {
+    "link": "up",
+    "session": "active",
+    "subscription": "healthy"
+  },
+  "final_subscription_generation": 12,
+  "integrity_check": "ok",
+  "limits": [
+    "虚拟时钟与显式恢复调用",
+    "不是实际网络断开或自动健康检测",
+    "没有 PLC、LLM、HTTP 或 HMI"
+  ]
+}
