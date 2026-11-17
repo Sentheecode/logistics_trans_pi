@@ -1,0 +1,8 @@
+{
+  "validator": "jsonschema",
+  "version": "4.26.0",
+  "date_time_checker": "explicit stdlib UTC microsecond subset",
+  "valid_record_accepted": true,
+  "invalid_records_rejected": 5,
+  "installation": "preinstalled environment tool; no project dependency added"
+}

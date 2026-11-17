@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LTP runtime JSON Lines record (one JSON object per line)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stamp", "level", "event_code", "message_zh", "context", "fields"],
+  "properties": {
+    "stamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "observed_at", "boot_id", "monotonic_ns"],
+      "properties": {
+        "sequence": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "observed_at": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"},
+        "boot_id": {"type": "string", "minLength": 1},
+        "monotonic_ns": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}
+      }
+    },
+    "level": {"enum": ["debug", "info", "warn", "error"]},
+    "event_code": {"type": "string", "minLength": 1},
+    "message_zh": {"type": "string"},
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "tag", "scan_cycle", "session_id"],
+      "properties": {
+        "device": {"type": ["string", "null"]},
+        "tag": {"type": ["string", "null"]},
+        "scan_cycle": {"type": ["string", "null"]},
+        "session_id": {"type": ["string", "null"]}
+      }
+    },
+    "fields": {"type": "object"}
+  }
+}

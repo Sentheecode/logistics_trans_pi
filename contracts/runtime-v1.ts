@@ -27,6 +27,9 @@ export interface TagSample {
   quality: Quality;
   source_timestamp: UTC | null;
   server_timestamp: UTC | null;
+  event_timestamp: UTC;
+  timestamp_basis: 'source' | 'server' | 'observed';
+  clock_epoch: number; // 时钟不连续时分段，禁止跨段伪造连续趋势
   stamp: Stamp;
 }
 export interface ReadMeta {
@@ -65,11 +68,14 @@ export interface HistoryQuery {
 }
 export interface HistoryBucket {
   tag_id: string;
+  config_revision: string;
+  clock_epoch: number;
   window: Window;
   count: number;
   good_count: number;
   bad_count: number;
   uncertain_count: number;
+  numeric_good_count: number;
   min: number | null;
   max: number | null;
   mean: number | null;
