@@ -1,0 +1,13 @@
+{
+  "name": "node-opcua",
+  "version": "2.187.29",
+  "repository": {
+    "url": "git://github.com/node-opcua/node-opcua.git",
+    "type": "git"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "gitHead": "ebdbec8c9287bf0691753099a3a12843beb01008",
+  "dist.integrity": "sha512-fBwlr3YcbR+5LOKPYIALDqlMslzSmxeNQqgvyjI6pLE6ccw6VV5boSSJlQD7ODVXirIhIyJviATy6kdk9glyHQ=="
+}

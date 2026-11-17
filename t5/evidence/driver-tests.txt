@@ -1,0 +1,40 @@
+
+> ltp-driver-opcua@0.0.0 test
+> node --test test/*.test.mjs
+
+✔ 生产环境拒绝Security None以及缺失心跳配置 (1.465172ms)
+15:12:48.381Z :client_base_impl              :674   Creating default certificate ... please wait
+✔ 真实本地UA订阅、Session假活重建、服务器重启恢复、关闭无重连 (13150.302101ms)
+ℹ {"server_restart_cycles":10,"namespace_index_changed":true,"partial_group_stall_recovered":true,"frozen_heartbeat_not_healthy":true,"sample_count":204,"last_generation":36}
+✔ SourceTimestamp为零仍优先，质量和数值按普通对象输出 (1.468938ms)
+✔ 坏质量无值保留为unavailable，不能伪装数值0 (0.17942ms)
+✔ UInt64/Int64边界精确保留为十进制字符串 (0.246913ms)
+✔ 类型不符或非有限数值显式坏质量，不自动字符串转数值 (0.202826ms)
+✔ 证书时间错误先检查两端时钟；不把泛化错误直接认定证书过期 (0.334685ms)
+✔ 不确定质量与溢出显式保留，服务端时间用于缺失源时间的回退 (0.317109ms)
+✔ 诊断不回传可能包含凭据的原始错误文本 (0.207233ms)
+15:13:03.878Z :client_base_impl              :173   serverCertificate =  0e308cebb8d5aa6c9adee5866ba551db0becffaf
+15:13:03.878Z :client_base_impl              :174   serverCertificate =  MIIEZzCCA0+gAwIBAgIRAN4Kr/0jZCSWiIK0GY9uo/MwDQYJKoZIhvcNAQELBQAwUzELMAkGA1UEBhMCRlIxEDAOBgNVBAcTB09ybGVhbnMxETAPBgNVBAoTCFN0ZXJmaXZlMR8wHQYDVQQDDBZOb2RlT1BDVUFAZjIzZTYxOWZmZjc3MB4XDTI2MTExNzE1MTMwM1oXDTM2MTExNDE1MTMwM1owUzELMAkGA1UEBhMCRlIxEDAOBgNVBAcTB09ybGVhbnMxETAPBgNVBAoTCFN0ZXJmaXZlMR8wHQYDVQQDDBZOb2RlT1BDVUFAZjIzZTYxOWZmZjc3MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmeD6R57H7Y0gXqQvCb3uddWLtx1itHrlkSpIjkHSJMAwg9wH1hhwzp36qH1ymuCBnXuFuqzz4TtXXsW/qbcmAJRBLr36Har2y7s381d5OckfbP+6r+1BBvWNEdfxpbUVFmE8/YXyF41FtwrTX9lXgUQ4q08kju2Q3xyBAw/NEtYDP7uyuifVE9Ixd5SFFOUAff60xApdijjwdnYDHpTppgloW9K42p7alxnKPpJ2gTlOhi7AHel3twxBnjb+GcU6YQ6grJC+8XMN1CptC6j+fCsrrY/rYAy7pt6kL0tXDQQaMaFXJUdktRJPJ8363Q3HxzqPzSeeMq/bEMZONR8W5QIDAQABo4IBNDCCATAwVQYJYIZIAYb4QgENBEgMRlNlbGYtc2lnbmVkIGNlcnRpZmljYXRlIGdlbmVyYXRlZCBieSBOb2RlLU9QQ1VBIENlcnRpZmljYXRlIHV0aWxpdHkgVjIwDAYDVR0TAQH/BAIwADAgBgNVHSUBAf8EFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDgYDVR0PAQH/BAQDAgL0MB0GA1UdDgQWBBR+WYPfZz4l0hxNVSGgmS6eN8WvNDAfBgNVHSMEGDAWgBR+WYPfZz4l0hxNVSGgmS6eN8WvNDBXBgNVHREEUDBOggxmMjNlNjE5ZmZmNzeCCWxvY2FsaG9zdIcEfwAAAYcErBpb9ocErB8JPoYhdXJuOmYyM2U2MTlmZmY3NzpOb2RlT1BDVUEtU2VydmVyMA0GCSqGSIb3DQEBCwUAA4IBAQANFY+pj7WecoUlZ9fNfkFhLeNTbvSygmSp+DIxR0QMR5c4chNjy7uvwH+7kxh+0yPzNiJ8To7rxgdt105DKMZ+kOXi5lTdvmzPZQ+tWt++zspNKLgsaCo/T1JjAelAo8HMoseXYMAtam0LiIXdRjcOW57an+nt5VcIOzyHLjdretcM+Zzg+RDv+af/PHC4X2x3hysWwDz1DwwJlKGDOk/2qdFfvRUwDxR/tjZW3lmp0E/5DVbxS8KDQ/9qnsGgmc50k3aIawN4bBDBQWA5jHnUJhS2gjHiFVy17rie1e0pzke1HJlLc9jjY/6vZkOkMX8t/LLHaoQFtQJnAHKBJglm
+15:13:03.878Z :client_base_impl              :1407  [NODE-OPCUA-W25] client's server certificate verification has failed  server Certificate verification failed with err BadCertificateUntrusted (0x801a0000)
+15:13:03.878Z :client_base_impl              :1409                   clientCertificateManager.rootDir =  /tmp/ltp-secure-iGOSjH/client-pki
+15:13:03.878Z :client_base_impl              :1412                   server certificate chain contains 1 element(s)
+15:13:03.878Z :client_base_impl              :1434                   [1/1] "NodeOPCUA@f23e619fff77" (Application (self-signed))
+15:13:03.878Z :client_base_impl              :1435                     thumbprint: 0e308cebb8d5aa6c9adee5866ba551db0becffaf
+15:13:03.878Z :client_base_impl              :1436                     issuer:     "NodeOPCUA@f23e619fff77"
+15:13:03.879Z :client_base_impl              :1437                     SKI:        7E:59:83:DF:67:3E:25:D2:1C:4D:55:21:A0:99:2E:9E:37:C5:AF:34
+15:13:03.879Z :client_base_impl              :1438                     AKI:        7E:59:83:DF:67:3E:25:D2:1C:4D:55:21:A0:99:2E:9E:37:C5:AF:34
+15:13:03.879Z :client_base_impl              :1439                     validity:   2026-11-17T15:13:03.000Z → 2036-11-14T15:13:03.000Z
+15:13:03.879Z :client_base_impl              :1452                   verify that the server certificate is trusted or that server certificate issuer's certificate is present in the issuer folder
+15:13:03.898Z :server_secure_channel_layer   :1187  Sender Certificate Error BadCertificateUntrusted (0x801a0000) BadCertificateUntrusted (0x801a0000)
+15:13:03.898Z :server_secure_channel_layer   :1189  Sender Certificate =  11a86fd92e49b3cb465d3e47b23e0d68e9094a54
+15:13:03.899Z :server_secure_channel_layer   :1055  Sender Certificate thumbprint  <Buffer 11 a8 6f d9 2e 49 b3 cb 46 5d 3e 47 b2 3e 0d 68 e9 09 4a 54>
+15:13:03.899Z :server_secure_channel_layer   :1657  ServerSecureChannel sendError:  BadSecurityChecksFailed (0x80130000) { description: 'certificate invalid' } OpenSecureChannelRequest
+✔ SignAndEncrypt不自动批准证书，双方显式信任后订阅成功 (983.507834ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18520.710368

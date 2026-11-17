@@ -2,7 +2,7 @@
 
 工业物流中间层：上接 LWMS 与两家 AGV，下接 OPC UA PLC。runtime、agent、hmi 独立生命周期；最终计划用 Electron 提供现场桌面界面，runtime 独立服务运行。
 
-当前完成的是接口/数据模型草案、业务点表基线及 T3 mock 内核，尚未连接现场，尚未实现前端。
+当前已有接口/数据模型草案、业务点表基线、T3 mock闭环、T4软件加固与T5独立OPC UA只读驱动。本地验证已开展；尚未连接现场，尚未实现前端。
 
 - T0：pi 1.5.2 已锁定和实测；LLM 连通性/工具调用延迟经用户暂缓，Windows/完整离线部署尚未验收。
 - [T1 接口契约](docs/T1-process-and-api.md)
@@ -12,6 +12,8 @@
 - [T3 mock 运行与限制](runtime/README.md)
 - [T4 第一部分：时钟不连续处理与验证](docs/T4-clock-acceptance.md)；T4 总体验收未完成
 - [T4 软件验收：日志恢复/轮转/覆盖、实际调度、看门狗与自动重启](docs/T4-runtime-acceptance.md)；物理掉电及Windows验收待完成
+
+- [T5 OPC UA本地验证](docs/T5-opcua-local-acceptance.md)、[驱动配置与运行](runtime/drivers/opcua/README.md)；现场24h、实际断网及采集持久化接线待完成
 
 本地验证（不连接 PLC、不调用 LLM）：
 

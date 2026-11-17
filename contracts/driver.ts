@@ -8,7 +8,7 @@ export type Deadband = {mode:'none';value:0} | {mode:'absolute'|'percent';value:
 export interface MonitoredTag {
   id:string;
   type:'number'|'boolean'|'string'|'int64'|'uint64';
-  initial:number|boolean|string; // mock 专用初始值；真实协议映射在独立配置中
+  initial?:number|boolean|string; // mock 专用初始值；真实协议映射在独立配置中
   deadband:Deadband;
   engineering_low?:number;
   engineering_high?:number;
@@ -21,7 +21,7 @@ export interface DriverSample {
   tag_id:string;
   device_id:string;
   group_id:string;
-  value:{type:MonitoredTag['type'];value:number|boolean|string};
+  value:{type:MonitoredTag['type'];value:number|boolean|string}|{type:'unavailable';value:null};
   quality:{level:'good'|'uncertain'|'bad';reason:string;native_code?:string};
   source_at_ms:number|null;
   server_at_ms:number|null;
