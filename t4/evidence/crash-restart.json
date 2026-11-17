@@ -1,0 +1,95 @@
+{
+  "node": "v24.22.1",
+  "platform": "linux",
+  "results": [
+    {
+      "mode": "pending",
+      "directory": "/tmp/ltp-kill-pending-nxjnFo",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 2,
+      "history_after_restart": 4,
+      "high_water_before": "5",
+      "high_water_after": "10",
+      "physical_log_records": 6,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    },
+    {
+      "mode": "after-fsync",
+      "directory": "/tmp/ltp-kill-after-fsync-o86B4C",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 1,
+      "history_after_restart": 3,
+      "high_water_before": "2",
+      "high_water_after": "7",
+      "physical_log_records": 4,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    },
+    {
+      "mode": "partial",
+      "directory": "/tmp/ltp-kill-partial-Zc8UvC",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 2,
+      "history_after_restart": 4,
+      "high_water_before": "5",
+      "high_water_after": "10",
+      "physical_log_records": 6,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    },
+    {
+      "mode": "duplicate",
+      "directory": "/tmp/ltp-kill-duplicate-Xwhp4d",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 2,
+      "history_after_restart": 4,
+      "high_water_before": "5",
+      "high_water_after": "10",
+      "physical_log_records": 6,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    },
+    {
+      "mode": "deleting",
+      "directory": "/tmp/ltp-kill-deleting-Cr4bf8",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 2,
+      "history_after_restart": 4,
+      "high_water_before": "4",
+      "high_water_after": "9",
+      "physical_log_records": 4,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    },
+    {
+      "mode": "watchdog",
+      "directory": "/tmp/ltp-kill-watchdog-LfIQFJ",
+      "exit_signal": "SIGKILL",
+      "committed_history_before": 2,
+      "history_after_restart": 4,
+      "high_water_before": "4",
+      "high_water_after": "9",
+      "physical_log_records": 5,
+      "unique_log_sequences": true,
+      "pending_logs": 0,
+      "integrity_check": "ok",
+      "second_writer_rejected": true
+    }
+  ],
+  "limits": [
+    "真实杀死测试子进程，不是物理断电",
+    "测试只使用新临时目录",
+    "未验证Windows磁盘缓存或测试工位改时间"
+  ]
+}

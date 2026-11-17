@@ -17,8 +17,10 @@ export class MockDriver extends EventEmitter {
   #manifest; #tags=new Map(); #groups=[]; #last=new Map();
   #state={link:'down',session:'absent',subscription:'absent'};
   #now=0; #origin; #generation=0; #sessionGeneration=0; #cycle=0;
-  constructor(manifest,{wall_origin_ms=Date.now()}={}) {
+  #clock;#capture=null;#lastCapture=null;
+  constructor(manifest,{wall_origin_ms=Date.now(),clock=null}={}) {
     super(); this.#manifest=structuredClone(manifest); this.#origin=wall_origin_ms;
+    if(clock!==null&&typeof clock!=='function')throw new TypeError('无效时钟提供者');this.#clock=clock;
     if (!manifest.device_id || !Array.isArray(manifest.groups) || !manifest.groups.length || !finite(wall_origin_ms)) throw new TypeError('无效订阅清单');
     const groupIds=new Set();
     for (const group of this.#manifest.groups) {
@@ -71,8 +73,17 @@ export class MockDriver extends EventEmitter {
     Object.assign(item,{value,quality:structuredClone(quality),source_at_ms,server_at_ms});
   }
   jumpWallTime(delta_ms) {
+    if(this.#clock)throw new Error('外部时钟模式不能修改虚拟墙钟');
     if(!Number.isSafeInteger(delta_ms) || !Number.isSafeInteger(this.#origin+delta_ms+this.#now)) throw new TypeError('无效 mock 墙钟跳变量');
     this.#origin+=delta_ms; // 只改模拟墙钟，采集组调度与单调时钟保持不变。
+  }
+  pollGroup(group_id,time=this.#clock?.()) {
+    const group=this.#groups.find(g=>g.definition.id===group_id);
+    if(!group)throw new Error('未知采集组');
+    if(!time||!finite(time.observed_at_ms)||!/^(0|[1-9][0-9]*)$/.test(time.monotonic_ns))throw new TypeError('实际采样需要双时间');
+    if(this.#state.subscription!=='healthy')return;
+    this.#capture=time;this.#lastCapture=time;
+    try{for(const tag of group.definition.tags)this.#publish(this.#tags.get(tag.id));}finally{this.#capture=null;}
   }
   #publish(item,quality=item.quality,synthetic=false) {
     const previous=this.#last.get(item.tag.id);
@@ -87,12 +98,13 @@ export class MockDriver extends EventEmitter {
     }
     const source=synthetic?null:item.source_at_ms;
     const server=synthetic?null:item.server_at_ms;
-    const observed=this.#origin+this.#now;
+    const capture=this.#capture??this.#clock?.()??this.#lastCapture;
+    const observed=capture?.observed_at_ms??this.#origin+this.#now;
     const sample={tag_id:item.tag.id,device_id:this.#manifest.device_id,group_id:item.group,
       value:{type:item.tag.type,value:item.value},quality:structuredClone(quality),
       source_at_ms:source,server_at_ms:server,observed_at_ms:observed,
       event_at_ms:source??server??observed,timestamp_basis:source!==null?'source':server!==null?'server':'observed',
-      monotonic_ns:String(BigInt(this.#now)*1000000n),scan_cycle:String(++this.#cycle),session_id:`mock-session-${this.#sessionGeneration}`};
+      monotonic_ns:capture?.monotonic_ns??String(BigInt(this.#now)*1000000n),scan_cycle:String(++this.#cycle),session_id:`mock-session-${this.#sessionGeneration}`};
     this.emit('sample',sample); // 消费方失败必须向调用者抛出，不能静默丢失。
     this.#last.set(item.tag.id,{value:item.value,quality:structuredClone(quality)});
   }

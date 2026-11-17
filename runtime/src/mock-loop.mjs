@@ -1,15 +1,20 @@
 /** T3 的独立 mock 闭环；不是业务执行器，也不提供 PLC 写入口。 */
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, openSync, writeSync, fsyncSync, fstatSync, closeSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ClockTracker, toMicroseconds as toUs } from './clock-tracker.mjs';
+import { ProcessLease } from './process-lease.mjs';
+import { LogStore } from './log-store.mjs';
 
 export class MockLoop {
-  #db; #fd; #lockFd; #directory; #manifest; #rules; #tags; #revision;
+  #db; #lease; #logs; #directory; #manifest; #rules; #tags; #revision;
   #boot=randomUUID(); #closed=false; #fault=null;
   #clock;
-  constructor({directory,manifest,rules=[]}) {
+  #origin=process.hrtime.bigint();#sampleLogs;#qualities=new Map();
+  constructor({directory,manifest,rules=[],log_policy={},sample_logs=true}) {
+    if(typeof sample_logs!=='boolean')throw new TypeError('sample_logs必须是布尔值');
+    this.#sampleLogs=sample_logs;
     this.#directory=directory; this.#manifest=structuredClone(manifest); this.#rules=structuredClone(rules);
     this.#tags=new Map(manifest.groups.flatMap(g=>g.tags.map(t=>[t.id,{...t,group:g.id}])));
     const ids=new Set();
@@ -19,10 +24,10 @@ export class MockLoop {
         || (r.kind==='high'?r.clear>=r.trigger:r.clear<=r.trigger)) throw new TypeError('无效 mock 报警规则');
       ids.add(r.id);
     }
-    this.#revision=createHash('sha256').update(JSON.stringify({manifest:this.#manifest,rules:this.#rules})).digest('hex');
+    this.#revision=createHash('sha256').update(JSON.stringify({manifest:this.#manifest,rules:this.#rules,...(sample_logs?{}:{sample_logs:false})})).digest('hex');
     mkdirSync(directory,{recursive:true});
     try {
-      this.#lockFd=openSync(join(directory,'runtime.lock'),'wx',0o600);
+      this.#lease=new ProcessLease(directory);
       this.#db=new DatabaseSync(join(directory,'runtime.sqlite'));
       if(!this.#db.prepare("SELECT name FROM sqlite_master WHERE name='schema_migrations'").get()) {
         this.#db.exec(readFileSync(new URL('../../db/001-infrastructure.sql',import.meta.url),'utf8'));
@@ -34,7 +39,10 @@ export class MockLoop {
         this.#db.exec(readFileSync(new URL('../../db/002-clock-tracking.sql',import.meta.url),'utf8'));
         schemaVersion=2;
       }
-      if(schemaVersion!==2) throw new Error('不支持的数据库版本');
+      if(schemaVersion===2) {
+        this.#db.exec(readFileSync(new URL('../../db/003-log-lifecycle.sql',import.meta.url),'utf8'));schemaVersion=3;
+      }
+      if(schemaVersion!==3) throw new Error('不支持的数据库版本');
       this.#clock=new ClockTracker({state:JSON.parse(this.#db.prepare('SELECT state_json FROM clock_tracker_state WHERE singleton=1').get().state_json)});
       const existing=this.#db.prepare('SELECT config_revision FROM devices WHERE device_id=?').get(this.#manifest.device_id);
       if(existing && existing.config_revision!==this.#revision) throw new Error('mock 数据目录已有不同配置，必须走受控变更或使用新测试目录');
@@ -43,22 +51,15 @@ export class MockLoop {
       this.#run('INSERT INTO runtime_boots VALUES (?,?,NULL,0)',this.#boot,now);
       this.#run('INSERT OR IGNORE INTO config_revisions VALUES (?,?,?,?)',this.#revision,'mock-unpublished',JSON.stringify({manifest:this.#manifest,rules:this.#rules}),now);
       this.#seed();
-      this.#run("INSERT OR IGNORE INTO retention_policies VALUES ('mock-no-rotation','{}',1,?)",now);
-      this.#run("INSERT OR IGNORE INTO log_segments(segment_id,relative_path,state,policy_revision) VALUES ('mock-events','events.jsonl','active','mock-no-rotation')");
-      this.#fd=openSync(join(directory,'events.jsonl'),'a+',0o600);
-      const durable=this.#db.prepare("SELECT durable_bytes FROM log_segments WHERE segment_id='mock-events'").get().durable_bytes;
-      if(fstatSync(this.#fd).size!==durable) throw new Error('日志尾部与已确认长度不符，需要 T4 恢复；禁止自动忽略');
-      this.#exportPending();
+      this.#logs=new LogStore({db:this.#db,directory,boot_id:this.#boot,policy:log_policy});
     } catch(error) {
-      if(this.#fd!==undefined) closeSync(this.#fd);
+      if(this.#logs)this.#logs.close();
       if(this.#db) this.#db.close();
       this.#releaseLock();throw error;
     }
   }
   #releaseLock() {
-    if(this.#lockFd===undefined) return;
-    closeSync(this.#lockFd);this.#lockFd=undefined;
-    unlinkSync(join(this.#directory,'runtime.lock'));
+    if(this.#lease)this.#lease.close();this.#lease=null;
   }
   #run(sql,...args) { return this.#db.prepare(sql).run(...args); }
   #next() {
@@ -124,38 +125,57 @@ export class MockLoop {
         const evaluation=sample.quality.level!=='good'?'unknown':(transition==='activate'||(active&&transition!=='clear'))?'active':'normal';
         this.#run('UPDATE alarm_rule_state SET evaluation=?,last_sample_sequence=? WHERE rule_id=?',evaluation,sequence,r.id);
       }
-      const logSequence=this.#next();
-      const record={stamp:{sequence:String(logSequence),...stamp},level:sample.quality.level==='good'?'info':'warn',
+      if(this.#sampleLogs||transitions.length||JSON.stringify(sample.quality)!==this.#qualities.get(sample.tag_id)) {
+        const logSequence=this.#next();
+        const record={stamp:{sequence:String(logSequence),...stamp},level:sample.quality.level==='good'?'info':'warn',
         event_code:transitions.length?`alarm.${transitions[0]}`:'tag.changed',message_zh:'模拟点位变化已入库',
         context,
         fields:{sample_sequence:String(sequence),quality:sample.quality,transitions,config_revision:this.#revision,clock_epoch:clock.epoch}};
-      this.#run('INSERT INTO log_outbox VALUES (?,?,?)',logSequence,observed,JSON.stringify(record));
+        this.#run('INSERT INTO log_outbox VALUES (?,?,?)',logSequence,observed,JSON.stringify(record));
+      }
       this.#run('UPDATE clock_tracker_state SET state_json=? WHERE singleton=1',JSON.stringify(clock.next));
       this.#db.exec('COMMIT');
     } catch(error) {this.#db.exec('ROLLBACK');throw error;}
     this.#clock.commit(clock);
-    try {this.#exportPending();} catch(error) {this.#fault=error;throw error;}
+    this.#qualities.set(sample.tag_id,JSON.stringify(sample.quality));
+    try {this.#exportPending();this.#logs.checkpoint({observed_at_ms:sample.observed_at_ms,monotonic_ns:sample.monotonic_ns,clock_epoch:clock.epoch});}
+    catch(error) {this.#fault=error;throw error;}
   }
   #exportPending() {
-    const statement=this.#db.prepare('SELECT sequence,payload_json FROM log_outbox ORDER BY sequence'); statement.setReadBigInts(true);
-    for(const row of statement.all()) {
-      const record=JSON.parse(row.payload_json); const bytes=Buffer.from(row.payload_json+'\n');
-      const offset=fstatSync(this.#fd).size;
-      for(let written=0;written<bytes.length;) {
-        const n=writeSync(this.#fd,bytes,written,bytes.length-written);
-        if(n<=0) throw new Error('JSONL 追加没有进展'); written+=n;
+    this.#logs.flush();
+  }
+  checkpoint({observed_at_ms,monotonic_ns}) {
+    if(this.#closed)throw new Error('runtime已关闭');if(this.#fault)throw this.#fault;
+    const observation={tag_id:'@runtime.clock',boot_id:this.#boot,observed_at_ms,monotonic_ns,event_at_ms:observed_at_ms,timestamp_basis:'observed'};
+    const clock=this.#clock.preview(observation),observed=toUs(observed_at_ms);
+    this.#db.exec('BEGIN IMMEDIATE');
+    try {
+      if(clock.reasons.length) {
+        const sequence=this.#next(),context={device:null,tag:null,scan_cycle:null,session_id:null};
+        this.#run('INSERT INTO clock_events VALUES (?,?,?,?,?,?,?,?)',sequence,clock.epoch,this.#boot,BigInt(monotonic_ns),observed,null,JSON.stringify(clock.reasons),JSON.stringify(clock.details));
+        const record={stamp:{sequence:String(sequence),observed_at:new Date(observed_at_ms).toISOString(),boot_id:this.#boot,monotonic_ns},
+          level:'warn',event_code:'clock.discontinuity',message_zh:'运行时独立观测到时间映射不连续',context,fields:{clock_epoch:clock.epoch,reasons:clock.reasons,details:clock.details}};
+        this.#run('INSERT INTO log_outbox VALUES (?,?,?)',sequence,observed,JSON.stringify(record));
       }
-      fsyncSync(this.#fd);
-      this.#db.exec('BEGIN IMMEDIATE');
-      try {
-        this.#run('INSERT INTO log_index VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',row.sequence,'mock-events',offset,bytes.length,
-          toUs(Date.parse(record.stamp.observed_at)),record.stamp.boot_id,BigInt(record.stamp.monotonic_ns),record.level,record.event_code,
-          record.context.device,record.context.tag,record.context.scan_cycle,record.context.session_id);
-        this.#run('UPDATE log_segments SET first_sequence=COALESCE(first_sequence,?),last_sequence=?,durable_bytes=? WHERE segment_id=?',row.sequence,row.sequence,offset+bytes.length,'mock-events');
-        this.#run('DELETE FROM log_outbox WHERE sequence=?',row.sequence);
-        this.#db.exec('COMMIT');
-      } catch(error) {this.#db.exec('ROLLBACK');throw error;}
-    }
+      this.#run('UPDATE clock_tracker_state SET state_json=? WHERE singleton=1',JSON.stringify(clock.next));this.#db.exec('COMMIT');
+    }catch(error){this.#db.exec('ROLLBACK');throw error;}
+    this.#clock.commit(clock);
+    try{this.#exportPending();this.#logs.checkpoint({observed_at_ms,monotonic_ns,clock_epoch:clock.epoch});}
+    catch(error){this.#fault=error;throw error;}
+  }
+  queryLogs(query){return this.#logs.query(query);}
+  pruneLogs(){if(this.#fault)throw this.#fault;return this.#logs.prune();}
+  health(){const logs=this.#logs.health();return{persistence:this.#fault?'unavailable':logs.budget_exceeded||logs.evidence_fault||!logs.directory_sync_supported||logs.disk_below_reserve!==false?'degraded':'healthy',logs};}
+  now(){return{observed_at_ms:Date.now(),monotonic_ns:String(process.hrtime.bigint()-this.#origin)};}
+  writeEvent(event_code,message_zh,fields={},level='info') {
+    const time=this.now();this.checkpoint(time);
+    const payload={stamp:{sequence:'',observed_at:new Date(time.observed_at_ms).toISOString(),boot_id:this.#boot,monotonic_ns:time.monotonic_ns},
+      level,event_code,message_zh,context:{device:null,tag:null,scan_cycle:null,session_id:null},fields};
+    JSON.stringify(payload); // 在事务开始前拒绝不可序列化字段。
+    this.#db.exec('BEGIN IMMEDIATE');
+    try{const seq=this.#next();payload.stamp.sequence=String(seq);this.#run('INSERT INTO log_outbox VALUES (?,?,?)',seq,toUs(time.observed_at_ms),JSON.stringify(payload));this.#db.exec('COMMIT');}
+    catch(error){this.#db.exec('ROLLBACK');throw error;}
+    try{this.#exportPending();}catch(error){this.#fault=error;throw error;}
   }
   close() {
     if(this.#closed) return;
@@ -166,7 +186,7 @@ export class MockLoop {
       this.#db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     } finally {
       this.#closed=true;
-      try {closeSync(this.#fd);this.#db.close();} finally {this.#releaseLock();}
+      try {this.#logs.close();this.#db.close();} finally {this.#releaseLock();}
     }
   }
 }

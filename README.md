@@ -11,6 +11,7 @@
 - [三台小车顺序与跨上位机共享澄清](docs/business/cart-sequence-and-sharing-v0.2.md)
 - [T3 mock 运行与限制](runtime/README.md)
 - [T4 第一部分：时钟不连续处理与验证](docs/T4-clock-acceptance.md)；T4 总体验收未完成
+- [T4 软件验收：日志恢复/轮转/覆盖、实际调度、看门狗与自动重启](docs/T4-runtime-acceptance.md)；物理掉电及Windows验收待完成
 
 本地验证（不连接 PLC、不调用 LLM）：
 
