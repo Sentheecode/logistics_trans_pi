@@ -10,6 +10,7 @@
 - [业务基线](docs/business/requirements-v0.1.md)、[读写同一行的点表结构](docs/business/point-table-v0.1.md)
 - [三台小车顺序与跨上位机共享澄清](docs/business/cart-sequence-and-sharing-v0.2.md)
 - [T3 mock 运行与限制](runtime/README.md)
+- [T4 第一部分：时钟不连续处理与验证](docs/T4-clock-acceptance.md)；T4 总体验收未完成
 
 本地验证（不连接 PLC、不调用 LLM）：
 

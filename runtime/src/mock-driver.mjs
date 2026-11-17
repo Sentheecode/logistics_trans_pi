@@ -70,6 +70,10 @@ export class MockDriver extends EventEmitter {
     if(!['good','uncertain','bad'].includes(quality.level) || !quality.reason || [source_at_ms,server_at_ms].some(n=>n!==null&&!finite(n))) throw new TypeError('无效质量/时间戳');
     Object.assign(item,{value,quality:structuredClone(quality),source_at_ms,server_at_ms});
   }
+  jumpWallTime(delta_ms) {
+    if(!Number.isSafeInteger(delta_ms) || !Number.isSafeInteger(this.#origin+delta_ms+this.#now)) throw new TypeError('无效 mock 墙钟跳变量');
+    this.#origin+=delta_ms; // 只改模拟墙钟，采集组调度与单调时钟保持不变。
+  }
   #publish(item,quality=item.quality,synthetic=false) {
     const previous=this.#last.get(item.tag.id);
     if(previous && JSON.stringify(previous.quality)===JSON.stringify(quality)) {

@@ -3,17 +3,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, openSync, writeSync, fsyncSync, fstatSync, closeSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-
-const toUs = ms => {
-  if(ms===null) return null;
-  const us=Math.round(ms*1000);
-  if(!Number.isSafeInteger(us)) throw new TypeError('时间戳超出安全范围');
-  return us;
-};
+import { ClockTracker, toMicroseconds as toUs } from './clock-tracker.mjs';
 
 export class MockLoop {
   #db; #fd; #lockFd; #directory; #manifest; #rules; #tags; #revision;
   #boot=randomUUID(); #closed=false; #fault=null;
+  #clock;
   constructor({directory,manifest,rules=[]}) {
     this.#directory=directory; this.#manifest=structuredClone(manifest); this.#rules=structuredClone(rules);
     this.#tags=new Map(manifest.groups.flatMap(g=>g.tags.map(t=>[t.id,{...t,group:g.id}])));
@@ -34,6 +29,13 @@ export class MockLoop {
       }
       this.#db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
       if(this.#db.prepare('PRAGMA journal_mode').get().journal_mode!=='wal') throw new Error('WAL 未启用');
+      let schemaVersion=this.#db.prepare('SELECT MAX(version) version FROM schema_migrations').get().version;
+      if(schemaVersion===1) {
+        this.#db.exec(readFileSync(new URL('../../db/002-clock-tracking.sql',import.meta.url),'utf8'));
+        schemaVersion=2;
+      }
+      if(schemaVersion!==2) throw new Error('不支持的数据库版本');
+      this.#clock=new ClockTracker({state:JSON.parse(this.#db.prepare('SELECT state_json FROM clock_tracker_state WHERE singleton=1').get().state_json)});
       const existing=this.#db.prepare('SELECT config_revision FROM devices WHERE device_id=?').get(this.#manifest.device_id);
       if(existing && existing.config_revision!==this.#revision) throw new Error('mock 数据目录已有不同配置，必须走受控变更或使用新测试目录');
       const now=Date.now()*1000;
@@ -84,11 +86,22 @@ export class MockLoop {
     if(!tag || sample.device_id!==this.#manifest.device_id || sample.group_id!==tag.group || sample.value?.type!==tag.type) throw new TypeError('样本与订阅清单不匹配');
     const observed=toUs(sample.observed_at_ms), source=toUs(sample.source_at_ms), server=toUs(sample.server_at_ms), event=toUs(sample.event_at_ms);
     const stamp={observed_at:new Date(sample.observed_at_ms).toISOString(),boot_id:this.#boot,monotonic_ns:sample.monotonic_ns};
+    const clock=this.#clock.preview({...sample,boot_id:this.#boot});
+    const context={device:sample.device_id,tag:sample.tag_id,scan_cycle:sample.scan_cycle,session_id:sample.session_id};
     this.#db.exec('BEGIN IMMEDIATE');
     try {
+      if(clock.reasons.length) {
+        const clockSequence=this.#next();
+        this.#run('INSERT INTO clock_events VALUES (?,?,?,?,?,?,?,?)',clockSequence,clock.epoch,this.#boot,
+          BigInt(sample.monotonic_ns),observed,sample.tag_id,JSON.stringify(clock.reasons),JSON.stringify(clock.details));
+        const record={stamp:{sequence:String(clockSequence),...stamp},level:'warn',event_code:'clock.discontinuity',
+          message_zh:'时间映射不连续，已切换记录时间段',context,
+          fields:{clock_epoch:clock.epoch,reasons:clock.reasons,details:clock.details}};
+        this.#run('INSERT INTO log_outbox VALUES (?,?,?)',clockSequence,observed,JSON.stringify(record));
+      }
       const sequence=this.#next();
       this.#run('INSERT INTO history_raw VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',sequence,sample.tag_id,this.#revision,this.#boot,
-        sample.scan_cycle,sample.session_id,BigInt(sample.monotonic_ns),observed,source,server,event,sample.timestamp_basis,0,
+        sample.scan_cycle,sample.session_id,BigInt(sample.monotonic_ns),observed,source,server,event,sample.timestamp_basis,clock.epoch,
         JSON.stringify(sample.value),sample.quality.level,sample.quality.reason,sample.quality.native_code??null);
       const transitions=[];
       for(const r of this.#rules.filter(r=>r.tag_id===sample.tag_id)) {
@@ -114,11 +127,13 @@ export class MockLoop {
       const logSequence=this.#next();
       const record={stamp:{sequence:String(logSequence),...stamp},level:sample.quality.level==='good'?'info':'warn',
         event_code:transitions.length?`alarm.${transitions[0]}`:'tag.changed',message_zh:'模拟点位变化已入库',
-        context:{device:sample.device_id,tag:sample.tag_id,scan_cycle:sample.scan_cycle,session_id:sample.session_id},
-        fields:{sample_sequence:String(sequence),quality:sample.quality,transitions,config_revision:this.#revision}};
+        context,
+        fields:{sample_sequence:String(sequence),quality:sample.quality,transitions,config_revision:this.#revision,clock_epoch:clock.epoch}};
       this.#run('INSERT INTO log_outbox VALUES (?,?,?)',logSequence,observed,JSON.stringify(record));
+      this.#run('UPDATE clock_tracker_state SET state_json=? WHERE singleton=1',JSON.stringify(clock.next));
       this.#db.exec('COMMIT');
     } catch(error) {this.#db.exec('ROLLBACK');throw error;}
+    this.#clock.commit(clock);
     try {this.#exportPending();} catch(error) {this.#fault=error;throw error;}
   }
   #exportPending() {

@@ -12,6 +12,8 @@
 
 DDL：`db/001-infrastructure.sql`。SQLite STRICT 表，WAL，`synchronous=FULL`，外键开启。只适用于新建库；不使用 `IF NOT EXISTS` 掩盖结构漂移。后续版本由迁移版本和内容校验管理。每个连接重设连接级 PRAGMA；`journal_mode` 返回值必须实测为 wal。部署磁盘须是支持 SQLite 锁与落盘语义的本地文件系统，不先假定网络共享盘可用。
 
+后续 T4 已添加 `db/002-clock-tracking.sql` 与运行时 schema v1→v2 迁移，持久化观测状态和时间不连续事件；详见 `docs/T4-clock-acceptance.md`。原始 DDL 保持为 v1，迁移是独立文件。当前迁移按版本选择，完整迁移内容校验及大型现场库升级仍未实现。
+
 | 表/字段组 | 口径与用途 |
 |---|---|
 | runtime_identity / runtime_boots | 持久 runtime_id 与每次启动的 boot_id 分开；单调时间只能在同一 boot 比较 |

@@ -116,3 +116,68 @@ test('日志索引落盘失败后拒绝继续接收，不重复追加，保留�
     } finally {db.close();}
   } finally {try{loop.close();}catch{}rmSync(directory,{recursive:true,force:true});}
 });
+
+test('墙钟前后跳不改序号顺序，历史分段且日志留下不连续证据', () => {
+  const directory=mkdtempSync(join(tmpdir(),'ltp-clock-loop-'));
+  const loop=new MockLoop({directory,manifest:manifest()});
+  try {
+    const driver=new MockDriver(manifest(),{wall_origin_ms:1700000000000});
+    driver.on('sample',s=>loop.accept(s));driver.connect();driver.advance(100);
+    driver.jumpWallTime(-3600000);driver.setValue('temperature',12);driver.advance(100);
+    driver.jumpWallTime(7200000);driver.setValue('temperature',5);driver.advance(100);
+    loop.close();
+    const db=new DatabaseSync(join(directory,'runtime.sqlite'),{readOnly:true});
+    try {
+      const rows=db.prepare('SELECT sequence,clock_epoch,observed_at_us FROM history_raw ORDER BY sequence').all();
+      assert.deepEqual(rows.map(r=>r.clock_epoch),[0,0,1,2]);
+      assert.ok(rows[2].observed_at_us<rows[0].observed_at_us);
+      assert.ok(rows.every((r,i)=>i===0||r.sequence>rows[i-1].sequence));
+      assert.equal(db.prepare('SELECT count(*) n FROM clock_events').get().n,2);
+      const logs=readFileSync(join(directory,'events.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+      assert.equal(logs.filter(r=>r.event_code==='clock.discontinuity').length,2);
+    } finally {db.close();}
+  } finally {loop.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('历史事务失败不会消耗时钟段，重试仍产生同一不连续证据', () => {
+  const directory=mkdtempSync(join(tmpdir(),'ltp-clock-rollback-'));
+  const loop=new MockLoop({directory,manifest:manifest()});
+  try {
+    const driver=new MockDriver(manifest(),{wall_origin_ms:1700000000000});const samples=[];
+    driver.on('sample',s=>samples.push(s));driver.connect();driver.advance(100);loop.accept(samples[0]);
+    driver.jumpWallTime(-3600000);driver.setValue('temperature',12);driver.advance(100);const second=samples.at(-1);
+    const injector=new DatabaseSync(join(directory,'runtime.sqlite'));
+    try {
+      injector.exec("CREATE TRIGGER reject_history BEFORE INSERT ON history_raw BEGIN SELECT RAISE(ABORT,'injected history failure'); END;");
+      assert.throws(()=>loop.accept(second),/injected history failure/);
+      assert.equal(injector.prepare('SELECT count(*) n FROM clock_events').get().n,0);
+      injector.exec('DROP TRIGGER reject_history');
+    } finally {injector.close();}
+    loop.accept(second);loop.close();
+    const db=new DatabaseSync(join(directory,'runtime.sqlite'),{readOnly:true});
+    try {
+      assert.equal(db.prepare('SELECT count(*) n FROM clock_events').get().n,1);
+      assert.equal(db.prepare('SELECT max(clock_epoch) epoch FROM history_raw').get().epoch,1);
+    } finally {db.close();}
+  } finally {loop.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('旧版T3数据库迁移保留历史，并从既有epoch继续跨启动分段', () => {
+  const directory=mkdtempSync(join(tmpdir(),'ltp-clock-migrate-'));
+  try {
+    let loop=new MockLoop({directory,manifest:manifest()});
+    let driver=new MockDriver(manifest());driver.on('sample',s=>loop.accept(s));driver.connect();driver.advance(100);loop.close();
+    const seed=new DatabaseSync(join(directory,'runtime.sqlite'));
+    try {
+      seed.exec('DROP TABLE clock_events; DROP TABLE clock_tracker_state; DELETE FROM schema_migrations WHERE version=2; UPDATE history_raw SET clock_epoch=7;');
+    } finally {seed.close();}
+    loop=new MockLoop({directory,manifest:manifest()});
+    driver=new MockDriver(manifest());driver.on('sample',s=>loop.accept(s));driver.connect();driver.advance(100);loop.close();
+    const db=new DatabaseSync(join(directory,'runtime.sqlite'),{readOnly:true});
+    try {
+      assert.equal(db.prepare('SELECT max(version) v FROM schema_migrations').get().v,2);
+      assert.equal(db.prepare('SELECT count(*) n FROM history_raw').get().n,4);
+      assert.equal(db.prepare('SELECT max(clock_epoch) epoch FROM history_raw').get().epoch,8);
+    } finally {db.close();}
+  } finally {rmSync(directory,{recursive:true,force:true});}
+});

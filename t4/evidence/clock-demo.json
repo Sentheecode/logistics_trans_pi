@@ -1,0 +1,58 @@
+{
+  "mode": "mock-clock-injection",
+  "node": "v24.22.1",
+  "directory": "/tmp/ltp-clock-demo-rfwVKf",
+  "schema_version": 2,
+  "wall_adjustments_ms": [
+    -3600000,
+    7200000
+  ],
+  "history": [
+    {
+      "sequence": "1",
+      "clock_epoch": "0",
+      "observed_at_us": "1700000000100000",
+      "monotonic_ns": "100000000"
+    },
+    {
+      "sequence": "3",
+      "clock_epoch": "0",
+      "observed_at_us": "1700000000100000",
+      "monotonic_ns": "100000000"
+    },
+    {
+      "sequence": "6",
+      "clock_epoch": "1",
+      "observed_at_us": "1699996400200000",
+      "monotonic_ns": "200000000"
+    },
+    {
+      "sequence": "9",
+      "clock_epoch": "2",
+      "observed_at_us": "1700003600300000",
+      "monotonic_ns": "300000000"
+    }
+  ],
+  "clock_events": [
+    {
+      "epoch": 1,
+      "reasons": [
+        "wall_backward"
+      ]
+    },
+    {
+      "epoch": 2,
+      "reasons": [
+        "wall_jump"
+      ]
+    }
+  ],
+  "jsonl_rows": 6,
+  "pending_logs": 0,
+  "integrity_check": "ok",
+  "limits": [
+    "未修改系统时钟",
+    "未做物理掉电",
+    "当前在样本接收时检测，不是独立后台时钟监视器"
+  ]
+}
