@@ -1,0 +1,343 @@
+{
+  "source": "data/baselines/station-140.csv",
+  "sha256": "fd4885f50bb7fbda73e77ecdf40520015782eda34f56c98ccb7845004ad2cc44",
+  "source_status": "user_confirmed_baseline",
+  "runtime_status": "not_mapped_not_enabled",
+  "rows": 116,
+  "sections": {
+    "PLC给上位机": 66,
+    "上位机给PLC": 50
+  },
+  "classification": {
+    "reserved_slash": 28,
+    "unnamed": 13,
+    "named": 75
+  },
+  "duplicate_addresses_within_section": [
+    {
+      "section": "PLC给上位机",
+      "address": "DB1900.DBX3.6",
+      "rows": [
+        {
+          "source_row_id": "140-031",
+          "name": "料仓上层15请求补料",
+          "address": "DB1900.DBX3.6",
+          "direction": "上位机读取（PLC→PC）"
+        },
+        {
+          "source_row_id": "140-032",
+          "name": "////////",
+          "address": "DB1900.DBX3.6",
+          "direction": "上位机读取（PLC→PC）"
+        }
+      ]
+    },
+    {
+      "section": "PLC给上位机",
+      "address": "DB1900.DBX7.6",
+      "rows": [
+        {
+          "source_row_id": "140-063",
+          "name": "",
+          "address": "DB1900.DBX7.6",
+          "direction": "上位机读取（PLC→PC）"
+        },
+        {
+          "source_row_id": "140-064",
+          "name": "",
+          "address": "DB1900.DBX7.6",
+          "direction": "上位机读取（PLC→PC）"
+        }
+      ]
+    },
+    {
+      "section": "上位机给PLC",
+      "address": "DB1900.DBX3.6",
+      "rows": [
+        {
+          "source_row_id": "140-097",
+          "name": "料仓上层15补料完成",
+          "address": "DB1900.DBX3.6",
+          "direction": "上位机读取（PLC→PC）"
+        },
+        {
+          "source_row_id": "140-098",
+          "name": "////////",
+          "address": "DB1900.DBX3.6",
+          "direction": "上位机读取（PLC→PC）"
+        }
+      ]
+    }
+  ],
+  "addresses_present_in_both_sections": [
+    "DB1900.DBX2.0",
+    "DB1900.DBX2.1",
+    "DB1900.DBX2.2",
+    "DB1900.DBX2.3",
+    "DB1900.DBX2.4",
+    "DB1900.DBX2.5",
+    "DB1900.DBX2.6",
+    "DB1900.DBX2.7",
+    "DB1900.DBX3.0",
+    "DB1900.DBX3.1",
+    "DB1900.DBX3.2",
+    "DB1900.DBX3.3",
+    "DB1900.DBX3.4",
+    "DB1900.DBX3.5",
+    "DB1900.DBX3.6",
+    "DB1900.DBX4.0",
+    "DB1900.DBX4.1",
+    "DB1900.DBX4.2",
+    "DB1900.DBX4.3",
+    "DB1900.DBX4.4",
+    "DB1900.DBX4.5",
+    "DB1900.DBX4.6",
+    "DB1900.DBX4.7",
+    "DB1900.DBX5.0",
+    "DB1900.DBX5.1",
+    "DB1900.DBX5.2",
+    "DB1900.DBX5.3",
+    "DB1900.DBX5.4",
+    "DB1900.DBX5.5",
+    "DB1900.DBX5.6",
+    "DB1900.DBX5.7"
+  ],
+  "write_section_source_direction_is_read": [
+    {
+      "source_row_id": "140-083",
+      "name": "料仓上层1补料完成",
+      "address": "DB1900.DBX2.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-084",
+      "name": "料仓上层2补料完成",
+      "address": "DB1900.DBX2.1",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-085",
+      "name": "料仓上层3补料完成",
+      "address": "DB1900.DBX2.2",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-086",
+      "name": "料仓上层4补料完成",
+      "address": "DB1900.DBX2.3",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-087",
+      "name": "料仓上层5补料完成",
+      "address": "DB1900.DBX2.4",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-088",
+      "name": "料仓上层6补料完成",
+      "address": "DB1900.DBX2.5",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-089",
+      "name": "料仓上层7补料完成",
+      "address": "DB1900.DBX2.6",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-090",
+      "name": "料仓上层8补料完成",
+      "address": "DB1900.DBX2.7",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-091",
+      "name": "料仓上层9补料完成",
+      "address": "DB1900.DBX3.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-092",
+      "name": "料仓上层10补料完成",
+      "address": "DB1900.DBX3.1",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-093",
+      "name": "料仓上层11补料完成",
+      "address": "DB1900.DBX3.2",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-094",
+      "name": "料仓上层12补料完成",
+      "address": "DB1900.DBX3.3",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-095",
+      "name": "料仓上层13补料完成",
+      "address": "DB1900.DBX3.4",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-096",
+      "name": "料仓上层14补料完成",
+      "address": "DB1900.DBX3.5",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-097",
+      "name": "料仓上层15补料完成",
+      "address": "DB1900.DBX3.6",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-098",
+      "name": "////////",
+      "address": "DB1900.DBX3.6",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-099",
+      "name": "料仓下层1请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-100",
+      "name": "料仓下层2请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.1",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-101",
+      "name": "料仓下层3请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.2",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-102",
+      "name": "料仓下层4请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.3",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-103",
+      "name": "料仓下层5请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.4",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-104",
+      "name": "料仓下层6请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.5",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-105",
+      "name": "料仓下层7请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.6",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-106",
+      "name": "料仓下层8请求补料--多层物料不需要",
+      "address": "DB1900.DBX4.7",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-107",
+      "name": "料仓下层9请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-108",
+      "name": "料仓下层10请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.1",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-109",
+      "name": "料仓下层11请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.2",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-110",
+      "name": "料仓下层12请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.3",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-111",
+      "name": "料仓下层13请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.4",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-112",
+      "name": "料仓下层14请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.5",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-113",
+      "name": "料仓下层15请求补料--多层物料不需要",
+      "address": "DB1900.DBX5.6",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-114",
+      "name": "////////",
+      "address": "DB1900.DBX5.7",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-115",
+      "name": "小车取料次序1",
+      "address": "DB1901.DBX6.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-116",
+      "name": "小车取料次序2",
+      "address": "DB1901.DBX8.0",
+      "direction": "上位机读取（PLC→PC）"
+    }
+  ],
+  "non_bool_dbx_notation_needs_opcua_mapping": [
+    {
+      "source_row_id": "140-065",
+      "name": "报警 代码",
+      "address": "DB1900.DBX8.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-066",
+      "name": "小车二维码信息",
+      "address": "DB1900.DBX10.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-115",
+      "name": "小车取料次序1",
+      "address": "DB1901.DBX6.0",
+      "direction": "上位机读取（PLC→PC）"
+    },
+    {
+      "source_row_id": "140-116",
+      "name": "小车取料次序2",
+      "address": "DB1901.DBX8.0",
+      "direction": "上位机读取（PLC→PC）"
+    }
+  ],
+  "limitations": [
+    "无 OPC UA 连接/类型/AccessLevel 验证",
+    "无静默地址或方向修正",
+    "未据此生成有效业务写权限",
+    "分类 named 只表示有名称，不表示已完成语义/安全审核"
+  ]
+}

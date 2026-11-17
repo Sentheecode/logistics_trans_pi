@@ -1,0 +1,33 @@
+{
+  "status": "requirements_baseline_not_deployable_config",
+  "source": "用户于 2026-11-17 提供并确认的范围；名称暂作 PLC 对象，不断言最终物理设备边界",
+  "factories": [],
+  "factory_details_pending": true,
+  "areas": [
+    {
+      "code": "sps",
+      "name": "分拣区",
+      "plcs": [
+        {"name": "外装", "protocol": "opcua", "ip": null, "endpoint": null, "stations": ["140", "150", "160"]},
+        {"name": "仪表一", "protocol": "opcua", "ip": null, "endpoint": null, "stations": ["20", "30", "90"]},
+        {"name": "仪表二", "protocol": "opcua", "ip": null, "endpoint": null, "stations": ["40", "10", "70", "80"]}
+      ]
+    },
+    {
+      "code": "sort",
+      "name": "排序区",
+      "plcs": [
+        {"name": "排序一", "protocol": "opcua", "ip": null, "endpoint": null, "stations": ["210", "220"]},
+        {"name": "排序二", "protocol": "opcua", "ip": null, "endpoint": null, "stations": []},
+        {"name": "排序三", "protocol": "opcua", "ip": null, "endpoint": null, "stations": []},
+        {"name": "排序四", "protocol": "opcua", "ip": null, "endpoint": null, "stations": []}
+      ]
+    }
+  ],
+  "notes": [
+    "工位编号按字符串保存，不自行补零或重新编号",
+    "空 stations 表示尚未提供，不代表没有工位",
+    "各 PLC code、工厂归属及最终主键尚待提供，不以名称生成现场正式编码",
+    "扫码结果同线共享已确认，具体共享成员关系尚未给出，不默认等于同一 PLC 的所有工位"
+  ]
+}
