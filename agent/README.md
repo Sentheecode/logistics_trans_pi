@@ -22,6 +22,6 @@ curl --fail-with-body --silent --show-error --get \
   --data-urlencode 'condition=active' "$LTP_DIAGNOSTIC_URL/api/v1/alarms"
 ```
 
-接口路径为 /api/v1/tags、history、alarms、logs、correlations（共用前缀）。时间参数 from、to 使用左闭右开 UTC 窗口，最多毫秒精度，查询跨度最多一天。多个标识使用重复的 tag_ids 或 device_ids 参数。单次最多 64 个标识、每类最多返回 500 条，截断通过 truncated 明示，日志另报精确 matched_count。当前版本提供 raw 历史；聚合分辨率和翻页游标尚待实现。若日志损坏、超出精确计数预算或查询失败，调用方收到错误。
+接口路径为 /api/v1/tags、history、alarms、logs、correlations（共用前缀）。时间参数 from、to 使用左闭右开 UTC 窗口，最多毫秒精度，查询跨度最多一天。多个标识使用重复的 tag_ids 或 device_ids 参数。单次最多 64 个标识、每类最多返回 500 条，截断通过 truncated 明示，日志另报精确 matched_count。历史支持 raw、1s、1m、1h。聚合查询起止须对齐相应 UTC 桶边界，backfill_pending 表示还有旧数据待补算。分页游标尚待实现。若日志损坏、超出精确计数预算或查询失败，调用方收到错误。
 
 query_tags 反映最后一次采样。history 按事件时间筛选，correlations 按接收时间筛选。日志覆盖来自记录区间、时钟分段及轮转信息。历史和报警缺少完整性证明时返回 unknown，关联结果只列观测证据。运行账户应只有所需文件读取权限。此 HTTP 服务供本机部署，Windows 服务注册另行验证。

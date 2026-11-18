@@ -1,3 +1,4 @@
+import {stamp,sample} from './history-sample.mjs';
 import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,timingSafeEqual,createHash} from 'node:crypto';
@@ -27,7 +28,7 @@ function parameters(route,params){
   args.limit=Number(args.limit);
   requireInput(Number.isInteger(args.limit)&&args.limit>=1&&args.limit<=500,'limit范围为1至500');
   if(['tags','history'].includes(route))requireInput(args.tag_ids.length,'必须提供tag_ids');
-  if(route==='history')requireInput(!args.resolution||args.resolution==='raw','当前仅支持raw历史');
+  if(route==='history')requireInput(!args.resolution||['raw','1s','1m','1h'].includes(args.resolution),'未知历史分辨率');
   if(args.condition)requireInput(['active','cleared'].includes(args.condition),'无效报警状态');
   if(args.acknowledgement)requireInput(['acknowledged','unacknowledged'].includes(args.acknowledgement),'无效确认状态');
   if(routes[route].includes('from')){
@@ -39,10 +40,6 @@ function parameters(route,params){
   }
   return args;
 }
-function stamp(row){return {sequence:String(row.sequence),boot_id:row.boot_id,monotonic_ns:String(row.monotonic_ns),observed_at:utc(row.observed_at_us)};}
-function sample(row){return {tag_id:row.tag_id,device_id:row.device_id,scan_group_id:row.group_id,value:JSON.parse(row.value_json),
-  quality:{level:row.quality,reason:row.quality_reason,native_code:row.native_code??undefined},source_timestamp:utc(row.source_at_us),
-  server_timestamp:utc(row.server_at_us),event_timestamp:utc(row.event_at_us),timestamp_basis:row.timestamp_basis,clock_epoch:Number(row.clock_epoch),stamp:stamp(row)};}
 function execute(db,directory,route,args){
   function rows(sql,...values){const q=db.prepare(sql);q.setReadBigInts(true);return q.all(...values);}
   const identity=rows("SELECT runtime_id,high_water FROM runtime_identity,sequence_counters WHERE name='record'")[0];
@@ -77,6 +74,24 @@ function execute(db,directory,route,args){
   const filter=clauses.length?' AND '+clauses.join(' AND '):'';
   function history(column){return rows('SELECT h.*,t.device_id,t.group_id'+source+'WHERE '+column+'>=? AND '+column+'<?'+filter+
     ' ORDER BY h.sequence LIMIT ?',...bounds,...values,args.limit+1).map(sample);}
+  if(route==='history' && args.resolution && args.resolution!=='raw'){
+    const width={ '1s':1000,'1m':60000,'1h':3600000 }[args.resolution];
+    requireInput(bounds.every(t=>t%(width*1000)===0),'聚合窗口起止须对齐所选UTC桶边界');
+    const progress=rows('SELECT last_sequence FROM history_rollup_progress')[0].last_sequence;
+    const pending=rows('SELECT 1 FROM history_raw WHERE sequence>? LIMIT 1',progress).length>0;
+    const buckets=rows(`SELECT a.* FROM history_aggregates a JOIN tags t USING(tag_id)
+      WHERE a.resolution_ms=? AND bucket_start_us>=? AND bucket_start_us<?`+filter+
+      ' ORDER BY bucket_start_us,a.tag_id,config_revision,clock_epoch LIMIT ?',width,...bounds,...values,args.limit+1);
+    return {...page(buckets.map(b=>({
+      tag_id:b.tag_id,config_revision:b.config_revision,clock_epoch:Number(b.clock_epoch),
+      window:{from:utc(b.bucket_start_us),to:utc(b.bucket_start_us+BigInt(width)*1000n)},
+      count:Number(b.sample_count),good_count:Number(b.good_count),bad_count:Number(b.bad_count),
+      uncertain_count:Number(b.uncertain_count),numeric_good_count:Number(b.numeric_good_count),
+      min:b.numeric_min,max:b.numeric_max,mean:b.numeric_good_count && Number.isFinite(b.numeric_sum)?b.numeric_sum/Number(b.numeric_good_count):null,
+      sum_overflow:b.numeric_sum!==null&&!Number.isFinite(b.numeric_sum),
+      first:JSON.parse(b.first_sample_json),last:JSON.parse(b.last_sample_json)
+    }))),resolution:args.resolution,coverage:unknown,backfill_pending:pending,aggregated_through_sequence:String(progress)};
+  }
   if(route==='history')return {...page(history('event_at_us')),coverage:unknown,resolution:'raw'};
   const [policy]=rows("SELECT revision,policy_json FROM retention_policies JOIN log_segments ON revision=policy_revision WHERE state='active'");
   const logs=readLogWindow(db,directory,policy.revision,JSON.parse(policy.policy_json).max_query_records,args);

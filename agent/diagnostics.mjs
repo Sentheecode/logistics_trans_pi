@@ -5,7 +5,7 @@ const window={type:'object',properties:{from:string,to:string},required:['from',
 const limit={type:'integer',minimum:1,maximum:500};
 const specs={
   query_tags:[{tag_ids:ids},['tag_ids'],'查询每个点最后一次采集的值、时间和质量'],
-  query_history:[{tag_ids:ids,window,resolution:{enum:['raw'],type:'string'},limit},['tag_ids','window'],'查询事件时间窗内的原始历史'],
+  query_history:[{tag_ids:ids,window,resolution:{enum:['raw','1s','1m','1h'],type:'string'},limit},['tag_ids','window'],'查询原始历史或对齐UTC桶的聚合历史'],
   list_alarms:[{condition:{type:'string',enum:['active','cleared']},acknowledgement:{type:'string',enum:['acknowledged','unacknowledged']},limit},[],'列出报警及确认状态'],
   search_logs:[{window,device:string,tag:string,event_code:string,text:string,limit},['window'],'按字面检索日志，报告匹配总数、实际覆盖区间和缺口'],
   correlate_time_window:[{window,tag_ids:ids,device_ids:ids},['window','tag_ids','device_ids'],'按接收时间关联点位、报警和日志，仅报告可核实证据']

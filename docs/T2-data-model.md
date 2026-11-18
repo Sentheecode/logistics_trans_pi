@@ -148,3 +148,11 @@ python3 scripts/estimate-capacity.py
 日志 Schema 使用环境已有 jsonschema 验证，接受有效样本并拒绝缺失上下文键、错误序号类型/符号、不合法日期。该环境默认 FormatChecker 缺少可选 date-time 检查器，首次负向测试发现其静默跳过格式校验；验证脚本已显式注册 UTC 微秒子集解析器。后续 runtime 也必须启用日期格式断言，不能仅依赖 format 注解。工具复算命令为 `python3 scripts/verify-log-schema.py`（需要环境中已有 jsonschema）及 `node scripts/verify-t2-node.mjs`，未向 runtime 添加 Python 依赖。
 
 没有实际拔电、没有改系统时钟、没有跑 OPC UA 或报警引擎；应用级约束尚未实现，TypeScript 只做类型剥离后的模块语法检查，未完成语义类型检查。
+
+### 已实现的增量聚合
+
+schema v4 用持久序号记录聚合进度。runtime 在样本事务和维护检查点各处理至多 16 条待聚合原始记录，分别更新秒、分钟和小时桶。每个分辨率直接累计源样本。三层结果与进度在同一事务提交，进程重启后从已提交序号继续。旧库随采集或检查点逐批补算。较大旧库的追赶速度和新增写放大仍需在目标工控机测量。
+
+诊断工具 query_history 可选择 raw、1s、1m、1h。聚合查询接受按分辨率对齐的 UTC 起止时间，返回各配置版本和时钟段的独立结果。每桶返回质量计数、首尾样本和 good 数值统计，超出浮点求和范围时 mean 为 null，sum_overflow 为 true。backfill_pending 和 aggregated_through_sequence 表示本次快照的补算进度。覆盖仍按 unknown 报告。
+
+当前桶允许继续接收样本，finalized 为 0。保留期、迟到窗口和现场容量尚待确认，本次没有启用自动删除或释放磁盘空间。

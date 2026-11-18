@@ -173,7 +173,7 @@ test('旧版T3数据库迁移保留历史，并从既有epoch继续跨启动分�
       seed.exec(readFileSync(new URL('../../db/001-infrastructure.sql',import.meta.url),'utf8'));
       seed.exec(`ATTACH DATABASE '${join(directory,'old.sqlite').replaceAll("'","''")}' AS old`);
       seed.exec('PRAGMA foreign_keys=OFF;BEGIN;');
-      for(const {name}of seed.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='schema_migrations'").all()) {
+      for(const {name}of seed.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('schema_migrations','history_aggregates')").all()) {
         const columns=seed.prepare(`PRAGMA table_info("${name}")`).all().map(c=>`"${c.name}"`).join(',');
         seed.exec(`DELETE FROM "${name}"`);
         seed.exec(`INSERT INTO "${name}"(${columns}) SELECT ${columns} FROM old."${name}"`);
@@ -184,7 +184,7 @@ test('旧版T3数据库迁移保留历史，并从既有epoch继续跨启动分�
     driver=new MockDriver(manifest());driver.on('sample',s=>loop.accept(s));driver.connect();driver.advance(100);loop.close();
     const db=new DatabaseSync(join(directory,'runtime.sqlite'),{readOnly:true});
     try {
-      assert.equal(db.prepare('SELECT max(version) v FROM schema_migrations').get().v,3);
+      assert.equal(db.prepare('SELECT max(version) v FROM schema_migrations').get().v,4);
       assert.equal(db.prepare('SELECT count(*) n FROM history_raw').get().n,4);
       assert.equal(db.prepare('SELECT max(clock_epoch) epoch FROM history_raw').get().epoch,8);
     } finally {db.close();}

@@ -1,3 +1,4 @@
+import {HistoryRollup} from './history-rollup.mjs';
 /** 采集样本的历史、报警和日志存储；不是业务执行器，也不提供 PLC 写入口。 */
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, createHash } from 'node:crypto';
@@ -8,7 +9,7 @@ import { ProcessLease } from './process-lease.mjs';
 import { LogStore } from './log-store.mjs';
 
 export class AcquisitionStore {
-  #protocol; #bindings; #db; #lease; #logs; #directory; #manifest; #rules; #tags; #revision;
+  #rollup; #protocol; #bindings; #db; #lease; #logs; #directory; #manifest; #rules; #tags; #revision;
   #boot=randomUUID(); #closed=false; #fault=null;
   #clock;
   #origin=process.hrtime.bigint();#sampleLogs;#qualities=new Map();
@@ -46,7 +47,11 @@ export class AcquisitionStore {
       if(schemaVersion===2) {
         this.#db.exec(readFileSync(new URL('../../db/003-log-lifecycle.sql',import.meta.url),'utf8'));schemaVersion=3;
       }
-      if(schemaVersion!==3) throw new Error('不支持的数据库版本');
+      if(schemaVersion===3) {
+        this.#db.exec(readFileSync(new URL('../../db/004-history-rollup.sql',import.meta.url),'utf8'));
+        schemaVersion=4;
+      }
+      if(schemaVersion!==4) throw new Error('不支持的数据库版本');
       this.#clock=new ClockTracker({state:JSON.parse(this.#db.prepare('SELECT state_json FROM clock_tracker_state WHERE singleton=1').get().state_json)});
       const existing=this.#db.prepare('SELECT config_revision FROM devices WHERE device_id=?').get(this.#manifest.device_id);
       if(existing && existing.config_revision!==this.#revision) throw new Error('mock 数据目录已有不同配置，必须走受控变更或使用新测试目录');
@@ -55,6 +60,7 @@ export class AcquisitionStore {
       this.#run('INSERT INTO runtime_boots VALUES (?,?,NULL,0)',this.#boot,now);
       this.#run('INSERT OR IGNORE INTO config_revisions VALUES (?,?,?,?)',this.#revision,this.#protocol+'-unpublished',JSON.stringify({manifest:this.#manifest,rules:this.#rules,...source}),now);
       this.#seed();
+      this.#rollup=new HistoryRollup(this.#db);
       this.#logs=new LogStore({db:this.#db,directory,boot_id:this.#boot,policy:log_policy});
     } catch(error) {
       if(this.#logs)this.#logs.close();
@@ -109,6 +115,7 @@ export class AcquisitionStore {
       this.#run('INSERT INTO history_raw VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',sequence,sample.tag_id,this.#revision,this.#boot,
         sample.scan_cycle,sample.session_id,BigInt(sample.monotonic_ns),observed,source,server,event,sample.timestamp_basis,clock.epoch,
         JSON.stringify(sample.value),sample.quality.level,sample.quality.reason,sample.quality.native_code??null);
+      this.#rollup.consume();
       const transitions=[];
       for(const r of this.#rules.filter(r=>r.tag_id===sample.tag_id)) {
         const active=this.#db.prepare("SELECT occurrence_id,revision FROM alarm_occurrences WHERE rule_id=? AND condition='active'").get(r.id);
@@ -155,6 +162,7 @@ export class AcquisitionStore {
     const clock=this.#clock.preview(observation),observed=toUs(observed_at_ms);
     this.#db.exec('BEGIN IMMEDIATE');
     try {
+      this.#rollup.consume();
       if(clock.reasons.length) {
         const sequence=this.#next(),context={device:null,tag:null,scan_cycle:null,session_id:null};
         this.#run('INSERT INTO clock_events VALUES (?,?,?,?,?,?,?,?)',sequence,clock.epoch,this.#boot,BigInt(monotonic_ns),observed,null,JSON.stringify(clock.reasons),JSON.stringify(clock.details));
