@@ -35,11 +35,7 @@ export class LogStore {
   }
   #run(sql,...args){return this.#db.prepare(sql).run(...args);}
   #syncDirectory(){this.#directorySync=syncDirectory(this.#directory)&&this.#directorySync;}
-  #path(relative) {
-    if(!/^events(?:\.[a-zA-Z0-9-]+)?\.jsonl$/.test(relative))throw new Error('非法日志段路径');
-    const path=join(this.#directory,relative);
-    if(existsSync(path)&&lstatSync(path).isSymbolicLink())throw new Error('日志段不能是符号链接');return path;
-  }
+  #path(relative){return segmentPath(this.#directory,relative);}
   #action(action,segment,details,backup=null){this.#run('INSERT INTO log_recovery_actions VALUES (?,?,?,?,?,?)',randomUUID(),action,segment,Date.now()*1000,backup,JSON.stringify(details));}
   #recover(segment) {
     const path=this.#path(segment.relative_path),durable=size(segment.durable_bytes);
@@ -195,33 +191,42 @@ export class LogStore {
       recovery_summary:this.#db.prepare('SELECT action,count(*) count FROM log_recovery_actions GROUP BY action').all(),
       policy:structuredClone(this.#policy)};
   }
-  query({from_ms,to_ms,device,tag,event_code,text,limit=200}) {
+  query(options) {
+    try {return readLogWindow(this.#db,this.#directory,this.#revision,this.#policy.max_query_records,options);}
+    catch(error){if(error.code==='LOG_EVIDENCE_CORRUPT')this.#evidenceFault=error.message;throw error;}
+  }
+  close(){if(this.#closed)return;this.#closed=true;if(this.#fd!==undefined){closeSync(this.#fd);this.#fd=undefined;}}
+}
+function segmentPath(directory,relative) {
+    if(!/^events(?:\.[a-zA-Z0-9-]+)?\.jsonl$/.test(relative))throw new Error('非法日志段路径');
+    const path=join(directory,relative);
+    if(existsSync(path)&&lstatSync(path).isSymbolicLink())throw new Error('日志段不能是符号链接');return path;
+  }
+export function readLogWindow(db,directory,revision,maxRecords,{from_ms,to_ms,device,tag,event_code,text,limit=200,device_ids,tag_ids}) {
     const from=toMicroseconds(from_ms),to=toMicroseconds(to_ms);
     if(from===null||to===null||to<=from||!Number.isInteger(limit)||limit<1||limit>1000)throw new TypeError('无效日志查询窗口/条数');
     for(const x of [device,tag,event_code,text])if(x!==undefined&&typeof x!=='string')throw new TypeError('无效日志筛选');
-    const rows=bigAll(this.#db,`SELECT i.*,s.relative_path FROM log_index i JOIN log_segments s ON s.segment_id=i.segment_id
-      WHERE s.state IN ('active','sealed') AND i.observed_at_us>=? AND i.observed_at_us<? ORDER BY i.sequence LIMIT ?`,from,to,this.#policy.max_query_records+1);
-    const pending=bigAll(this.#db,'SELECT sequence,payload_json FROM log_outbox WHERE observed_at_us>=? AND observed_at_us<? ORDER BY sequence LIMIT ?',from,to,this.#policy.max_query_records+1);
-    if(rows.length+pending.length>this.#policy.max_query_records)throw new Error('日志查询超出精确计数预算，请缩小窗口');
+    const rows=bigAll(db,`SELECT i.*,s.relative_path FROM log_index i JOIN log_segments s ON s.segment_id=i.segment_id
+      WHERE s.state IN ('active','sealed') AND i.observed_at_us>=? AND i.observed_at_us<? ORDER BY i.sequence LIMIT ?`,from,to,maxRecords+1);
+    const pending=bigAll(db,'SELECT sequence,payload_json FROM log_outbox WHERE observed_at_us>=? AND observed_at_us<? ORDER BY sequence LIMIT ?',from,to,maxRecords+1);
+    if(rows.length+pending.length>maxRecords)throw new Error('日志查询超出精确计数预算，请缩小窗口');
     const records=new Map();
     for(const row of rows) {
       let fd;
       try {
-        fd=openSync(this.#path(row.relative_path),'r');const bytes=readBytes(fd,size(row.byte_offset),size(row.byte_length));
+        fd=openSync(segmentPath(directory,row.relative_path),'r');const bytes=readBytes(fd,size(row.byte_offset),size(row.byte_length));
         if(row.record_sha256!==hash(bytes))throw new Error('日志正文校验不符');
         const record=JSON.parse(bytes.toString('utf8'));if(record.stamp.sequence!==String(row.sequence))throw new Error('日志序号不符');
         records.set(record.stamp.sequence,record);
-      }catch(cause){const error=new Error('日志证据文件缺失或损坏，不能返回零匹配',{cause});this.#evidenceFault=error.message;error.code='LOG_EVIDENCE_CORRUPT';throw error;}
+      }catch(cause){const error=new Error('日志证据文件缺失或损坏，不能返回零匹配',{cause});error.code='LOG_EVIDENCE_CORRUPT';throw error;}
       finally{if(fd!==undefined)closeSync(fd);}
     }
     for(const row of pending)records.set(String(row.sequence),JSON.parse(row.payload_json));
-    const matches=[...records.values()].filter(r=>(device===undefined||r.context.device===device)&&(tag===undefined||r.context.tag===tag)
+    const matches=[...records.values()].filter(r=>(!device_ids?.length||device_ids.includes(r.context.device))&&(!tag_ids?.length||tag_ids.includes(r.context.tag))&&(device===undefined||r.context.device===device)&&(tag===undefined||r.context.tag===tag)
       &&(event_code===undefined||r.event_code===event_code)&&(text===undefined||JSON.stringify(r).includes(text)))
       .sort((a,b)=>BigInt(a.stamp.sequence)<BigInt(b.stamp.sequence)?-1:1);
-    const spans=bigAll(this.#db,'SELECT * FROM log_recording_spans WHERE from_us<? AND to_us>?',to,from);
-    const gaps=bigAll(this.#db,'SELECT * FROM log_time_gaps WHERE from_us<? AND to_us>?',to,from);
-    return {...coverageFor(from,to,spans,gaps),retention_policy_revision:this.#revision,matched_count:matches.length,count_is_exact:true,
+    const spans=bigAll(db,'SELECT * FROM log_recording_spans WHERE from_us<? AND to_us>?',to,from);
+    const gaps=bigAll(db,'SELECT * FROM log_time_gaps WHERE from_us<? AND to_us>?',to,from);
+    return {...coverageFor(from,to,spans,gaps),retention_policy_revision:revision,matched_count:matches.length,count_is_exact:true,
       items:matches.slice(0,limit),truncated:matches.length>limit};
   }
-  close(){if(this.#closed)return;this.#closed=true;if(this.#fd!==undefined){closeSync(this.#fd);this.#fd=undefined;}}
-}

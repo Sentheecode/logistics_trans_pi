@@ -21,3 +21,5 @@
 npm test --prefix runtime
 npm run demo --prefix runtime
 ```
+
+[T6 本机诊断工具与运行命令](agent/README.md) 已覆盖五个只读工具。模拟超温、日志缺口和 pi 工具白名单已在本地验证，模型通道待测。
