@@ -13,7 +13,7 @@
 - [T4 第一部分：时钟不连续处理与验证](docs/T4-clock-acceptance.md)；T4 总体验收未完成
 - [T4 软件验收：日志恢复/轮转/覆盖、实际调度、看门狗与自动重启](docs/T4-runtime-acceptance.md)；物理掉电及Windows验收待完成
 
-- [T5 OPC UA本地验证](docs/T5-opcua-local-acceptance.md)、[驱动配置与运行](runtime/drivers/opcua/README.md)；现场24h、实际断网及采集持久化接线待完成
+- [T5 OPC UA本地验证](docs/T5-opcua-local-acceptance.md)、[驱动配置与运行](runtime/drivers/opcua/README.md)；已完成本地 OPC UA → SQLite 历史 → 阈值报警 → JSONL 验证，现场24h与实际断网待验收
 
 本地验证（不连接 PLC、不调用 LLM）：
 

@@ -35,7 +35,7 @@ python scripts/verify-opcua-offline.py
 | heartbeat_timeout_ms | 默认10000，最小200；须结合PLC心跳周期、服务器实际采样/发布周期和网络抖动整定 |
 | reconnect_delay_ms | 固定重试间隔，默认1000，最小50；初次连接失败向调用方报错，不后台掩盖 |
 
-接口：异步`connect/disconnect/rebuildSubscriptions`，`snapshot`普通对象，`sample/state/diagnostic`事件。请先注册监听再连接。调用方管理进程和持久化；诊断事件尚未接入runtime JSONL。
+接口：异步`connect/disconnect/rebuildSubscriptions`，`snapshot`普通对象，`sample/state/diagnostic`事件。请先注册监听再连接。调用方管理进程和持久化；service.mjs将诊断事件写入runtime JSONL。
 
 DB1900/1901和字节位偏移是原始点位信息，**不是OPC UA NodeId**，驱动不会推导或拼造现场绑定。
 
@@ -63,4 +63,14 @@ DB1900/1901和字节位偏移是原始点位信息，**不是OPC UA NodeId**，�
 
 现场Endpoint、安全策略、身份与NamespaceUri/NodeId待提供；连续24h、真实断网10次、Windows/Node22最低版本测试均未做。本地测试包含10次服务端重启，不等价于现场断网。
 
-现有`MockLoop`仍为mock闭环，包含对mock manifest的校验；不能直接把此驱动插入后宣称生产历史落盘。下一步需在真实配置确定后接通协议无关的采集持久化入口，并验证坏质量unavailable、重连及日志落盘。HMI、LWMS/AGV请求与PLC写动作均未启用。
+独立服务入口从配置 JSON 读取 driver 和 rules，调用共享的 AcquisitionStore。每个服务实例使用独立数据目录。配置字段见上表。当前命令行入口使用匿名身份，程序接口可注入凭据读取函数。
+
+```bash
+node runtime/drivers/opcua/service.mjs 配置.json 数据目录
+```
+
+仅运行本地闭环验证：
+
+```bash
+node --test runtime/drivers/opcua/integration/persistence.test.mjs
+```
