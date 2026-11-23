@@ -46,14 +46,3 @@ private:
     std::vector<std::string> peers_;
     double vbX_=0, vbY_=0, vbW_=1000, vbH_=640;
 };
-
-class DeviceFigure final : public QWidget {
-public:
-    explicit DeviceFigure(QWidget* parent=nullptr);
-    bool loaded() const { return renderer_!=nullptr; }
-    QSize sizeHint() const override { return {320, 130}; }
-protected:
-    void paintEvent(QPaintEvent* event) override;
-private:
-    std::unique_ptr<QSvgRenderer> renderer_;
-};

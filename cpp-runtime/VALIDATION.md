@@ -1,3 +1,18 @@
+# 钱塘二厂导航纠正（本地未推送）
+
+日期：2026-11-23。在 `518cf6bd690d2a2779ffb8856e602dd3b6ec5dfb` 之上改目录和界面，工作分支留在本地，没有推送 `experiment/cpp-runtime`，也没有动 `main`（`82a8232202f39bd423d43c69cd19f7061cbc2336`）。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j4
+ctest --test-dir /tmp/logistics-release --output-on-failure
+npm test --prefix runtime
+```
+
+Release CTest **7/7** 通过：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`、`widgets_controls`、`hmi_refresh`。Node **49/49**。测试覆盖钱塘二厂唯一工厂、排序二未配置、140 与 150 不重复模拟帧、排序区不改手动／自动、140 点表无可执行写、SVG 与下拉同步，以及 1100×650 / 1280×800 标签。抓图在 Xvfb 的 `xcb` 上由 `hmi` 生成，供视觉审查，不代表视觉已经定稿。
+
+---
+
 # 目录、控制器一对多与 SVG 联动验证
 
 日期：2026-11-23。起点：`ab0d660d5a2cdf6f270b2a795e597fda33f6b5a9`。`main` 在验证开始时为 `82a8232202f39bd423d43c69cd19f7061cbc2336`，本轮没有检出或提交 `main`。只使用合成目录和合成采集，没有连接 PLC 或其他工业设备。

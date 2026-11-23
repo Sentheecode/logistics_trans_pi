@@ -19,7 +19,7 @@ int main(int argc,char** argv){
         QObject::connect(&timer,&QTimer::timeout,&window,[&]{
             if(capture.isEmpty()||captured||!window.captureReady(kind))return;
             if(kind=="dropdown"){
-                auto* combo=window.findChild<QComboBox*>("businessModeCombo");
+                auto* combo=window.findChild<QComboBox*>("areaCombo");
                 if(!combo)return;
                 combo->showPopup();
                 QCoreApplication::processEvents();

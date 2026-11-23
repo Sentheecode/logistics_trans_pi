@@ -2,7 +2,7 @@
 
 这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。旧 Node runtime、Pi 扩展和已发布契约保持原样。
 
-交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。工作台包含工厂、业务模式、线体、工位四级下拉，控制器一对多示意图，以及只对唯一模拟流工位展示的最近 40 帧历史和有限模拟操作。HMI、诊断均不启动或停止采集进程。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
+交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航是钱塘二厂 → 分拣区或排序区 → PLC 配置 → 已给定工位。一个 PLC 只挂一处采集；当前模拟帧只挂在工位 140，不复制到 150/160。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
 
 ## 已实现的演示
 
@@ -26,7 +26,7 @@ HMI 不启动/停止采集；关窗和重开都不会改变模式或推进任务
 
 控制通道为同用户本地文件锁单槽信箱 `control.mailbox`，仅四种有限模拟命令。请求有启动身份、修订号、截止时间和长度上限；过期、重复修订号、并发忙均失败。不是通用控制面，无网络监听和设备通道。使用用户私有本地目录；Linux 0600 文件权限，Windows 继承目录 ACL，Windows 文件锁/权限仍待实测。CLI/Pi 仍只读。BUILD_TESTING 下的 `control_test_client` 是自动化测试夹具，不作为产品 CLI。
 
-界面为中文，标准窗口 1280×800，也支持缩到 1100×650。Linux 需要中文字体（例如 Debian/Ubuntu 的 `fonts-noto-cjk` 包提供 Noto Sans CJK SC）；Windows 优先已有微软雅黑字体。没有 WebView 或 Qt Charts。库区／工位图和设备图是合成 SVG，设备图标注“示意”；它们不代替质量、阶段和历史文字。业务模式（SPS／排序区）与手动／自动是两个字段。只有目录中标记为 `sim.three-cart.v1` 的工位显示实时数据和原有控制按钮，浏览其他工位不改变采集。
+界面为中文，标准窗口 1280×800，也支持缩到 1100×650。Linux 需要中文字体（例如 Debian/Ubuntu 的 `fonts-noto-cjk` 包提供 Noto Sans CJK SC）；Windows 优先已有微软雅黑字体。没有 WebView 或 Qt Charts。主图是钱塘二厂的工位示意，不是测量图，也不是设备照片。上位机手动／自动和 PLC 设备自动是两回事；后者显示未读取。工位 140 的点表只在「点表」页作审计，不生成写地址，也不套用到其他工位。浏览目录不改变采集。
 
 ## Windows 下载、构建、启动（非管理员）
 

@@ -53,7 +53,7 @@ void SchematicView::load() {
     if (!file.open(QIODevice::ReadOnly)) { error_="示意图资源缺失"; renderer_.reset(); return; }
     const auto bytes=file.readAll();
     if (!renderer_->load(bytes) || !renderer_->isValid()) { error_="示意图无法解析"; renderer_.reset(); return; }
-    renderer_->setAspectRatioMode(Qt::KeepAspectRatio);
+    renderer_->setAspectRatioMode(Qt::IgnoreAspectRatio);
     try { parse(bytes.toStdString()); }
     catch (const std::exception&) { rects_.clear(); error_="示意图无法解析"; return; }
     bool station=false;
@@ -98,11 +98,7 @@ QColor SchematicView::markerColor(const QString& id) const {
     return {};
 }
 QRectF SchematicView::content() const {
-    QRectF area=rect().adjusted(4, 4, -4, -4);
-    if (!(vbW_>0) || !(vbH_>0) || area.width()<=0 || area.height()<=0) return area;
-    double scale=std::min(area.width()/vbW_, area.height()/vbH_);
-    QSizeF size(vbW_*scale, vbH_*scale);
-    return {area.x()+(area.width()-size.width())/2.0, area.y()+(area.height()-size.height())/2.0, size.width(), size.height()};
+    return QRectF(rect()).adjusted(2, 2, -2, -2);
 }
 QRectF SchematicView::mapSvg(const SvgRect& shape) const {
     auto bounds=content();
@@ -110,12 +106,15 @@ QRectF SchematicView::mapSvg(const SvgRect& shape) const {
     return {bounds.x()+(shape.x-vbX_)*sx, bounds.y()+(shape.y-vbY_)*sy, shape.w*sx, shape.h*sy};
 }
 QString SchematicView::stationAt(const QPointF& widgetPoint) const {
-    QString hit;
+    QString station;
+    QString group;
     for (auto& shape : rects_) {
-        if (shape.id.rfind("stn.", 0)!=0) continue;
-        if (mapSvg(shape).contains(widgetPoint)) hit=QString::fromStdString(shape.id);
+        if (!mapSvg(shape).contains(widgetPoint)) continue;
+        const auto id=QString::fromStdString(shape.id);
+        if (id.startsWith("stn.")) station=id;
+        else if (id.startsWith("plc.cfg.")) group=id;
     }
-    return hit;
+    return station.isEmpty() ? group : station;
 }
 QRectF SchematicView::stationRect(const QString& id) const {
     for (auto& shape : rects_) if (QString::fromStdString(shape.id)==id) return mapSvg(shape);
@@ -157,28 +156,4 @@ void SchematicView::mousePressEvent(QMouseEvent* event) {
     auto id=stationAt(event->position());
     if (id.isEmpty()) return;
     emit stationActivated(id);
-}
-
-DeviceFigure::DeviceFigure(QWidget* parent): QWidget(parent) {
-    setObjectName("deviceFigure");
-    setMinimumHeight(110);
-    init_resources();
-    auto renderer=std::make_unique<QSvgRenderer>(QStringLiteral(":/catalog/device.svg"));
-    if (renderer->isValid()) {
-        renderer->setAspectRatioMode(Qt::KeepAspectRatio);
-        renderer_=std::move(renderer);
-    }
-}
-void DeviceFigure::paintEvent(QPaintEvent*) {
-    QPainter painter(this);
-    painter.fillRect(rect(), QColor("#f4f6f8"));
-    painter.setPen(QPen(QColor("#d5dbe3")));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
-    if (!renderer_) {
-        painter.setPen(QColor("#8a5a00"));
-        painter.drawText(rect(), Qt::AlignCenter, "设备图缺失");
-        return;
-    }
-    renderer_->render(&painter, QRectF(rect()).adjusted(6, 6, -6, -6));
 }
