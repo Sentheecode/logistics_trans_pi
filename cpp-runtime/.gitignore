@@ -1,0 +1,5 @@
+/build*/
+/var/
+__pycache__/
+*.sqlite*
+*.png
