@@ -3,6 +3,7 @@
 #include "point_audit.hpp"
 #include "schematic.hpp"
 #include <QApplication>
+#include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
@@ -11,6 +12,8 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLineEdit>
+#include <QMap>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -20,6 +23,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QTableWidget>
 #include <QTimeZone>
 #include <QTimer>
@@ -169,8 +173,17 @@ QString consoleStyle() {
         QPushButton:disabled, QPushButton#primary:disabled { background:%1; color:#8b96a6; border:1px solid %4; }
         QPushButton#stationCard { min-width:52px; }
         QPushButton#stationCard:checked { background:%6; color:#ffffff; border:1px solid %6; }
-        QTableWidget { background:%2; alternate-background-color:%1; gridline-color:%4; font-size:12px; selection-background-color:%7; selection-color:%3; }
-        QHeaderView::section { background:%1; color:%5; border:none; border-bottom:1px solid %4; padding:4px 6px; font-size:12px; }
+        QTableWidget { background:%2; alternate-background-color:%1; gridline-color:%4; font-size:13px; selection-background-color:%7; selection-color:%3; }
+        QTableWidget::item { padding:3px 6px; }
+        QTableWidget::item:selected { background:%7; color:%3; }
+        QTableWidget::item:hover { background:%7; }
+        QHeaderView::section { background:%2; color:%3; font-weight:600; border:none; border-bottom:1px solid %4; padding:6px 8px; font-size:12px; }
+        QLineEdit { background:%2; border:1px solid %4; padding:2px 8px; min-height:26px; color:%3; }
+        QLineEdit:focus { border:2px solid %6; }
+        QCheckBox { color:%3; spacing:6px; }
+        QToolButton { background:transparent; color:%6; border:none; font-weight:600; padding:2px 4px; }
+        QToolButton:hover { background:%7; }
+        QToolButton:focus { border:2px solid %6; }
         QTabWidget::pane { border:none; background:%1; }
         QTabBar::tab { background:%1; color:%5; padding:8px 16px; min-height:24px; border:none; border-bottom:2px solid transparent; }
         QTabBar::tab:hover { color:%3; background:%7; }
@@ -181,11 +194,42 @@ QString consoleStyle() {
         QScrollArea { border:none; background:%1; }
     )").arg(t.canvas, t.surface, t.ink, t.line, t.muted, t.accent, t.accentSoft, t.warn, t.warnSoft);
 }
-QWidget* boundaryCard(const QString& title, const QString& chip, const QString& state, const QString& body, QWidget* parent) {
+QString doubtSummary(const QString& codes) {
+    if (codes.isEmpty()) return "无疑点";
+    const QMap<QString, QString> text{
+        {"plc-auto-not-host-mode", "PLC 自动不是上位机手自动"},
+        {"heartbeat-not-passage", "心跳不能当作通行授权"},
+        {"read-not-grant", "这是读取点，不能当成放行"},
+        {"handshake-unconfirmed", "握手规则尚未确认"},
+        {"replenish-request-not-lwms-complete", "补料请求不是 LWMS 完成"},
+        {"duplicate-address", "地址与其他行重复，保持原表"},
+        {"reserved", "来源标为保留"},
+        {"blank-name", "来源没有名称"},
+        {"dbx-non-bool", "DBX 地址上的类型不是 BOOL"},
+        {"length-unit-unconfirmed", "长度单位尚未确认"},
+        {"shared-cart", "三台小车共用这一地址"},
+        {"clear-handshake-unconfirmed", "清空握手尚未确认"},
+        {"not-executable-write", "不能当成可执行写点"},
+        {"direction-conflict", "方向和所在段不一致"},
+        {"do-not-rewrite-db", "不把地址改写到另一个 DB"},
+        {"scan-trigger-unconfirmed", "扫码触发尚未确认"},
+        {"lower-layer-not-enabled", "下层料仓来源写明不需要"},
+        {"cart-complete-scope", "只表示这台小车本轮完成"},
+        {"not-complete-write", "不推定为补料完成写入"},
+        {"来源纵有写入字样，本程序也不生成写点", "来源有写入字样，这里不生成写点"},
+    };
+    QStringList parts;
+    for (const auto& code : codes.split(';', Qt::SkipEmptyParts)) {
+        const auto key=code.trimmed();
+        parts.push_back(text.contains(key) ? text.value(key) : "未翻译："+key);
+    }
+    return parts.join("；");
+}
+QWidget* interfaceCard(const QString& title, const QString& chip, const QString& state, const QString& summary, const QString& detail, QWidget* parent) {
     auto* card=new QWidget(parent);
     card->setObjectName("surface");
     auto* layout=new QVBoxLayout(card);
-    layout->setContentsMargins(12, 10, 12, 10);
+    layout->setContentsMargins(12, 8, 12, 8);
     layout->setSpacing(4);
     auto* head=new QHBoxLayout;
     auto* heading=new QLabel(title, card);
@@ -197,11 +241,21 @@ QWidget* boundaryCard(const QString& title, const QString& chip, const QString& 
     head->addWidget(heading);
     head->addStretch(1);
     head->addWidget(mark);
-    auto* text=new QLabel(body, card);
-    text->setWordWrap(true);
-    text->setObjectName("muted");
+    auto* line=new QLabel(summary, card);
+    line->setWordWrap(true);
+    auto* more=new QToolButton(card);
+    more->setText("详情");
+    more->setCheckable(true);
+    more->setFocusPolicy(Qt::StrongFocus);
+    auto* body=new QLabel(detail, card);
+    body->setWordWrap(true);
+    body->setObjectName("muted");
+    body->setVisible(false);
+    QObject::connect(more, &QToolButton::toggled, body, &QWidget::setVisible);
     layout->addLayout(head);
-    layout->addWidget(text);
+    layout->addWidget(line);
+    layout->addWidget(more, 0, Qt::AlignLeft);
+    layout->addWidget(body);
     return card;
 }
 QScrollArea* scrollPage(QWidget* content) {
@@ -261,22 +315,24 @@ Workbench::Workbench(std::filesystem::path directory)
         auto* label=fieldLabel(name, context);
         *slot=new QComboBox(context);
         (*slot)->setObjectName(objectName);
-        (*slot)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        (*slot)->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        (*slot)->setMaximumWidth(168);
         (*slot)->setFocusPolicy(Qt::StrongFocus);
         label->setBuddy(*slot);
         contextLayout->addWidget(label);
-        contextLayout->addWidget(*slot, 1);
+        contextLayout->addWidget(*slot);
     };
     addCombo("工厂", &factoryCombo_, "factoryCombo");
     addCombo("区域", &areaCombo_, "areaCombo");
     addCombo("PLC", &plcCombo_, "plcCombo");
+    contextLayout->addStretch(1);
 
     auto* commandPane=new QWidget;
     commandPane->setObjectName("commandPane");
-    commandPane->setFixedWidth(228);
-    auto* commandLayout=new QVBoxLayout(commandPane);
-    commandLayout->setContentsMargins(12, 12, 12, 12);
-    commandLayout->setSpacing(6);
+    commandPane->setFixedHeight(44);
+    auto* commandLayout=new QHBoxLayout(commandPane);
+    commandLayout->setContentsMargins(12, 4, 12, 4);
+    commandLayout->setSpacing(8);
     auto* commandHeading=new QLabel("模拟操作", commandPane);
     commandHeading->setObjectName("section");
     commandLayout->addWidget(commandHeading);
@@ -291,16 +347,15 @@ Workbench::Workbench(std::filesystem::path directory)
     disconnect_->setFocusPolicy(Qt::StrongFocus);
     controlReason_=new QLabel;
     controlReason_->setObjectName("controlReason");
-    controlReason_->setWordWrap(true);
+    controlReason_->setWordWrap(false);
     feedback_=new QLabel;
     feedback_->setObjectName("controlFeedback");
-    feedback_->setWordWrap(true);
+    feedback_->setWordWrap(false);
     commandLayout->addWidget(modeButton_);
     commandLayout->addWidget(step_);
     commandLayout->addWidget(disconnect_);
-    commandLayout->addWidget(controlReason_);
+    commandLayout->addWidget(controlReason_, 1);
     commandLayout->addWidget(feedback_);
-    commandLayout->addStretch(1);
 
     schematic_=new SchematicView;
     schematic_->setFixedHeight(148);
@@ -364,7 +419,7 @@ Workbench::Workbench(std::filesystem::path directory)
     runLayout->setSpacing(8);
     auto* runTitle=new QLabel("当前采集", run);
     runTitle->setObjectName("pageTitle");
-    auto* runHint=new QLabel("手自动、单步和断链都作用在采集器上。切页不重置模拟，也不改当前 PLC。下面的概览只画这一台 PLC，是通用示意，不是实测布局。", run);
+    auto* runHint=new QLabel("概览只画当前 PLC，是通用示意。模拟操作只推进工位 140，不随聚焦工位改变。", run);
     runHint->setWordWrap(true);
     runHint->setObjectName("muted");
     runLayout->addWidget(runTitle);
@@ -439,41 +494,73 @@ Workbench::Workbench(std::filesystem::path directory)
 
     pointTable_=new QTableWidget;
     pointTable_->setObjectName("pointAuditTable");
-    prepareTable(pointTable_, {"来源", "段", "名称", "地址", "类型", "方向", "疑点"});
+    prepareTable(pointTable_, {"名称", "地址", "疑点摘要", "段"});
+    pointTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    pointTable_->setSelectionMode(QAbstractItemView::SingleSelection);
+    pointTable_->setFocusPolicy(Qt::StrongFocus);
     pointTable_->horizontalHeader()->setStretchLastSection(false);
-    for (int column : {0, 1, 3, 4, 5}) pointTable_->horizontalHeader()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
+    pointTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    pointTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     pointTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    pointTable_->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
+    pointTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    pointTable_->verticalHeader()->setDefaultSectionSize(28);
     pointScope_=new QLabel;
     pointScope_->setWordWrap(true);
+    pointSearch_=new QLineEdit;
+    pointSearch_->setObjectName("pointSearch");
+    pointSearch_->setPlaceholderText("搜索名称或地址");
+    pointSearch_->setClearButtonEnabled(true);
+    pointSearch_->setMaximumWidth(280);
+    pointDoubtsOnly_=new QCheckBox("只看有疑点");
+    pointDoubtsOnly_->setObjectName("pointDoubtsOnly");
+    pointEmpty_=new QLabel("此工位没有点表。");
+    pointEmpty_->setObjectName("muted");
+    pointEmpty_->setWordWrap(true);
+    pointDetail_=new QLabel("选择一行查看来源原文。英文审计码只出现在这里。");
+    pointDetail_->setObjectName("pointDetail");
+    pointDetail_->setWordWrap(true);
     auto* pointPage=new QWidget;
     auto* pointLayout=new QVBoxLayout(pointPage);
-    pointLayout->setContentsMargins(16, 12, 16, 16);
+    pointLayout->setContentsMargins(16, 12, 16, 12);
     pointLayout->setSpacing(8);
-    auto* pointHeading=new QLabel("点表审计", pointPage);
+    auto* pointHeading=new QLabel("点表", pointPage);
     pointHeading->setObjectName("pageTitle");
+    auto* pointTools=new QHBoxLayout;
+    pointTools->addWidget(pointSearch_);
+    pointTools->addWidget(pointDoubtsOnly_);
+    pointTools->addStretch(1);
+    auto* detailBox=new QWidget;
+    detailBox->setObjectName("surface");
+    auto* detailLayout=new QVBoxLayout(detailBox);
+    detailLayout->setContentsMargins(12, 8, 12, 8);
+    auto* detailTitle=new QLabel("选中行", detailBox);
+    detailTitle->setObjectName("section");
+    detailLayout->addWidget(detailTitle);
+    detailLayout->addWidget(pointDetail_);
     pointLayout->addWidget(pointHeading);
     pointLayout->addWidget(pointScope_);
+    pointLayout->addLayout(pointTools);
+    pointLayout->addWidget(pointEmpty_);
     pointLayout->addWidget(pointTable_, 1);
+    pointLayout->addWidget(detailBox);
 
     auto* boundaryPage=new QWidget;
     auto* boundaryLayout=new QVBoxLayout(boundaryPage);
     boundaryLayout->setContentsMargins(16, 12, 16, 16);
     boundaryLayout->setSpacing(8);
-    auto* boundaryHeading=new QLabel("业务边界", boundaryPage);
+    auto* boundaryHeading=new QLabel("接口状态", boundaryPage);
     boundaryHeading->setObjectName("pageTitle");
-    auto* boundaryIntro=new QLabel("这里只写已经确认的意图和未接通的原因。没有真实订单、数量、地址或放行结果。", boundaryPage);
+    auto* boundaryIntro=new QLabel("只列出业务链上的接口。未连接的项不能配置，也没有保存。", boundaryPage);
     boundaryIntro->setWordWrap(true);
     boundaryIntro->setObjectName("muted");
     boundaryLayout->addWidget(boundaryHeading);
     boundaryLayout->addWidget(boundaryIntro);
-    boundaryLayout->addWidget(boundaryCard("采集与手自动", "仅模拟", "sim", "采集器独占手动、自动、单步和模拟断链。手动待步不推进；恢复自动必须确认。心跳只说明采集进程还在，不是 PLC 在线。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("扫码与 SPS 订单", "待补映射", "wait", "分拣意图是扫料车二维码，再向 LWMS 查 SPS 单。首台机械臂扫码，后续机械臂共享，但共享成员未配置。库位、箱、料、订单都还不能显示成已查到。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("补料", "未完成闭环", "wait", "PLC 请求补料不等于 LWMS 已确认完成。界面不把请求写成回执，也不填假数量。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("LWMS", "未连接", "wait", "没有实现 LWMS 协议，也不显示库存数量。设备连接保持未探测。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("分拣 · 库卡通行", "未授权", "wait", "已知顺序是请求进入、同意、进入完成、请求离开、离开完成，并到安全点。自动模式、设备运行或心跳都不能当成放行。进/出完成也不提前当成安全点。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("排序 · 华睿任务", "协议未定", "wait", "华睿会下发单、箱、料、数量，以及汇总/严控、正序/倒序。完成数量、内衬料架阈值和通知报文都未定，所以这里不填任务。", boundaryPage));
-    boundaryLayout->addWidget(boundaryCard("140 点表", "只读审计", "sim", "点表只属于工位 140。重复地址、空白名、方向冲突和 DBX 上的 int/string 保留原样。没有任何可执行写点，也不套用到其他工位。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("采集", "仅模拟", "sim", "手自动、单步和断链可用，而且只作用于工位 140。", "采集器独占这四条模拟命令。手动待步不推进。恢复自动要确认。心跳只说明采集进程还在，不是 PLC 在线。切页和筛选不改变采集。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("扫码查单", "待补映射", "wait", "还不能向 LWMS 查询 SPS 订单。", "分拣意图是扫料车二维码后再查单。首台机械臂扫码，后续共享成员未配置。库位、箱、料、订单都不显示成已查到。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("补料", "未闭环", "wait", "PLC 请求补料还不是完成回执。", "请求补料不等于 LWMS 已确认。这里不填数量，也没有补料完成按钮。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("LWMS", "未连接", "wait", "没有库存数量，也没有连接动作。", "协议未实现。设备连接保持未探测。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("库卡通行", "未授权", "wait", "自动、心跳和设备运行都不能放行。", "已知顺序是请求进入、同意、进入完成、请求离开、离开完成，再到安全点。进/出完成不提前当成安全点。", boundaryPage));
+    boundaryLayout->addWidget(interfaceCard("华睿任务", "协议未定", "wait", "排序任务的数量和报文都还不能填写。", "来源会有单、箱、料、数量，以及汇总/严控、正序/倒序。完成数量、内衬阈值和通知报文未定。", boundaryPage));
     boundaryLayout->addStretch(1);
 
     historyTable_=new QTableWidget;
@@ -488,6 +575,9 @@ Workbench::Workbench(std::filesystem::path directory)
     eventNote_=new QLabel("无实时历史");
     eventNote_->setObjectName("eventNote");
     eventNote_->setWordWrap(true);
+    eventSource_=new QLabel("来源：当前没有模拟流");
+    eventSource_->setObjectName("muted");
+    eventSource_->setWordWrap(true);
     historyEmpty_=new QLabel("没有可显示的帧。未挂接的工位不会复制工位 140 的历史。");
     historyEmpty_->setObjectName("muted");
     historyEmpty_->setWordWrap(true);
@@ -509,6 +599,7 @@ Workbench::Workbench(std::filesystem::path directory)
     filterRow->addWidget(historyFilter_, 1);
     filterRow->addStretch(1);
     historyLayout->addWidget(historyHeading);
+    historyLayout->addWidget(eventSource_);
     historyLayout->addWidget(eventNote_);
     historyLayout->addLayout(filterRow);
     historyLayout->addWidget(historyEmpty_);
@@ -522,16 +613,14 @@ Workbench::Workbench(std::filesystem::path directory)
     moduleTabs_->addTab(scrollPage(stationPage), "工位");
     moduleTabs_->addTab(historyPage, "事件");
     moduleTabs_->addTab(pointPage, "点表");
-    moduleTabs_->addTab(scrollPage(boundaryPage), "边界");
+    moduleTabs_->addTab(scrollPage(boundaryPage), "接口");
     moduleTabs_->setCurrentIndex(0);
 
     mainSplit_=new QSplitter(Qt::Horizontal);
     mainSplit_->setObjectName("mainSplit");
     mainSplit_->setChildrenCollapsible(false);
     mainSplit_->addWidget(moduleTabs_);
-    mainSplit_->addWidget(commandPane);
     mainSplit_->setStretchFactor(0, 1);
-    mainSplit_->setStretchFactor(1, 0);
 
     auto* central=new QWidget;
     central->setObjectName("centralRoot");
@@ -540,6 +629,7 @@ Workbench::Workbench(std::filesystem::path directory)
     root->setSpacing(0);
     root->addWidget(identity);
     root->addWidget(context);
+    root->addWidget(commandPane);
     root->addWidget(mainSplit_, 1);
     setCentralWidget(central);
     auto* closure=new QLabel("关窗不停止采集");
@@ -555,6 +645,9 @@ Workbench::Workbench(std::filesystem::path directory)
         if (item) activateSchematicStation(item->text());
     });
     connect(historyFilter_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { applyHistoryFilter(); });
+    connect(pointSearch_, &QLineEdit::textChanged, this, [this](const QString&) { applyPointFilter(); });
+    connect(pointDoubtsOnly_, &QCheckBox::toggled, this, [this](bool) { applyPointFilter(); });
+    connect(pointTable_, &QTableWidget::itemSelectionChanged, this, [this] { showPointDetail(); });
     setTabOrder(factoryCombo_, areaCombo_);
     setTabOrder(areaCombo_, plcCombo_);
     setTabOrder(plcCombo_, moduleTabs_);
@@ -594,11 +687,7 @@ Workbench::Workbench(std::filesystem::path directory)
     });
     setSelection(catalog_.live_selection());
     QTimer::singleShot(0, this, [this] {
-        if (!split_applied_ && mainSplit_->width()>480) {
-            split_applied_=true;
-            const int rail=228;
-            mainSplit_->setSizes({std::max(480, mainSplit_->width()-rail), rail});
-        }
+        if (!split_applied_ && mainSplit_->width()>480) split_applied_=true;
     });
     auto* timer=new QTimer(this);
     connect(timer, &QTimer::timeout, this, [this] { refresh(); });
@@ -609,11 +698,8 @@ Workbench::Workbench(std::filesystem::path directory)
 void Workbench::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
     if (split_applied_) return;
-    const int width=mainSplit_->width();
-    if (width<480) return;
+    if (mainSplit_->width()<480) return;
     split_applied_=true;
-    const int rail=228;
-    mainSplit_->setSizes({std::max(480, width-rail), rail});
 }
 
 void Workbench::fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected) {
@@ -646,7 +732,41 @@ void Workbench::applyHistoryFilter() {
         historyTable_->setRowHidden(row, !match);
         if (match) ++visible;
     }
-    if (historyEmpty_) historyEmpty_->setVisible(historyTable_->rowCount()==0 || visible==0);
+    if (historyEmpty_) {
+        historyEmpty_->setVisible(historyTable_->rowCount()==0 || visible==0);
+        if (historyTable_->rowCount()==0) historyEmpty_->setText("本工位没有模拟历史，也不会显示工位 140 的帧。");
+        else if (visible==0) historyEmpty_->setText("当前质量筛选没有匹配帧。源历史仍在，切回全部即可看到。");
+    }
+}
+void Workbench::applyPointFilter() {
+    if (!pointTable_ || !pointSearch_ || !pointDoubtsOnly_) return;
+    const auto query=pointSearch_->text().trimmed();
+    const bool only=pointDoubtsOnly_->isChecked();
+    int visible=0;
+    for (int row=0; row<pointTable_->rowCount(); ++row) {
+        auto* name=pointTable_->item(row, 0);
+        auto* address=pointTable_->item(row, 1);
+        const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
+        const bool match=(!only || has) && (query.isEmpty() || (name && name->text().contains(query, Qt::CaseInsensitive)) || (address && address->text().contains(query, Qt::CaseInsensitive)));
+        pointTable_->setRowHidden(row, !match);
+        if (match) ++visible;
+    }
+    if (pointEmpty_) {
+        pointEmpty_->setVisible(pointTable_->rowCount()==0 || visible==0);
+        if (pointTable_->rowCount()==0) pointEmpty_->setText("此工位没有点表，不套用 140。");
+        else if (visible==0) pointEmpty_->setText("没有符合筛选的点。源表没有删除。");
+    }
+    showPointDetail();
+}
+void Workbench::showPointDetail() {
+    if (!pointDetail_ || !pointTable_) return;
+    const int row=pointTable_->currentRow();
+    auto* name=row<0 ? nullptr : pointTable_->item(row, 0);
+    if (!name || pointTable_->isRowHidden(row)) {
+        pointDetail_->setText(pointTable_->rowCount()==0 ? "没有可查看的源项。" : "选择一行查看完整源项。英文审计码只出现在这里。");
+        return;
+    }
+    pointDetail_->setText(name->data(Qt::UserRole).toString());
 }
 void Workbench::syncModuleChrome() {
     const bool has=!catalog_.stations_of(selection_.plc_id).empty();
@@ -659,6 +779,7 @@ void Workbench::syncModuleChrome() {
         }
     }
     applyHistoryFilter();
+    applyPointFilter();
 }
 
 void Workbench::refill() {
@@ -724,8 +845,18 @@ void Workbench::prepareCapture(const QString& kind) {
     if (!catalog_.live_station_id().empty()) activateSchematicStation(QString::fromStdString(catalog_.live_station_id()));
     if (kind=="stations") open("工位");
     else if (kind=="events") open("事件");
+    else if (kind=="eventbad") { if (historyFilter_) historyFilter_->setCurrentIndex(historyFilter_->findData("bad")); open("事件"); }
     else if (kind=="points") open("点表");
-    else if (kind=="boundary") open("边界");
+    else if (kind=="pointfind") {
+        if (pointSearch_) pointSearch_->setText("DB1900.DBX0.0");
+        if (pointTable_ && pointTable_->rowCount()>0) pointTable_->selectRow(0);
+        open("点表");
+    }
+    else if (kind=="boundary") open("接口");
+    else if (kind=="emptystations") {
+        if (auto selection=catalog_.selection_for_plc(catalog_.empty_plc_id())) setSelection(*selection);
+        open("工位");
+    }
     else open("运行");
 }
 
@@ -743,11 +874,11 @@ void Workbench::buttons() {
     modeButton_->style()->polish(modeButton_);
     QString reason;
     if (selection_.station_id.empty()) reason="未配置工位，不能控制";
-    else if (!live) reason="未挂接模拟帧，不能控制";
-    else if (!usable) reason="采集心跳不可用，控制已禁用";
-    else if (pending) reason="正在等待采集端确认";
-    else if (manual) reason="手动待步，只有点击才推进";
-    else reason="自动中。单步和断链只在手动可用";
+    else if (!live) reason="只推进工位 140，不控制当前工位";
+    else if (!usable) reason="采集心跳不可用";
+    else if (pending) reason="等待采集端确认";
+    else if (manual) reason="作用于工位 140，手动待步";
+    else reason="作用于工位 140，自动中不可单步";
     controlReason_->setText(reason);
     modeButton_->setToolTip(reason);
     step_->setToolTip(reason);
@@ -886,27 +1017,33 @@ void Workbench::render() {
         }
     }
     const auto audit_rows=audit::for_station(selection_.station_id);
-    pointScope_->setText(audit_rows.empty() ? "此工位未提供点表，不套用 140 模板。" : "只展示工位 140 的来源点表。重复项保留，冲突已标记，没有任何可执行写地址。");
+    pointScope_->setText(audit_rows.empty() ? "此工位没有点表，不套用 140。" : "只读。源表不改写，没有可执行写点。");
     pointTable_->setRowCount(static_cast<int>(audit_rows.size()));
     for (int i=0; i<static_cast<int>(audit_rows.size()); ++i) {
         const auto& row=audit_rows[static_cast<std::size_t>(i)];
-        QStringList columns={
-            QString::fromStdString(row.source_row),
-            QString::fromStdString(row.section),
-            row.name.empty() ? "（空白名）" : QString::fromStdString(row.name),
-            QString::fromStdString(row.address),
-            QString::fromStdString(row.type_text),
-            QString::fromStdString(row.direction_text),
-            QString::fromStdString(row.doubts),
-        };
+        const auto name=row.name.empty() ? QString("（空白名）") : QString::fromStdString(row.name);
+        const auto address=QString::fromStdString(row.address);
+        const auto codes=QString::fromStdString(row.doubts);
+        const auto summary=doubtSummary(codes);
+        const auto detail=QString("名称：%1\n地址：%2\n段：%3 · 来源行：%4\n类型：%5 · 方向：%6 · 长度：%7\n备注：%8\n疑点：%9\n审计码：%10")
+            .arg(name, address, QString::fromStdString(row.section), QString::fromStdString(row.source_row),
+                 QString::fromStdString(row.type_text), QString::fromStdString(row.direction_text),
+                 QString::fromStdString(row.length_text), row.note.empty() ? "无" : QString::fromStdString(row.note),
+                 summary, codes.isEmpty() ? "无" : codes);
+        QStringList columns={name, address, summary, QString::fromStdString(row.section)};
         for (int column=0; column<columns.size(); ++column) {
             auto* item=new QTableWidgetItem(columns[column]);
-            item->setFlags(Qt::ItemIsEnabled);
+            item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
             item->setToolTip(columns[column]);
-            if (!row.doubts.empty() && column==6) item->setForeground(QColor("#8a5a12"));
+            if (column==0) {
+                item->setData(Qt::UserRole, detail);
+                item->setData(Qt::UserRole+1, codes);
+            }
+            if (!codes.isEmpty() && column==2) item->setForeground(QColor("#8a5a12"));
             pointTable_->setItem(i, column, item);
         }
     }
+    if (eventSource_) eventSource_->setText(live ? "来源：工位 140 · 模拟流 sim.three-cart.v1 · 北京时间 UTC+8" : "来源：当前工位没有模拟流，不显示工位 140 的帧。");
 
     if (!live) {
         stageTable_->setRowCount(0);
@@ -915,8 +1052,8 @@ void Workbench::render() {
         historyTable_->setRowCount(0);
         eventNote_->setText(station_selected ? "无实时历史" : "未配置");
         scopeBanner_->setText(station_selected
-            ? "未挂接模拟帧。同一 PLC 的采集不复制到每个工位，也不显示工位 140 的三车数据。"
-            : "未配置：这个 PLC 还没有工位，不能控制。");
+            ? "当前工位没有模拟帧。按钮只推进工位 140，不会改到这里。"
+            : "这个 PLC 没有工位，不能控制。");
         syncModuleChrome();
         return;
     }
@@ -930,7 +1067,7 @@ void Workbench::render() {
         stageTable_->setRowCount(0);
         historyTable_->setRowCount(0);
         eventNote_->setText("尚无历史");
-        scopeBanner_->setText("等待模拟帧。库存未知，设备未探测，采集心跳不是 PLC 在线。");
+        scopeBanner_->setText("工位 140 还没有模拟帧。库存未知，心跳不是 PLC 在线。");
         syncModuleChrome();
         return;
     }
@@ -963,10 +1100,10 @@ void Workbench::render() {
             historyTable_->setItem(i, column, item);
         }
     }
-    eventNote_->setText(QString("最近 %1 帧 · 覆盖未知 · 北京时间 UTC+8").arg(view_.rows.size()));
+    eventNote_->setText(QString("最近 %1 帧 · 覆盖未知").arg(view_.rows.size()));
     const auto age=std::max<std::int64_t>(0, (sim::now_ms()-latest.received_ms)/1000);
-    if (!good) scopeBanner_->setText(!available_ ? "采集心跳不可用。历史不能当作当前状态。" : latest.reason=="disconnected" ? "模拟链路断开，当前值未知。这不是现场设备离线。" : view_.freshness=="clock_uncertain" ? "事件时间不确定，需要核对。" : "源质量异常，当前值不可用，不补零。");
-    else scopeBanner_->setText(QString("工位 140 的本地模拟帧 #%1，任务事件 %2 秒前。不是 LWMS 回执。").arg(latest.seq).arg(age));
+    if (!good) scopeBanner_->setText(!available_ ? "采集心跳不可用，历史不能当当前状态。" : latest.reason=="disconnected" ? "模拟链路断开，当前值未知。不是现场设备离线。" : view_.freshness=="clock_uncertain" ? "事件时间不确定。" : "源质量异常，不补零。");
+    else scopeBanner_->setText(QString("工位 140 模拟帧 #%1，%2 秒前。不是 LWMS 回执。").arg(latest.seq).arg(age));
     syncModuleChrome();
 }
 
@@ -984,8 +1121,11 @@ bool Workbench::captureReady(const QString& kind) const {
     };
     if (kind=="stations") return onTab("工位") && liveScope();
     if (kind=="events") return onTab("事件") && liveScope() && historyTable_ && historyTable_->rowCount()>0;
+    if (kind=="eventbad") return onTab("事件") && liveScope() && historyFilter_ && historyFilter_->currentData().toString()=="bad" && historyTable_ && historyTable_->rowCount()>0;
     if (kind=="points") return onTab("点表") && liveScope() && pointTable_ && pointTable_->rowCount()>0;
-    if (kind=="boundary") return onTab("边界") && liveScope();
+    if (kind=="pointfind") return onTab("点表") && pointSearch_ && pointSearch_->text()=="DB1900.DBX0.0" && pointDetail_ && pointDetail_->text().contains("DB1900.DBX0.0");
+    if (kind=="emptystations") return onTab("工位") && selection_.station_id.empty();
+    if (kind=="boundary") return onTab("接口") && liveScope();
     if (kind=="roster") return onTab("工位") && selection_.station_id==catalog::kStation40 && controllerPeerIds().size()==4 && !liveScope();
     if (kind=="sort") {
         auto* area=catalog_.area_of_station(selection_.station_id);

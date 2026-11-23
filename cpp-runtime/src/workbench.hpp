@@ -6,9 +6,11 @@
 #include <future>
 #include <utility>
 #include <vector>
+class QCheckBox;
 class QComboBox;
 class QFrame;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QSplitter;
 class QTableWidget;
@@ -41,6 +43,8 @@ private:
     void rebuildCards();
     void syncModuleChrome();
     void applyHistoryFilter();
+    void applyPointFilter();
+    void showPointDetail();
     static QString comboId(const QComboBox* box);
     std::filesystem::path directory_;
     catalog::Directory catalog_;
@@ -59,8 +63,10 @@ private:
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
     QTabWidget* moduleTabs_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
-    QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr;
+    QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QComboBox* historyFilter_=nullptr;
+    QLineEdit* pointSearch_=nullptr;
+    QCheckBox* pointDoubtsOnly_=nullptr;
     QWidget *cartStrip_=nullptr, *cardRow_=nullptr;
     QFrame *cartFrame_[3]{};
     QLabel *cartPhase_[3]{}, *cartNote_[3]{};

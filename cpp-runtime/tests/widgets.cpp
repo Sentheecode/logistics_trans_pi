@@ -2,7 +2,9 @@
 #include "schematic.hpp"
 #include "workbench.hpp"
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -176,6 +178,18 @@ int main(int argc, char** argv) {
         }
         if (banner->text().contains("模拟链路断开") || snap(directory).mode!="manual" || snap(directory).boot!=before_break.boot)
             throw std::runtime_error("step after disconnect did not resume the same manual collector");
+        click_station(schematic, catalog::kStation150);
+        pump(120);
+        auto* reason=window.findChild<QLabel*>("controlReason");
+        if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("station 150 looked like the control target");
+        const auto frozen=snap(directory);
+        step->click();
+        pump(400);
+        const auto still=snap(directory);
+        if (still.seq!=frozen.seq || still.revision!=frozen.revision || still.mode!="manual" || still.boot!=frozen.boot)
+            throw std::runtime_error("disabled step on station 150 advanced station 140");
+        click_station(schematic, catalog::kStation140);
+        wait([&]{ return step->isEnabled() && window.liveScope(); });
         const auto held=snap(directory);
         choose(area, catalog::kAreaSeq);
         choose(plc, catalog::kPlcSeq1);
@@ -245,6 +259,51 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcPack);
         click_station(schematic, catalog::kStation140);
         wait([&]{ return history->rowCount()>0 && window.liveScope(); });
+        auto* filter=window.findChild<QComboBox*>("historyFilter");
+        auto* search=window.findChild<QLineEdit*>("pointSearch");
+        auto* doubts=window.findChild<QCheckBox*>("pointDoubtsOnly");
+        auto* detailText=window.findChild<QLabel*>("pointDetail");
+        if (!filter || !search || !doubts || !detailText) throw std::runtime_error("missing filter controls");
+        const auto before_filter=snap(directory);
+        choose(filter, "bad");
+        pump(50);
+        int bad_visible=0;
+        for (int row=0; row<history->rowCount(); ++row) {
+            auto* quality=history->item(row, 3);
+            const bool hidden=history->isRowHidden(row);
+            if (!hidden) {
+                if (!quality || quality->text()!="不可用") throw std::runtime_error("history filter kept a good frame");
+                ++bad_visible;
+            }
+        }
+        if (bad_visible==0) throw std::runtime_error("history filter matched nothing");
+        choose(filter, "all");
+        pump(50);
+        for (int row=0; row<history->rowCount(); ++row) if (history->isRowHidden(row)) throw std::runtime_error("history filter did not restore rows");
+        if (snap(directory).mode!=before_filter.mode || snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
+            throw std::runtime_error("history filter changed collector ownership");
+        search->setText("DB1900.DBX0.0");
+        pump(50);
+        int matched=0;
+        for (int row=0; row<points->rowCount(); ++row) if (!points->isRowHidden(row)) ++matched;
+        if (matched!=1 || !points->item(0, 0) || points->item(0, 0)->text()!="设备运行中") throw std::runtime_error("point search did not isolate one address");
+        points->selectRow(0);
+        pump(30);
+        if (!detailText->text().contains("plc-auto-not-host-mode") || !detailText->text().contains("DB1900.DBX0.0")) throw std::runtime_error("point detail hid the source code");
+        search->setText("没有这个地址ZZZ");
+        pump(30);
+        for (int row=0; row<points->rowCount(); ++row) if (!points->isRowHidden(row)) throw std::runtime_error("point search kept a row");
+        search->clear();
+        doubts->setChecked(true);
+        pump(30);
+        for (int row=0; row<points->rowCount(); ++row) {
+            auto* name=points->item(row, 0);
+            const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
+            if (points->isRowHidden(row)==has) throw std::runtime_error("doubt filter did not follow source doubts");
+        }
+        doubts->setChecked(false);
+        if (snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
+            throw std::runtime_error("point filter changed collector ownership");
         for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
             window.resize(size);
             pump(250);
@@ -298,11 +357,13 @@ int main(int argc, char** argv) {
         pump(150);
         check_labels(window);
         assert_no_live_leak(window);
+        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
+            throw std::runtime_error("focused sibling still looked controllable");
         auto* modules=window.findChild<QTabWidget*>("moduleTabs");
         if (!modules || modules->count()!=5) throw std::runtime_error("module tabs missing");
         const auto tabbed=window.selectedStationId();
         const auto before_tabs=snap(directory);
-        for (auto title : {"运行", "工位", "事件", "点表", "边界"}) {
+        for (auto title : {"运行", "工位", "事件", "点表", "接口"}) {
             bool found=false;
             for (int i=0; i<modules->count(); ++i) if (modules->tabText(i)==QString::fromUtf8(title)) { modules->setCurrentIndex(i); found=true; }
             if (!found) throw std::runtime_error("missing module tab");
