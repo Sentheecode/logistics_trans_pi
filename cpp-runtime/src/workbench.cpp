@@ -8,13 +8,17 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDialog>
+#include <QEvent>
+#include <QFontDatabase>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMap>
+#include <QPainter>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
@@ -73,7 +77,8 @@ void prepareTable(QTableWidget* table, const QStringList& headers) {
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionMode(QAbstractItemView::NoSelection);
     table->verticalHeader()->hide();
-    table->verticalHeader()->setDefaultSectionSize(22);
+    table->verticalHeader()->setDefaultSectionSize(32);
+    table->setAlternatingRowColors(true);
     table->horizontalHeader()->setStretchLastSection(true);
     table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     table->setWordWrap(false);
@@ -127,7 +132,39 @@ QString beijingTime(qint64 epochMs, const QString& pattern) {
     const QTimeZone zone("Asia/Shanghai");
     const QDateTime utc=QDateTime::fromMSecsSinceEpoch(epochMs, Qt::UTC);
     if (!zone.isValid()) return utc.toString(pattern)+" UTC";
-    return utc.toTimeZone(zone).toString(pattern)+" 北京";
+    return utc.toTimeZone(zone).toString(pattern);
+}
+QFont figureFont() {
+    QFont font("Noto Sans Mono CJK SC");
+    font.setStyleStrategy(QFont::NoFontMerging);
+    font.setPixelSize(13);
+    return font;
+}
+void setFigure(QTableWidgetItem* item) {
+    item->setFont(figureFont());
+}
+class ViewportFill : public QObject {
+public:
+    ViewportFill(QScrollArea* area, QWidget* page) : QObject(area), area_(area), page_(page) {
+        area->viewport()->installEventFilter(this);
+    }
+    bool eventFilter(QObject*, QEvent* event) override {
+        if (event->type()!=QEvent::Resize) return false;
+        const int height=area_->viewport()->height();
+        if (height>0 && page_->minimumHeight()!=height) page_->setMinimumHeight(height);
+        return false;
+    }
+private:
+    QScrollArea* area_;
+    QWidget* page_;
+};
+void pinText(QWidget* root) {
+    for (auto* label : root->findChildren<QLabel*>()) {
+        label->setAlignment(label->wordWrap() ? Qt::AlignLeft | Qt::AlignTop : Qt::AlignLeft | Qt::AlignVCenter);
+        const auto name=label->objectName();
+        if (name=="pageTitle" || name=="title" || name=="section" || name=="fieldLabel" || name=="stationTitle" || name=="navSection" || name=="phase")
+            label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    }
 }
 // 视觉 token 集中在此。父审选定风格后只改这些值，不改模块结构。
 // 参考：Carbon Tabs（页签状态与同页切换）、Ant Design Layout（顶栏上下文 + 内容区）、Ant Design Tabs（功能页而非进度条）。
@@ -148,9 +185,14 @@ QString consoleStyle() {
     return QString(R"(
         QWidget { font-family: "Noto Sans CJK SC"; font-size: 13px; }
         QMainWindow, QWidget#centralRoot { background:%1; color:%3; }
-        QWidget#identityBar, QWidget#catalogPane, QWidget#commandPane { background:%2; }
-        QWidget#identityBar, QWidget#catalogPane { border-bottom:1px solid %4; }
-        QWidget#commandPane { border-left:1px solid %4; }
+        QWidget#identityBar, QWidget#catalogPane { background:%2; }
+        QWidget#identityBar { border-bottom:1px solid %4; }
+        QWidget#sideNav { background:%2; border-right:1px solid %4; }
+        QLabel#navSection { color:%5; font-size:11px; font-weight:500; padding:16px 8px 4px 8px; }
+        QPushButton#navButton { background:transparent; border:none; border-radius:6px; color:%5; text-align:left; padding:4px 8px; min-height:32px; font-weight:500; }
+        QPushButton#navButton:hover { background:%7; color:%3; }
+        QPushButton#navButton:checked { background:%7; color:%6; font-weight:600; }
+        QPushButton#navButton:focus { border:1px solid %6; }
         QWidget#surface { background:%2; border:1px solid %4; border-radius:8px; }
         QLabel#title { font-size:16px; font-weight:600; color:%3; }
         QLabel#pageTitle { font-size:15px; font-weight:600; color:%3; }
@@ -178,15 +220,18 @@ QString consoleStyle() {
         QPushButton:disabled, QPushButton#primary:disabled, QPushButton#modeButton:disabled { background:%1; color:#8b96a6; border:none; }
         QPushButton#stationCard { min-width:52px; }
         QPushButton#stationCard:checked { background:%6; color:#ffffff; border:1px solid %6; }
-        QTableWidget { background:%2; alternate-background-color:%1; gridline-color:transparent; border:1px solid %4; border-radius:8px; font-size:13px; selection-background-color:%7; selection-color:%3; }
+        QTableWidget { background:%2; alternate-background-color:#f7f8fa; gridline-color:transparent; border:1px solid %4; border-radius:8px; font-size:13px; selection-background-color:%7; selection-color:%3; outline:none; }
+        QTableWidget:focus { border:1px solid %6; }
         QTableWidget::item { padding:4px 8px; border:none; }
+        QTableWidget::item:hover { background:#eef1f4; }
         QTableWidget::item:selected { background:%7; color:%3; }
-        QTableWidget::item:hover { background:%7; }
-        QHeaderView::section { background:%2; color:%3; font-weight:600; border:none; border-bottom:1px solid %4; padding:6px 8px; font-size:12px; }
+        QTableWidget::item:selected:hover { background:#d9e6f2; }
+        QHeaderView::section { background:#f7f8fa; color:%5; font-weight:600; border:none; border-bottom:1px solid %4; padding:8px; font-size:12px; }
         QListWidget { background:%2; border:1px solid %4; border-radius:8px; outline:none; font-size:13px; }
-        QListWidget::item { padding:8px 10px; border:none; }
+        QListWidget:focus { border:1px solid %6; }
+        QListWidget::item { padding:8px 12px; border:none; }
+        QListWidget::item:hover { background:#eef1f4; }
         QListWidget::item:selected { background:%7; color:%3; }
-        QListWidget::item:hover { background:%7; }
         QLineEdit { background:%2; border:1px solid %4; border-radius:6px; padding:2px 8px; min-height:26px; color:%3; }
         QLineEdit:focus { border:1px solid %6; }
         QCheckBox { color:%3; spacing:6px; }
@@ -234,13 +279,29 @@ QString doubtSummary(const QString& codes) {
     }
     return parts.join("；");
 }
+void installUiFont() {
+    QFontDatabase::addApplicationFont("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
+    QFontDatabase::addApplicationFont("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc");
+    QFont font;
+    font.setFamily("Noto Sans CJK SC");
+    font.setStyleHint(QFont::SansSerif, QFont::PreferAntialias);
+    font.setStyleStrategy(QFont::NoFontMerging);
+    font.setPixelSize(13);
+    QApplication::setFont(font);
+}
+QString readableObject(const std::string& object) {
+    if(object=="sim.three-cart.v1") return "外装 · 工位 140";
+    if(object=="local-sim") return "本地模拟";
+    return QString::fromStdString(object);
+}
 QScrollArea* scrollPage(QWidget* content) {
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto* scroll=new QScrollArea;
     scroll->setWidgetResizable(true);
     scroll->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setWidget(content);
-    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    new ViewportFill(scroll, content);
     return scroll;
 }
 QString showLogText(QString text) {
@@ -249,6 +310,10 @@ QString showLogText(QString text) {
     text.replace("sorting", "分拣中");
     text.replace("blocked", "模拟阻塞");
     text.replace("waiting", "等待扫码");
+    text.replace("质量 good", "质量正常");
+    text.replace("链路 up", "链路接通");
+    text.replace("source_bad", "源质量异常");
+    text.replace("sim.three-cart.v1", "工位 140 模拟源");
     return text;
 }
 }
@@ -258,12 +323,8 @@ Workbench::Workbench(std::filesystem::path directory)
     const auto error=catalog::Directory::validate(catalog_);
     if (!error.empty()) throw std::runtime_error("catalog fixture: "+error);
     QApplication::setStyle("Fusion");
-    QFont ui("Noto Sans CJK SC");
-    ui.setStyleHint(QFont::SansSerif, QFont::PreferAntialias);
-    ui.setFamilies({"Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft YaHei UI", "Microsoft YaHei"});
-    ui.setPixelSize(13);
-    QApplication::setFont(ui);
-    setFont(ui);
+    installUiFont();
+    setFont(QApplication::font());
     setWindowTitle("钱塘二厂 · 模拟工作台");
     resize(1280, 800);
     setMinimumSize(1100, 650);
@@ -273,7 +334,7 @@ Workbench::Workbench(std::filesystem::path directory)
     identity->setObjectName("identityBar");
     identity->setFixedHeight(44);
     auto* identityLayout=new QHBoxLayout(identity);
-    identityLayout->setContentsMargins(12, 6, 12, 6);
+    identityLayout->setContentsMargins(16, 8, 16, 8);
     identityLayout->setSpacing(12);
     auto* title=new QLabel("物流工作台");
     title->setObjectName("title");
@@ -300,7 +361,7 @@ Workbench::Workbench(std::filesystem::path directory)
     context->setObjectName("catalogPane");
     context->setFixedHeight(44);
     auto* contextLayout=new QHBoxLayout(context);
-    contextLayout->setContentsMargins(12, 6, 12, 6);
+    contextLayout->setContentsMargins(16, 8, 16, 8);
     contextLayout->setSpacing(12);
     auto addCombo=[&](const QString& name, QComboBox** slot, const QString& objectName) {
         auto* label=fieldLabel(name, context);
@@ -321,19 +382,12 @@ Workbench::Workbench(std::filesystem::path directory)
     collectionStatus_=new QLabel("采集状态待确认", context);
     collectionStatus_->setObjectName("muted");
     contextLayout->addWidget(collectionStatus_);
-    auto* openRun=new QPushButton("去运行页", context);
-    openRun->setObjectName("textLink");
-    openRun->setFocusPolicy(Qt::StrongFocus);
-    contextLayout->addWidget(openRun);
 
     auto* commandPane=new QWidget;
     commandPane->setObjectName("commandPane");
     auto* commandLayout=new QHBoxLayout(commandPane);
     commandLayout->setContentsMargins(0, 0, 0, 0);
     commandLayout->setSpacing(8);
-    auto* commandHeading=new QLabel("本页操作", commandPane);
-    commandHeading->setObjectName("section");
-    commandLayout->addWidget(commandHeading);
     modeButton_=new QPushButton("模式待确认");
     modeButton_->setObjectName("modeButton");
     modeButton_->setFocusPolicy(Qt::StrongFocus);
@@ -389,7 +443,7 @@ Workbench::Workbench(std::filesystem::path directory)
         cartFrame_[i]=new QFrame;
         cartFrame_[i]->setObjectName("cart");
         auto* layout=new QVBoxLayout(cartFrame_[i]);
-        layout->setContentsMargins(10, 6, 10, 6);
+        layout->setContentsMargins(12, 8, 12, 8);
         layout->setSpacing(2);
         auto* index=new QLabel(QString("小车 %1").arg(i+1));
         index->setObjectName("fieldLabel");
@@ -417,18 +471,19 @@ Workbench::Workbench(std::filesystem::path directory)
     runLayout->setSpacing(8);
     auto* runTitle=new QLabel("运行", run);
     runTitle->setObjectName("pageTitle");
+    runTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto* runHint=new QLabel("操作只推进工位 140。概览是通用示意，层数和动线未提供。", run);
     runHint->setWordWrap(true);
     runHint->setObjectName("muted");
+    runHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto* workspace=new QWidget(run);
     workspace->setObjectName("surface");
     auto* workspaceLayout=new QVBoxLayout(workspace);
-    workspaceLayout->setContentsMargins(12, 10, 12, 10);
+    workspaceLayout->setContentsMargins(12, 12, 12, 12);
     workspaceLayout->setSpacing(8);
     workspaceLayout->addWidget(commandPane);
     runLayout->addWidget(runTitle);
     runLayout->addWidget(runHint);
-    runLayout->addWidget(workspace);
     auto* runBody=new QWidget(run);
     auto* runColumns=new QHBoxLayout(runBody);
     runColumns->setContentsMargins(0, 0, 0, 0);
@@ -436,7 +491,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* facts=new QWidget(runBody);
     auto* factsLayout=new QVBoxLayout(facts);
     factsLayout->setContentsMargins(0, 0, 0, 0);
-    factsLayout->setSpacing(6);
+    factsLayout->setSpacing(8);
     factsLayout->addWidget(stationTitle_);
     factsLayout->addWidget(stationMeta_);
     factsLayout->addWidget(interfaceLine_);
@@ -457,8 +512,18 @@ Workbench::Workbench(std::filesystem::path directory)
     runColumns->setAlignment(Qt::AlignTop);
     runColumns->addWidget(facts, 1);
     runColumns->addWidget(overview, 1);
+    recentTable_=new QTableWidget(workspace);
+    recentTable_->setObjectName("recentTable");
+    prepareTable(recentTable_, {"时间", "记录"});
+    recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    auto* recentLabel=new QLabel("近期记录", workspace);
+    recentLabel->setObjectName("section");
     workspaceLayout->addWidget(runBody);
     workspaceLayout->addWidget(cartStrip_);
+    workspaceLayout->addWidget(recentLabel);
+    workspaceLayout->addWidget(recentTable_, 1);
+    workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    runLayout->addWidget(workspace, 1);
 
     detailTable_=new QTableWidget;
     detailTable_->setObjectName("detailTable");
@@ -560,7 +625,8 @@ Workbench::Workbench(std::filesystem::path directory)
     interfaceList->setObjectName("interfaceList");
     interfaceList->setFocusPolicy(Qt::StrongFocus);
     interfaceList->setFixedWidth(168);
-    interfaceList->setFixedHeight(248);
+    interfaceList->setMinimumHeight(240);
+    interfaceList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     interfaceList->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     struct InterfaceItem { QString name, chip, summary, detail; };
     const InterfaceItem interfaces[]={
@@ -603,22 +669,21 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* interfaceDetailBox=new QWidget;
     interfaceDetailBox->setObjectName("surface");
     auto* interfaceDetailLayout=new QVBoxLayout(interfaceDetailBox);
-    interfaceDetailLayout->setContentsMargins(12, 10, 12, 10);
+    interfaceDetailLayout->setContentsMargins(12, 12, 12, 12);
     interfaceDetailLayout->addWidget(interfaceChip, 0, Qt::AlignLeft);
     interfaceDetailLayout->addWidget(interfaceSummary);
     interfaceDetailLayout->addWidget(interfaceDetail);
     interfaceDetailLayout->addStretch(1);
-    interfaceList->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-    interfaceDetailBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    interfaceDetailBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     interfaceBody->addWidget(interfaceDetailBox, 1);
     interfaceBody->setAlignment(Qt::AlignTop);
     boundaryLayout->addWidget(boundaryHeading);
     boundaryLayout->addWidget(boundaryIntro);
-    boundaryLayout->addLayout(interfaceBody);
+    boundaryLayout->addLayout(interfaceBody, 1);
 
     historyTable_=new QTableWidget;
     historyTable_->setObjectName("historyTable");
-    prepareTable(historyTable_, {"序号", "接收时间 / 北京时间", "三车阶段", "数据质量", "事件"});
+    prepareTable(historyTable_, {"序号", "时间", "三车阶段", "数据质量", "事件"});
     historyTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     historyTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     historyTable_->setFocusPolicy(Qt::StrongFocus);
@@ -646,12 +711,15 @@ Workbench::Workbench(std::filesystem::path directory)
     historyLayout->setSpacing(8);
     auto* historyHeading=new QLabel("事件历史", historyPage);
     historyHeading->setObjectName("pageTitle");
+    auto* historyZone=new QLabel("时间为北京时间（UTC+8），库内是 UTC 毫秒。", historyPage);
+    historyZone->setObjectName("muted");
     auto* filterRow=new QHBoxLayout;
     auto* filterLabel=fieldLabel("质量", historyPage);
     filterRow->addWidget(filterLabel);
     filterRow->addWidget(historyFilter_, 1);
     filterRow->addStretch(1);
     historyLayout->addWidget(historyHeading);
+    historyLayout->addWidget(historyZone);
     historyLayout->addWidget(eventSource_);
     historyLayout->addWidget(eventNote_);
     historyLayout->addLayout(filterRow);
@@ -660,11 +728,10 @@ Workbench::Workbench(std::filesystem::path directory)
 
     logTable_=new QTableWidget;
     logTable_->setObjectName("logTable");
-    prepareTable(logTable_, {"北京时间", "等级", "类别", "对象", "内容"});
+    prepareTable(logTable_, {"时间", "等级", "类别", "对象", "内容"});
     logTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     logTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     logTable_->setFocusPolicy(Qt::StrongFocus);
-    logTable_->verticalHeader()->setDefaultSectionSize(28);
     logTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     logTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     logSearch_=new QLineEdit;
@@ -699,7 +766,7 @@ Workbench::Workbench(std::filesystem::path directory)
     logLayout->setSpacing(8);
     auto* logHeading=new QLabel("日志", logPage);
     logHeading->setObjectName("pageTitle");
-    auto* logHint=new QLabel("操作记录来自本机模拟，没有操作者身份。采集日志和业务事件只写阶段与质量，不写二维码、物料原文或凭据。", logPage);
+    auto* logHint=new QLabel("时间列是北京时间（UTC+8），库内仍是 UTC 毫秒。操作来源是本地模拟，没有操作者身份。", logPage);
     logHint->setWordWrap(true);
     logHint->setObjectName("muted");
     auto* logTools=new QHBoxLayout;
@@ -723,26 +790,53 @@ Workbench::Workbench(std::filesystem::path directory)
     logLayout->addWidget(logTable_, 1);
     logLayout->addWidget(logDetailBox);
 
-    collectOwner_=new QLabel;
-    collectOwner_->setWordWrap(true);
-    collectLive_=new QLabel;
-    collectLive_->setWordWrap(true);
-    collectLive_->setObjectName("muted");
     auto* collectPage=new QWidget;
     auto* collectLayout=new QVBoxLayout(collectPage);
     collectLayout->setContentsMargins(16, 12, 16, 16);
     collectLayout->setSpacing(8);
     auto* collectHeading=new QLabel("采集", collectPage);
     collectHeading->setObjectName("pageTitle");
+    collectHeading->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto* collectBox=new QWidget;
     collectBox->setObjectName("surface");
-    auto* collectBoxLayout=new QVBoxLayout(collectBox);
-    collectBoxLayout->setContentsMargins(12, 10, 12, 10);
-    collectBoxLayout->addWidget(collectOwner_);
-    collectBoxLayout->addWidget(collectLive_);
+    collectBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto* collectGrid=new QGridLayout(collectBox);
+    collectGrid->setContentsMargins(12, 12, 12, 12);
+    collectGrid->setHorizontalSpacing(16);
+    collectGrid->setVerticalSpacing(8);
+    auto addFact=[&](int row, const QString& key, QLabel** value){
+        auto* name=new QLabel(key, collectBox);
+        name->setObjectName("fieldLabel");
+        *value=new QLabel("—", collectBox);
+        collectGrid->addWidget(name, row, 0);
+        collectGrid->addWidget(*value, row, 1);
+    };
+    addFact(0, "采集所有者", &collectOwner_);
+    addFact(1, "模拟源", &collectLive_);
+    QLabel* collectSeen=nullptr; QLabel* collectFrame=nullptr; QLabel* collectQuality=nullptr; QLabel* collectLink=nullptr; QLabel* collectMode=nullptr; QLabel* collectPlc=nullptr;
+    addFact(2, "最近采集", &collectSeen);
+    addFact(3, "帧序号", &collectFrame);
+    addFact(4, "质量", &collectQuality);
+    addFact(5, "链路", &collectLink);
+    addFact(6, "模式", &collectMode);
+    addFact(7, "设备连接", &collectPlc);
+    collectSeen->setObjectName("collectSeen");
+    collectFrame->setObjectName("collectFrame");
+    collectQuality->setObjectName("collectQuality");
+    collectLink->setObjectName("collectLink");
+    collectMode->setObjectName("collectMode");
+    collectPlc->setObjectName("collectPlc");
+    collectChanges_=new QTableWidget;
+    collectChanges_->setObjectName("collectChanges");
+    prepareTable(collectChanges_, {"时间", "变化"});
+    collectChanges_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    collectChanges_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto* changeLabel=new QLabel("最近采集变化", collectPage);
+    changeLabel->setObjectName("section");
     collectLayout->addWidget(collectHeading);
     collectLayout->addWidget(collectBox);
-    collectLayout->addStretch(1);
+    collectLayout->addWidget(changeLabel);
+    collectLayout->addWidget(collectChanges_, 1);
 
     moduleTabs_=new QTabWidget;
     moduleTabs_->setObjectName("moduleTabs");
@@ -756,12 +850,52 @@ Workbench::Workbench(std::filesystem::path directory)
     moduleTabs_->addTab(logPage, "日志");
     moduleTabs_->addTab(scrollPage(collectPage), "采集");
     moduleTabs_->setCurrentIndex(0);
+    moduleTabs_->tabBar()->hide();
+    auto* side=new QWidget;
+    side->setObjectName("sideNav");
+    side->setFixedWidth(196);
+    auto* sideLayout=new QVBoxLayout(side);
+    sideLayout->setContentsMargins(8, 8, 8, 12);
+    sideLayout->setSpacing(4);
+    auto addSection=[&](const QString& text){
+        auto* label=new QLabel(text, side);
+        label->setObjectName("navSection");
+        sideLayout->addWidget(label);
+    };
+    auto addNav=[&](const QString& text, int index){
+        auto* button=new QPushButton(text, side);
+        button->setObjectName("navButton");
+        button->setCheckable(true);
+        button->setProperty("moduleIndex", index);
+        button->setFocusPolicy(Qt::StrongFocus);
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        if(index==0) button->setChecked(true);
+        sideLayout->addWidget(button);
+        connect(button, &QPushButton::clicked, this, [this, index]{ if(moduleTabs_) moduleTabs_->setCurrentIndex(index); });
+    };
+    addSection("运行");
+    addNav("运行", 0);
+    addNav("采集", 6);
+    addSection("业务");
+    addNav("工位", 1);
+    addNav("接口", 4);
+    addSection("诊断");
+    addNav("事件", 2);
+    addNav("日志", 5);
+    addNav("点表", 3);
+    sideLayout->addStretch(1);
+    connect(moduleTabs_, &QTabWidget::currentChanged, side, [side](int index){
+        for(auto* button: side->findChildren<QPushButton*>("navButton"))
+            button->setChecked(button->property("moduleIndex").toInt()==index);
+    });
 
     mainSplit_=new QSplitter(Qt::Horizontal);
     mainSplit_->setObjectName("mainSplit");
     mainSplit_->setChildrenCollapsible(false);
+    mainSplit_->addWidget(side);
     mainSplit_->addWidget(moduleTabs_);
-    mainSplit_->setStretchFactor(0, 1);
+    mainSplit_->setStretchFactor(0, 0);
+    mainSplit_->setStretchFactor(1, 1);
 
     auto* central=new QWidget;
     central->setObjectName("centralRoot");
@@ -788,9 +922,7 @@ Workbench::Workbench(std::filesystem::path directory)
     connect(pointSearch_, &QLineEdit::textChanged, this, [this](const QString&) { applyPointFilter(); });
     connect(pointDoubtsOnly_, &QCheckBox::toggled, this, [this](bool) { applyPointFilter(); });
     connect(pointTable_, &QTableWidget::itemSelectionChanged, this, [this] { showPointDetail(); });
-    connect(openRun, &QPushButton::clicked, this, [this]{ if(moduleTabs_) moduleTabs_->setCurrentIndex(0); });
-    connect(moduleTabs_, &QTabWidget::currentChanged, openRun, [openRun](int index){ openRun->setVisible(index!=0); });
-    openRun->setVisible(false);
+    pinText(this);
     connect(logSearch_, &QLineEdit::textChanged, this, [this](const QString&){ applyLogFilter(); });
     connect(logCategory_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int){ applyLogFilter(); });
     connect(logLevel_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int){ applyLogFilter(); });
@@ -840,7 +972,9 @@ Workbench::Workbench(std::filesystem::path directory)
     });
     setSelection(catalog_.live_selection());
     QTimer::singleShot(0, this, [this] {
-        if (!split_applied_ && mainSplit_->width()>480) split_applied_=true;
+        if (split_applied_ || mainSplit_->width()<=480) return;
+        split_applied_=true;
+        mainSplit_->setSizes({196, mainSplit_->width()-196});
     });
     auto* timer=new QTimer(this);
     connect(timer, &QTimer::timeout, this, [this] { refresh(); });
@@ -851,8 +985,10 @@ Workbench::Workbench(std::filesystem::path directory)
 void Workbench::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
     if (split_applied_) return;
-    if (mainSplit_->width()<480) return;
+    const int width=mainSplit_->width();
+    if (width<480) return;
     split_applied_=true;
+    mainSplit_->setSizes({196, width-196});
 }
 
 void Workbench::fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected) {
@@ -917,20 +1053,55 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
     const auto count=static_cast<int>(logs.size());
     if(id==shown_log_id_ && count==shown_log_count_) { applyLogFilter(); return; }
     shown_log_id_=id; shown_log_count_=count;
+    if(recentTable_){
+        recentTable_->setRowCount(count);
+        for(int i=0;i<count;++i){
+            const auto& row=logs[static_cast<std::size_t>(i)];
+            auto* time=new QTableWidgetItem(beijingTime(row.received_ms,"HH:mm:ss"));
+            auto* text=new QTableWidgetItem(showLogText(QString::fromStdString(row.text)));
+            time->setFlags(Qt::ItemIsEnabled);
+            text->setFlags(Qt::ItemIsEnabled);
+            setFigure(time);
+            text->setToolTip(text->text());
+            if(row.level=="warn") text->setForeground(QColor("#8a5a12"));
+            recentTable_->setItem(i, 0, time);
+            recentTable_->setItem(i, 1, text);
+        }
+    }
+    if(collectChanges_){
+        int shown=0;
+        for(const auto& row: logs) if(row.category=="collector") ++shown;
+        collectChanges_->setRowCount(shown);
+        int index=0;
+        for(const auto& row: logs){
+            if(row.category!="collector") continue;
+            auto* time=new QTableWidgetItem(beijingTime(row.received_ms,"HH:mm:ss"));
+            auto* text=new QTableWidgetItem(showLogText(QString::fromStdString(row.text)));
+            time->setFlags(Qt::ItemIsEnabled);
+            text->setFlags(Qt::ItemIsEnabled);
+            setFigure(time);
+            text->setToolTip(text->text());
+            if(row.level=="warn") text->setForeground(QColor("#8a5a12"));
+            collectChanges_->setItem(index, 0, time);
+            collectChanges_->setItem(index, 1, text);
+            ++index;
+        }
+    }
     logTable_->setRowCount(count);
     for(int i=0;i<count;++i){
         const auto& row=logs[static_cast<std::size_t>(i)];
         const auto level=row.level=="warn"?"警告":"信息";
         const auto category=row.category=="audit"?"操作":row.category=="collector"?"采集":"业务";
-        const auto detail=QString("北京时间：%1\nUTC 毫秒：%2\n等级：%3\n类别：%4\n对象：%5\n关联帧：%6\n%7")
+        const auto detail=QString("时间：%1（北京时间 UTC+8）\nUTC 毫秒：%2\n等级：%3\n类别：%4\n对象：%5\n对象原文：%6\n关联帧：%7\n%8")
             .arg(beijingTime(row.received_ms,"HH:mm:ss.zzz"), QString::number(row.received_ms), level, category,
-                 QString::fromStdString(row.object), row.has_frame?QString::number(row.frame_seq):QString("无"), QString::fromStdString(row.text));
-        QStringList columns={beijingTime(row.received_ms,"HH:mm:ss"), level, category, QString::fromStdString(row.object), showLogText(QString::fromStdString(row.text))};
+                 readableObject(row.object), QString::fromStdString(row.object), row.has_frame?QString::number(row.frame_seq):QString("无"), showLogText(QString::fromStdString(row.text)));
+        QStringList columns={beijingTime(row.received_ms,"HH:mm:ss"), level, category, readableObject(row.object), showLogText(QString::fromStdString(row.text))};
         for(int column=0; column<columns.size(); ++column){
             auto* item=new QTableWidgetItem(columns[column]);
             item->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable);
             item->setToolTip(columns[column]);
             if(column==0){
+                setFigure(item);
                 item->setData(Qt::UserRole, detail);
                 item->setData(Qt::UserRole+1, QString::fromStdString(row.category));
                 item->setData(Qt::UserRole+2, QString::fromStdString(row.level));
@@ -992,15 +1163,17 @@ void Workbench::syncModuleChrome() {
     }
     applyHistoryFilter();
     applyPointFilter();
-    if(collectOwner_) collectOwner_->setText(QString("心跳 %1 · 最近见到 %2。心跳不是 PLC 在线。界面不启动也不停止采集。").arg(view_.runtime.liveness=="recent"?"正常":"不可用", view_.runtime.heartbeat_ms>0?beijingTime(view_.runtime.heartbeat_ms,"HH:mm:ss"):"无"));
-    if(collectLive_){
-        if(!liveScope()) collectLive_->setText("当前聚焦没有模拟帧。这里不展示工位 140 的序号、质量和三车阶段。断链恢复沿用模拟帧语义，没有真实 S7 重连。");
-        else if(view_.rows.empty()) collectLive_->setText("工位 140 还没有帧。模拟流 sim.three-cart.v1 只挂在这个工位。");
-        else {
-            const auto& row=view_.rows.front();
-            collectLive_->setText(QString("模拟流 sim.three-cart.v1 只挂工位 140。帧 #%1，质量 %2，链路 %3。这不是现场安全状态。").arg(row.seq).arg(row.quality=="good"?"正常":"不可用", row.link=="down"?"断开":"接通"));
-        }
-    }
+    auto setFact=[&](const char* name, const QString& text){ if(auto* label=findChild<QLabel*>(name)) label->setText(text); };
+    if(collectOwner_) collectOwner_->setText(view_.runtime.liveness=="recent" ? "独立采集进程 · 心跳正常" : "独立采集进程 · 心跳不可用");
+    if(collectLive_) collectLive_->setText(liveScope() ? "sim.three-cart.v1 · 工位 140" : "当前工位没有模拟源");
+    const bool frame=liveScope() && !view_.rows.empty();
+    const auto age=view_.runtime.heartbeat_ms>0 ? QString::number(std::max<qint64>(0, (QDateTime::currentMSecsSinceEpoch()-view_.runtime.heartbeat_ms)/1000))+" 秒" : QString("无");
+    setFact("collectSeen", view_.runtime.heartbeat_ms>0 ? beijingTime(view_.runtime.heartbeat_ms,"HH:mm:ss")+" · 年龄 "+age : "无");
+    setFact("collectFrame", frame ? QString("#%1").arg(view_.rows.front().seq) : "无");
+    setFact("collectQuality", frame ? QString(view_.rows.front().quality=="good"?"正常":"不可用") : "无");
+    setFact("collectLink", frame ? QString(view_.rows.front().link=="down"?"断开":"接通") : "无");
+    setFact("collectMode", view_.runtime.mode=="manual" ? "手动" : "自动");
+    setFact("collectPlc", "未连接");
     refillLogs(view_.logs);
 }
 
@@ -1093,7 +1266,7 @@ void Workbench::buttons() {
     step_->setEnabled(usable && manual && !pending);
     disconnect_->setEnabled(usable && manual && !pending);
     modeButton_->setText(!usable ? "模式不可用" : manual ? "恢复自动…" : "切换手动");
-    modeButton_->setProperty("emphasis", usable && !manual && !pending);
+    modeButton_->setProperty("emphasis", (usable && !manual && !pending) ? "yes" : "no");
     modeButton_->style()->unpolish(modeButton_);
     modeButton_->style()->polish(modeButton_);
     QString reason;
@@ -1167,7 +1340,7 @@ void Workbench::render() {
     else if (available_ && view_.runtime.mode=="automatic") runtime="上位机 自动";
     runtimeLabel_->setText(runtime);
     fit(runtimeLabel_);
-    heartbeatLabel_->setText(view_.runtime.heartbeat_ms>0 ? "心跳 "+beijingTime(view_.runtime.heartbeat_ms, "HH:mm:ss") : "无心跳");
+    heartbeatLabel_->setText(view_.runtime.heartbeat_ms>0 ? "心跳 "+beijingTime(view_.runtime.heartbeat_ms, "HH:mm:ss")+" · 北京时间" : "无心跳");
     fit(heartbeatLabel_);
 
     const catalog::Station* station=catalog_.find_station(selection_.station_id);
@@ -1321,6 +1494,8 @@ void Workbench::render() {
         for (int column=0; column<columns.size(); ++column) {
             auto* item=new QTableWidgetItem(columns[column]);
             item->setToolTip(columns[column]);
+            if (column==0) item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            if (column==0 || column==1) setFigure(item);
             if (row.quality!="good" && column==3) item->setForeground(QColor("#8a5a12"));
             historyTable_->setItem(i, column, item);
         }

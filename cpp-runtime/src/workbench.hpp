@@ -68,6 +68,7 @@ private:
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
     QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QLabel *logEmpty_=nullptr, *logDetail_=nullptr, *collectOwner_=nullptr, *collectLive_=nullptr;
+    QTableWidget *collectChanges_=nullptr, *recentTable_=nullptr;
     QComboBox *historyFilter_=nullptr, *logCategory_=nullptr, *logLevel_=nullptr;
     QLineEdit *pointSearch_=nullptr, *logSearch_=nullptr;
     QCheckBox* pointDoubtsOnly_=nullptr;

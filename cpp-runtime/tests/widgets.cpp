@@ -146,7 +146,16 @@ int main(int argc, char** argv) {
         wait([&]{ return history->rowCount()>0; });
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
         auto* title=window.findChild<QLabel*>("title");
-        if (!title || !QFontInfo(title->font()).family().contains("Noto Sans")) throw std::runtime_error("interface font is not Noto Sans CJK");
+        auto requireSans=[&](QWidget* widget, const char* name) {
+            if (!widget) throw std::runtime_error(std::string("missing font target ")+name);
+            const QFontInfo info(widget->font());
+            if (info.family()!="Noto Sans CJK SC") throw std::runtime_error(std::string(name)+" resolved "+info.family().toStdString()+" / "+info.styleName().toStdString());
+            if (info.styleName()!="Regular" && info.styleName()!="Bold") throw std::runtime_error(std::string(name)+" unexpected style "+info.styleName().toStdString());
+        };
+        requireSans(title, "title");
+        requireSans(mode, "mode");
+        requireSans(factory, "factory");
+        requireSans(points, "points");
         if (factory->count()!=1 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
@@ -164,6 +173,8 @@ int main(int argc, char** argv) {
         auto* logs=window.findChild<QTableWidget*>("logTable");
         auto* logCategory=window.findChild<QComboBox*>("logCategory");
         if (!logs || !logCategory) throw std::runtime_error("missing log view");
+        if (logs->rowCount()>80) throw std::runtime_error("log query exceeded 80 rows");
+        if (!logs->horizontalHeaderItem(0) || logs->horizontalHeaderItem(0)->text().contains("北京")) throw std::runtime_error("timezone belongs in the page note, not each column");
         wait([&]{
             for (int row=0; row<logs->rowCount(); ++row) {
                 auto* item=logs->item(row, 0);

@@ -1,3 +1,30 @@
+# 左侧导航工作台（本轮）
+
+日期：2026-11-23。仍在实验分支上本地修改，没有推送，没有动 `main`（`82a8232202f39bd423d43c69cd19f7061cbc2336`）。只模拟，不连接现场设备。
+
+界面审查用了 Damir Sokolovsky / heydamir `unslop`（CC BY 4.0）里可迁移的原则，没有安装该 skill，也没有跑它的浏览器或生图脚本。对照的是 Xvfb 上 `hmi` 的真实截图，不是样式表里有没有 token。
+
+- 1280×800 与 1100×650 的运行、采集、日志、事件、工位、点表、接口页，内容都从顶栏下约 y=106–133 开始，工作区铺到状态栏上沿（底边空隙 1px）。接口页列表和详情都落到 y=789，不再把标题撑到中部。
+- 标题「物流工作台」「工位 140」与 Qt 画出的 Noto Sans CJK SC Bold 逐像素一致（均方误差 0）；同位置的 Noto Serif CJK SC 均方误差约 8500–11300。时间列更接近 Noto Sans Mono CJK SC。控件测试检查的是 `QFontInfo` 解析结果，要求 family 为 `Noto Sans CJK SC` 且 style 为 Regular 或 Bold。
+- 运行页主操作是「切换手动」。采集页给出所有者、模拟源、年龄、帧序号、质量、链路、模式，并写明设备未连接。日志对象显示「外装 · 工位 140」，时区写在页说明和顶栏心跳，行内时间不再逐条加「北京」。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j$(nproc)
+ctest --test-dir /tmp/logistics-release --output-on-failure
+cmake -S cpp-runtime -B /tmp/logistics-core -DBUILD_HMI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-core -j$(nproc)
+ctest --test-dir /tmp/logistics-core --output-on-failure
+npm test --prefix runtime
+```
+
+- 带界面的 Release CTest **8/8**：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`、`logs`、`widgets_controls`、`hmi_refresh`。
+- `BUILD_HMI=OFF` **6/6**：上述除 `widgets_controls` 与 `hmi_refresh` 外的六项，含 `logs`。
+- Node runtime **49/49**。
+- `logs` 覆盖 v1/v2 迁到 schema v3、日志不超过 300 行、采集类日志少于帧数、第二个采集进程拿不到写入租约。
+
+---
+
 # 钱塘二厂模拟示意版交付
 
 日期：2026-11-23。在 `518cf6bd690d2a2779ffb8856e602dd3b6ec5dfb` 之上完成钱塘目录、单 PLC 示意和北京时间显示，并推回 `experiment/cpp-runtime`。`main` 保持 `82a8232202f39bd423d43c69cd19f7061cbc2336`，没有检出或推送。这是模拟示意，不是生产上线，也不是现场布局验收。
