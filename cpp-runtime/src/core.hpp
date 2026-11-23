@@ -17,7 +17,12 @@ struct RuntimeInfo {
     std::string mode="unknown", boot, liveness="unavailable";
     std::int64_t revision{}, heartbeat_ms{};
 };
-struct View { std::vector<Row> rows; bool more{}; std::string freshness; RuntimeInfo runtime; };
+struct LogRecord {
+    std::int64_t id{}, received_ms{}, frame_seq{};
+    bool has_frame=false;
+    std::string level, category, object, text;
+};
+struct View { std::vector<Row> rows; std::vector<LogRecord> logs; bool more{}; std::string freshness; RuntimeInfo runtime; };
 class Writer final : public HistorySink {
 public:
     explicit Writer(const std::filesystem::path& directory);
@@ -26,6 +31,7 @@ public:
     Writer& operator=(const Writer&) = delete;
     void append(const Observation& observation) override;
     void publish(const Observation* observation, const std::string& mode, bool command=false);
+    void note(const std::string& level, const std::string& category, const std::string& object, const std::string& text, std::int64_t frame_seq=-1);
     RuntimeInfo info() const;
     int last_phase() const;
 private:

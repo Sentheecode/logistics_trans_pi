@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
+#include <QFontInfo>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QMessageBox>
@@ -104,7 +105,7 @@ void click_station(SchematicView* schematic, const char* id) {
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    QFont font; font.setFamilies({"Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", "sans-serif"}); font.setPixelSize(13); app.setFont(font);
+    QFont font("Noto Sans CJK SC"); font.setStyleHint(QFont::SansSerif, QFont::PreferAntialias); font.setFamilies({"Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft YaHei UI", "Microsoft YaHei"}); font.setPixelSize(13); app.setFont(font);
     if (argc!=3) return 2;
     try {
         check_bad_svg();
@@ -144,6 +145,8 @@ int main(int argc, char** argv) {
         wait([&]{ return mode->isEnabled(); });
         wait([&]{ return history->rowCount()>0; });
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
+        auto* title=window.findChild<QLabel*>("title");
+        if (!title || !QFontInfo(title->font()).family().contains("Noto Sans")) throw std::runtime_error("interface font is not Noto Sans CJK");
         if (factory->count()!=1 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
@@ -158,6 +161,26 @@ int main(int argc, char** argv) {
         wait([&]{ return step->isEnabled(); });
         auto after=snap(directory);
         if (after.seq!=before.seq+1 || after.revision!=before.revision+1) throw std::runtime_error("rapid clicks advanced more than once");
+        auto* logs=window.findChild<QTableWidget*>("logTable");
+        auto* logCategory=window.findChild<QComboBox*>("logCategory");
+        if (!logs || !logCategory) throw std::runtime_error("missing log view");
+        wait([&]{
+            for (int row=0; row<logs->rowCount(); ++row) {
+                auto* item=logs->item(row, 0);
+                if (item && item->data(Qt::UserRole+3).toString().contains("step") && item->data(Qt::UserRole+1).toString()=="audit") return true;
+            }
+            return false;
+        });
+        const auto before_log_filter=snap(directory);
+        choose(logCategory, "audit");
+        pump(40);
+        for (int row=0; row<logs->rowCount(); ++row) {
+            auto* item=logs->item(row, 0);
+            if (!logs->isRowHidden(row) && (!item || item->data(Qt::UserRole+1).toString()!="audit")) throw std::runtime_error("log category filter leaked another category");
+        }
+        choose(logCategory, "all");
+        if (snap(directory).revision!=before_log_filter.revision || snap(directory).boot!=before_log_filter.boot || snap(directory).mode!=before_log_filter.mode)
+            throw std::runtime_error("log filter changed collector ownership");
         pump(1700);
         if (!step->isEnabled() || snap(directory).seq!=after.seq) throw std::runtime_error("manual wait treated as disconnected or advanced");
         auto* link=window.findChild<QPushButton*>("disconnectButton");
@@ -360,10 +383,10 @@ int main(int argc, char** argv) {
         if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
             throw std::runtime_error("focused sibling still looked controllable");
         auto* modules=window.findChild<QTabWidget*>("moduleTabs");
-        if (!modules || modules->count()!=5) throw std::runtime_error("module tabs missing");
+        if (!modules || modules->count()!=7) throw std::runtime_error("module tabs missing");
         const auto tabbed=window.selectedStationId();
         const auto before_tabs=snap(directory);
-        for (auto title : {"运行", "工位", "事件", "点表", "接口"}) {
+        for (auto title : {"运行", "工位", "事件", "点表", "接口", "日志", "采集"}) {
             bool found=false;
             for (int i=0; i<modules->count(); ++i) if (modules->tabText(i)==QString::fromUtf8(title)) { modules->setCurrentIndex(i); found=true; }
             if (!found) throw std::runtime_error("missing module tab");
