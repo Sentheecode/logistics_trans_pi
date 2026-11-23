@@ -26,6 +26,7 @@
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolButton>
@@ -143,6 +144,12 @@ QFont figureFont() {
 void setFigure(QTableWidgetItem* item) {
     item->setFont(figureFont());
 }
+class RunStack : public QStackedWidget {
+public:
+    using QStackedWidget::QStackedWidget;
+    QSize sizeHint() const override { return currentWidget() ? currentWidget()->sizeHint() : QStackedWidget::sizeHint(); }
+    QSize minimumSizeHint() const override { return currentWidget() ? currentWidget()->minimumSizeHint() : QStackedWidget::minimumSizeHint(); }
+};
 class DetailFit : public QObject {
 public:
     DetailFit(QScrollArea* scroll, QLabel* label) : QObject(scroll), scroll_(scroll), label_(label) {
@@ -515,6 +522,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* emptyLayout=new QVBoxLayout(emptyRun);
     emptyLayout->setContentsMargins(0, 8, 0, 0);
     emptyLayout->setSpacing(8);
+    emptyLayout->setAlignment(Qt::AlignTop);
     auto addEmpty=[&](const QString& text, const char* name){
         auto* label=new QLabel(text, emptyRun);
         label->setObjectName(name);
@@ -531,10 +539,18 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* workspaceLayout=new QVBoxLayout(workspace);
     workspaceLayout->setContentsMargins(12, 8, 12, 8);
     workspaceLayout->setSpacing(4);
+    workspaceLayout->addWidget(runHint);
     workspaceLayout->addWidget(commandPane);
     runLayout->addWidget(runTitle);
-    runLayout->addWidget(runHint);
-    runLayout->addWidget(emptyRun);
+    auto* runStack=new RunStack(run);
+    runStack->setObjectName("runStack");
+    runStack->addWidget(emptyRun);
+    runStack->addWidget(workspace);
+    runLayout->addWidget(runStack);
+    auto* runTail=new QWidget(run);
+    runTail->setObjectName("runTail");
+    runTail->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    runLayout->addWidget(runTail, 1);
     auto* runBody=new QWidget(run);
     auto* runColumns=new QHBoxLayout(runBody);
     runColumns->setContentsMargins(0, 0, 0, 0);
@@ -583,7 +599,6 @@ Workbench::Workbench(std::filesystem::path directory)
     workspaceLayout->addWidget(recentScope);
     workspaceLayout->addWidget(recentTable_, 1);
     workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    runLayout->addWidget(workspace, 1);
 
     detailTable_=new QTableWidget;
     detailTable_->setObjectName("detailTable");
@@ -1553,9 +1568,19 @@ void Workbench::render() {
     }
     if (eventSource_) eventSource_->setText(live ? "来源：工位 140 · 模拟流 sim.three-cart.v1 · 北京时间 UTC+8" : "来源：当前 PLC 未绑定模拟源。");
     const bool unconfigured=selection_.station_id.empty();
-    if (auto* empty=findChild<QWidget*>("emptyRun")) empty->setVisible(unconfigured);
-    if (auto* workspace=findChild<QWidget*>("runWorkspace")) workspace->setVisible(!unconfigured);
-    if (auto* hint=findChild<QLabel*>("runHint")) hint->setVisible(!unconfigured);
+    if (auto* stack=findChild<QStackedWidget*>("runStack")) {
+        stack->setCurrentIndex(unconfigured ? 0 : 1);
+        if (unconfigured) stack->setFixedHeight(std::max(1, stack->currentWidget()->sizeHint().height()));
+        else { stack->setMinimumHeight(0); stack->setMaximumHeight(QWIDGETSIZE_MAX); stack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding); }
+        stack->updateGeometry();
+    }
+    if (auto* tail=findChild<QWidget*>("runTail")) {
+        tail->setVisible(unconfigured);
+        if (auto* layout=qobject_cast<QVBoxLayout*>(tail->parentWidget()->layout())) {
+            layout->setStretchFactor(tail, unconfigured ? 1 : 0);
+            if (auto* stack=findChild<QStackedWidget*>("runStack")) layout->setStretchFactor(stack, unconfigured ? 0 : 1);
+        }
+    }
 
     if (!live) {
         stageTable_->setRowCount(0);

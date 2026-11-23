@@ -285,13 +285,18 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcSeq2);
         if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
             throw std::runtime_error("empty plc was not unconfigured");
+        pump(80);
         auto* emptyRun=window.findChild<QWidget*>("emptyRun");
         auto* runHint=window.findChild<QLabel*>("runHint");
         auto* runWorkspace=window.findChild<QWidget*>("runWorkspace");
         if (!emptyRun || !emptyRun->isVisible() || (runHint && runHint->isVisible()) || (runWorkspace && runWorkspace->isVisible()))
             throw std::runtime_error("unconfigured plc still showed the live run card");
-        const QPoint emptyAt=emptyRun->mapTo(&window, QPoint(0, 0));
-        if (emptyAt.y()>220 || emptyRun->height()>180) throw std::runtime_error("unconfigured run state is not a short block at the top");
+        auto* emptyTitle=window.findChild<QLabel*>("emptyTitle");
+        auto* emptyAction=window.findChild<QLabel*>("emptyAction");
+        if (!emptyTitle || !emptyAction) throw std::runtime_error("unconfigured copy missing");
+        const int top=emptyTitle->mapTo(&window, QPoint(0, 0)).y();
+        const int bottom=emptyAction->mapTo(&window, QPoint(0, emptyAction->height())).y();
+        if (top>220 || bottom-top>140) throw std::runtime_error("unconfigured run state is not a short block at the top y="+std::to_string(top)+" span="+std::to_string(bottom-top));
         if (window.findChild<QLabel*>("emptyTitle")->text()!="尚未配置工位" || window.findChild<QLabel*>("emptySource")->text()!="当前 PLC 未绑定模拟源" || window.findChild<QLabel*>("emptyAction")->text()!="暂无法执行模拟操作")
             throw std::runtime_error("unconfigured copy changed");
         for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
