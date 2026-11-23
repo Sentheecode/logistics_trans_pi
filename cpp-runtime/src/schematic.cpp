@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <algorithm>
+#include <vector>
 
 SchematicView::SchematicView(QWidget* parent): QWidget(parent) {
     setObjectName("schematicView");
@@ -60,97 +61,138 @@ QRectF SchematicView::stationRect(const QString& id) const {
     for (auto& bay : bays()) if (QString::fromStdString(bay.id)==id) return bay.rect;
     return {};
 }
+namespace {
+QPointF rawIso(double x, double y, double z) {
+    return QPointF((x - y) * 0.86, (x + y) * 0.5 - z);
+}
+void solid(QPainter& painter, const std::initializer_list<QPointF>& points, const QColor& fill) {
+    QPolygonF polygon;
+    for (const auto& point : points) polygon << point;
+    painter.setPen(QPen(QColor("#243044"), 1.1));
+    painter.setBrush(fill);
+    painter.drawPolygon(polygon);
+}
+void wheel(QPainter& painter, QPointF center, double radius) {
+    painter.setPen(QPen(QColor("#1c2430"), 1.2));
+    painter.setBrush(QColor("#3d4654"));
+    painter.drawEllipse(center, radius, radius * 0.62);
+    painter.setBrush(QColor("#d5dbe3"));
+    painter.drawEllipse(center, radius * 0.34, radius * 0.22);
+}
+void limb(QPainter& painter, QPointF from, QPointF to, double thickness) {
+    const QLineF line(from, to);
+    painter.save();
+    painter.translate(from);
+    painter.rotate(-line.angle());
+    painter.setPen(QPen(QColor("#243044"), 1.1));
+    painter.setBrush(QColor("#4a596c"));
+    painter.drawRoundedRect(QRectF(0, -thickness / 2.0, std::max(1.0, line.length()), thickness), thickness * 0.35, thickness * 0.35);
+    painter.restore();
+}
+struct Block { double x, y, z, w, d, h; QColor top, left, right; };
+struct Disc { double x, y, z, r; };
+struct Node { double x, y, z; };
+}
+
 void SchematicView::drawBay(QPainter& painter, const Bay& bay, const StationGlyph& glyph) const {
-    const QRectF rect=bay.rect.adjusted(6, 6, -6, -6);
+    painter.save();
+    painter.setClipRect(bay.rect.adjusted(1, 1, -1, -1));
+    const QRectF rect=bay.rect.adjusted(2, 2, -2, -2);
     const bool focus=glyph.id==focus_;
-    const bool sequence=area_code_=="seq";
-    painter.setPen(QPen(focus ? QColor("#1d4e89") : QColor("#8a5a12"), focus ? 2.2 : 1.2));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(rect, 2, 2);
-    painter.setPen(QColor("#1c2430"));
+    const QRectF plot=rect.adjusted(4, 26, -4, -4);
+    std::vector<Block> blocks;
+    std::vector<Disc> discs;
+    const auto add=[&](double x, double y, double z, double w, double d, double h, const QColor& top, const QColor& left, const QColor& right) {
+        blocks.push_back({x, y, z, w, d, h, top, left, right});
+    };
+    const auto roll=[&](double x, double y, double z, double r) { discs.push_back({x, y, z, r}); };
+    add(0, 18, 10, 92, 48, 20, QColor("#f7f9fc"), QColor("#8ea0b5"), QColor("#5d6d82"));
+    add(8, 26, 30, 38, 30, 18, QColor("#d7e4f5"), QColor("#62748b"), QColor("#314056"));
+    roll(10, 16, 6, 11); roll(74, 16, 6, 11); roll(10, 68, 6, 11); roll(74, 68, 6, 11);
+    add(118, 8, 0, 62, 58, 16, QColor("#eceff3"), QColor("#9aa6b5"), QColor("#667588"));
+    add(132, 22, 16, 28, 28, 108, QColor("#f7f8fa"), QColor("#b7c0cc"), QColor("#6d7b8d"));
+    add(248, 0, 0, 8, 8, 168, QColor("#e7edf4"), QColor("#8b97a8"), QColor("#5c6b7c"));
+    add(248, 46, 0, 8, 8, 168, QColor("#e7edf4"), QColor("#8b97a8"), QColor("#5c6b7c"));
+    add(292, 0, 0, 8, 8, 168, QColor("#e7edf4"), QColor("#8b97a8"), QColor("#5c6b7c"));
+    add(292, 46, 0, 8, 8, 168, QColor("#e7edf4"), QColor("#8b97a8"), QColor("#5c6b7c"));
+    add(244, -4, 52, 62, 62, 6, QColor("#f7f1e4"), QColor("#d2c4a8"), QColor("#a89474"));
+    add(244, -4, 112, 62, 62, 6, QColor("#f4efe4"), QColor("#cbb892"), QColor("#8f7754"));
+    add(258, 10, 118, 28, 30, 26, QColor("#efe6d4"), QColor("#c3b496"), QColor("#8d7b5e"));
+    if (glyph.live && glyph.carts_known) {
+        for (int index=0; index<3; ++index) {
+            const bool alert=glyph.cart[index].contains("阻塞") || glyph.cart[index].contains("未知");
+            add(118 + index * 44, 132, 4, 36, 24, 16,
+                alert ? QColor("#f6e2c4") : QColor("#f7f8fa"),
+                alert ? QColor("#c48a45") : QColor("#8ea0b5"),
+                alert ? QColor("#8a5a12") : QColor("#5d6d82"));
+            roll(124 + index * 44, 134, 0, 6);
+            roll(146 + index * 44, 134, 0, 6);
+            roll(124 + index * 44, 154, 0, 6);
+            roll(146 + index * 44, 154, 0, 6);
+        }
+    } else {
+        add(128, 132, 4, 46, 28, 16, QColor("#f7f8fa"), QColor("#c5ced8"), QColor("#8b96a6"));
+        roll(136, 134, 0, 7); roll(164, 134, 0, 7); roll(136, 158, 0, 7); roll(164, 158, 0, 7);
+    }
+    const Node shoulderModel{146, 36, 132};
+    const Node elbowModel{210, 4, 188};
+    const Node wristModel{236, 24, 126};
+    double minX=1e9, minY=1e9, maxX=-1e9, maxY=-1e9;
+    const auto take=[&](double x, double y, double z, double pad) {
+        const QPointF point=rawIso(x, y, z);
+        minX=std::min(minX, point.x()-pad); minY=std::min(minY, point.y()-pad);
+        maxX=std::max(maxX, point.x()+pad); maxY=std::max(maxY, point.y()+pad);
+    };
+    for (const auto& block : blocks) for (double sx : {0.0, block.w}) for (double sy : {0.0, block.d}) for (double sz : {0.0, block.h})
+        take(block.x+sx, block.y+sy, block.z+sz, 0);
+    for (const auto& disc : discs) take(disc.x, disc.y, disc.z, disc.r);
+    for (const auto& point : {shoulderModel, elbowModel, wristModel}) take(point.x, point.y, point.z, 16);
+    const double spanX=std::max(1.0, maxX-minX), spanY=std::max(1.0, maxY-minY);
+    const double scale=std::min(plot.width()/spanX, plot.height()/spanY);
+    const auto at=[&](double x, double y, double z) {
+        const QPointF point=rawIso(x, y, z);
+        return QPointF(plot.left()+(plot.width()-spanX*scale)/2.0+(point.x()-minX)*scale,
+                        plot.top()+(plot.height()-spanY*scale)/2.0+(point.y()-minY)*scale);
+    };
+    const auto cube=[&](const Block& block) {
+        const auto corner=[&](double x, double y, double z){ return at(x, y, z); };
+        const QPointF a=corner(block.x, block.y, block.z), c=corner(block.x+block.w, block.y+block.d, block.z), e=corner(block.x, block.y+block.d, block.z);
+        const QPointF atop=corner(block.x, block.y, block.z+block.h), btop=corner(block.x+block.w, block.y, block.z+block.h);
+        const QPointF ctop=corner(block.x+block.w, block.y+block.d, block.z+block.h), etop=corner(block.x, block.y+block.d, block.z+block.h);
+        solid(painter, {e, c, ctop, etop}, block.right);
+        solid(painter, {a, e, etop, atop}, block.left);
+        solid(painter, {atop, btop, ctop, etop}, block.top);
+    };
+    for (const auto& block : blocks) cube(block);
+    for (const auto& disc : discs) wheel(painter, at(disc.x, disc.y, disc.z), std::max(3.0, disc.r*scale));
+    const QPointF shoulder=at(shoulderModel.x, shoulderModel.y, shoulderModel.z);
+    const QPointF elbow=at(elbowModel.x, elbowModel.y, elbowModel.z);
+    const QPointF wrist=at(wristModel.x, wristModel.y, wristModel.z);
+    const double thickness=std::max(7.0, 16.0*scale);
+    limb(painter, shoulder, elbow, thickness);
+    limb(painter, elbow, wrist, thickness*0.82);
+    painter.setPen(QPen(QColor("#1c2430"), 1.2));
+    painter.setBrush(QColor("#1d4e89"));
+    painter.drawEllipse(shoulder, thickness*0.55, thickness*0.55);
+    painter.setBrush(QColor("#243044"));
+    painter.drawEllipse(elbow, thickness*0.42, thickness*0.42);
+    const QPointF finger=wrist+QPointF(0, thickness*0.9);
+    painter.setPen(QPen(QColor("#243044"), std::max(2.0, thickness*0.28), Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(wrist, finger);
+    painter.drawLine(finger+QPointF(-thickness*0.55, 0), finger+QPointF(-thickness*0.55, thickness*1.15));
+    painter.drawLine(finger+QPointF(thickness*0.55, 0), finger+QPointF(thickness*0.55, thickness*1.15));
+    painter.drawLine(finger+QPointF(-thickness*0.55, 0), finger+QPointF(thickness*0.55, 0));
     QFont number=font();
     number.setPixelSize(16);
     number.setBold(true);
     painter.setFont(number);
-    painter.drawText(QRectF(rect.left()+8, rect.top()+4, rect.width()-16, 22), Qt::AlignLeft|Qt::AlignVCenter, glyph.number);
-    QFont small=font();
-    small.setPixelSize(11);
-    painter.setFont(small);
-    painter.setPen(QColor("#5c6b7c"));
-    painter.drawText(QRectF(rect.right()-72, rect.top()+4, 64, 22), Qt::AlignRight|Qt::AlignVCenter, focus ? "当前" : "同PLC");
-
-    const QRectF floor(rect.left()+16, rect.bottom()-36, rect.width()-32, 10);
-    painter.fillRect(floor, QColor("#d5dbe3"));
-    const QRectF inbound(rect.left()+14, rect.center().y()-34, 42, 22);
-    painter.setPen(QPen(QColor("#1c2430"), 1.4));
-    painter.setBrush(QColor("#f7f8fa"));
-    painter.drawRoundedRect(inbound, 3, 3);
-    painter.drawLine(QPointF(inbound.center().x(), inbound.top()-12), QPointF(inbound.center().x(), inbound.top()));
-    painter.drawText(inbound, Qt::AlignCenter, sequence ? "来料" : "进");
-    QPen path(QColor("#5c6b7c"), 1.2, Qt::DashLine);
-    painter.setPen(path);
-    painter.drawLine(QPointF(inbound.right()+2, inbound.center().y()), QPointF(rect.center().x()-18, floor.top()-18));
-
-    const QPointF shoulder(rect.center().x()-6, rect.top()+34);
-    const QPointF elbow(rect.center().x()+26, rect.top()+62);
-    const QPointF wrist(rect.center().x()-4, floor.top()-22);
-    painter.setPen(QPen(QColor("#1c2430"), 3.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawLine(shoulder, elbow);
-    painter.drawLine(elbow, wrist);
-    painter.setBrush(QColor("#1c2430"));
-    painter.drawEllipse(shoulder, 3.5, 3.5);
-    painter.drawEllipse(elbow, 2.8, 2.8);
-    painter.setPen(QColor("#5c6b7c"));
-    painter.setFont(small);
-    painter.drawText(QRectF(shoulder.x()-28, shoulder.y()-16, 56, 14), Qt::AlignCenter, "机械臂");
-
-    if (sequence) {
-        const QRectF rack(rect.right()-78, rect.top()+40, 62, rect.height()-92);
-        painter.setPen(QPen(QColor("#1c2430"), 1.3));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawLine(rack.topLeft(), rack.bottomLeft());
-        painter.drawLine(rack.bottomLeft(), rack.bottomRight());
-        for (int shelf=1; shelf<=3; ++shelf) {
-            const double y=rack.top()+shelf*rack.height()/4.0;
-            painter.drawLine(QPointF(rack.left(), y), QPointF(rack.right(), y));
-        }
-        painter.setPen(QColor("#5c6b7c"));
-        painter.drawText(QRectF(rack.left()-4, rack.bottom()+2, rack.width()+8, 16), Qt::AlignCenter, "料架未定");
-    } else {
-        const QRectF bin(rect.right()-84, rect.top()+42, 68, 74);
-        painter.setPen(QPen(QColor("#1c2430"), 1.3));
-        painter.drawLine(bin.topLeft(), bin.bottomLeft());
-        painter.drawLine(QPointF(bin.left(), bin.top()+24), QPointF(bin.right(), bin.top()+24));
-        painter.drawLine(QPointF(bin.left(), bin.top()+48), QPointF(bin.right(), bin.top()+48));
-        painter.setPen(QColor("#5c6b7c"));
-        painter.drawText(QRectF(bin.left()-6, bin.bottom()+2, bin.width()+12, 16), Qt::AlignCenter, glyph.live ? "料仓见点表" : "层位未提供");
+    painter.setPen(focus ? QColor("#1d4e89") : QColor("#1c2430"));
+    painter.drawText(QRectF(rect.left(), rect.top(), rect.width(), 22), Qt::AlignHCenter|Qt::AlignTop, glyph.number);
+    if (focus) {
+        painter.setPen(QPen(QColor("#1d4e89"), 2));
+        painter.drawLine(QPointF(rect.center().x()-18, rect.top()+22), QPointF(rect.center().x()+18, rect.top()+22));
     }
-
-    const QRectF outbound(rect.right()-54, rect.top()+28, 40, 20);
-    painter.setPen(QPen(QColor("#1c2430"), 1.4));
-    painter.setBrush(QColor("#f7f8fa"));
-    painter.drawRoundedRect(outbound, 3, 3);
-    painter.drawText(outbound, Qt::AlignCenter, sequence ? "回传" : "出");
-
-    const double track=std::min(floor.width()*0.62, 210.0);
-    if (glyph.live && glyph.carts_known) {
-        for (int index=0; index<3; ++index) {
-            const QRectF cart(floor.left()+6+index*(track/3.0), floor.top()-28, track/3.0-6, 22);
-            const bool alert=glyph.cart[index].contains("阻塞") || glyph.cart[index].contains("未知");
-            painter.setPen(QPen(alert ? QColor("#8a5a12") : QColor("#1c2430"), 1));
-            painter.setBrush(alert ? QColor("#fbf6ee") : QColor("#ffffff"));
-            painter.drawRoundedRect(cart, 2, 2);
-            painter.setFont(small);
-            painter.drawText(cart, Qt::AlignCenter, cart.width()>=52 ? glyph.cart[index] : QString::number(index+1));
-        }
-    } else {
-        const QRectF cart(floor.left()+10, floor.top()-28, std::min(120.0, floor.width()-20), 22);
-        painter.setPen(QPen(QColor("#8b96a6"), 1, Qt::DashLine));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(cart, 2, 2);
-        painter.setFont(small);
-        painter.drawText(cart, Qt::AlignCenter, "料车未挂接");
-    }
+    painter.restore();
 }
 void SchematicView::paintEvent(QPaintEvent*) {
     QPainter painter(this);

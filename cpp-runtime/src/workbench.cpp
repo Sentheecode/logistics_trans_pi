@@ -6,6 +6,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDialog>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -223,14 +224,12 @@ Workbench::Workbench(std::filesystem::path directory)
     railLayout->addStretch(1);
 
     schematic_=new SchematicView;
-    schematic_->setMinimumHeight(260);
+    schematic_->setMinimumHeight(220);
+    schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     cardRow_=new QWidget;
+    cardRow_->setFixedHeight(46);
     new QHBoxLayout(cardRow_);
-    cardRow_->layout()->setContentsMargins(0, 0, 0, 0);
-    auto* caption=new QLabel("只显示当前 PLC。蓝框是正在看的工位。进、出、机械臂和料仓都是示意，没有实测尺寸。线体不按 PLC 推断。");
-    caption->setObjectName("schematicCaption");
-    caption->setWordWrap(true);
-    caption->setObjectName("muted");
+    cardRow_->layout()->setContentsMargins(8, 4, 8, 4);
     stationTitle_=new QLabel("未配置");
     stationTitle_->setObjectName("stationTitle");
     fit(stationTitle_);
@@ -250,7 +249,7 @@ Workbench::Workbench(std::filesystem::path directory)
     plcAuto_->setObjectName("muted");
     fit(plcAuto_);
     cartStrip_=new QWidget;
-    cartStrip_->setFixedHeight(68);
+    cartStrip_->setFixedHeight(64);
     auto* cartLayout=new QHBoxLayout(cartStrip_);
     cartLayout->setContentsMargins(0, 0, 0, 0);
     cartLayout->setSpacing(8);
@@ -281,20 +280,20 @@ Workbench::Workbench(std::filesystem::path directory)
     stageLayout->setSpacing(4);
     stageLayout->addWidget(stationTitle_);
     stageLayout->addWidget(stationMeta_);
-    stageLayout->addWidget(configLine_);
-    stageLayout->addWidget(lineState_);
-    stageLayout->addWidget(peerLine_);
-    stageLayout->addWidget(plcAuto_);
     stageLayout->addWidget(interfaceLine_);
     stageLayout->addWidget(cartStrip_);
     stageLayout->addWidget(scopeBanner_);
+    configLine_->hide();
+    lineState_->hide();
+    peerLine_->hide();
+    plcAuto_->hide();
+    stage->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto* diagram=new QWidget;
     auto* diagramLayout=new QVBoxLayout(diagram);
-    diagramLayout->setContentsMargins(0, 0, 0, 0);
-    diagramLayout->setSpacing(0);
+    diagramLayout->setContentsMargins(8, 4, 8, 4);
+    diagramLayout->setSpacing(4);
     diagramLayout->addWidget(schematic_, 1);
     diagramLayout->addWidget(cardRow_);
-    diagramLayout->addWidget(caption);
     diagramLayout->addWidget(stage);
 
     detailTable_=new QTableWidget;
@@ -361,7 +360,16 @@ Workbench::Workbench(std::filesystem::path directory)
     tabs->addTab(identityPage, "标识");
     tabs->addTab(pointPage, "点表");
     tabs->addTab(boundaryPage, "边界");
-    tabs->setMinimumHeight(120);
+    auto* records=new QDialog(this);
+    records->setWindowTitle("记录、点表与边界");
+    records->resize(880, 460);
+    auto* recordLayout=new QVBoxLayout(records);
+    recordLayout->addWidget(tabs);
+    records->hide();
+    auto* openRecords=new QPushButton("记录 / 点表");
+    openRecords->setObjectName("openRecords");
+    commandLayout->addWidget(openRecords);
+    connect(openRecords, &QPushButton::clicked, records, &QDialog::show);
 
     mainSplit_=new QSplitter(Qt::Horizontal);
     mainSplit_->setObjectName("mainSplit");
@@ -370,13 +378,6 @@ Workbench::Workbench(std::filesystem::path directory)
     mainSplit_->addWidget(diagram);
     mainSplit_->setStretchFactor(0, 0);
     mainSplit_->setStretchFactor(1, 1);
-    contentSplit_=new QSplitter(Qt::Vertical);
-    contentSplit_->setObjectName("contentSplit");
-    contentSplit_->setChildrenCollapsible(false);
-    contentSplit_->addWidget(mainSplit_);
-    contentSplit_->addWidget(tabs);
-    contentSplit_->setStretchFactor(0, 5);
-    contentSplit_->setStretchFactor(1, 1);
 
     auto* central=new QWidget;
     central->setObjectName("centralRoot");
@@ -384,7 +385,7 @@ Workbench::Workbench(std::filesystem::path directory)
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
     root->addWidget(identity);
-    root->addWidget(contentSplit_, 1);
+    root->addWidget(mainSplit_, 1);
     setCentralWidget(central);
     auto* closure=new QLabel("关窗不停止采集");
     fit(closure);
@@ -427,11 +428,8 @@ Workbench::Workbench(std::filesystem::path directory)
     });
     setSelection(catalog_.live_selection());
     QTimer::singleShot(0, this, [this] {
-        if (!split_applied_ && contentSplit_->height()>200 && mainSplit_->width()>480) {
+        if (!split_applied_ && mainSplit_->width()>480) {
             split_applied_=true;
-            const int height=contentSplit_->height();
-            const int history=height<520 ? 128 : 156;
-            contentSplit_->setSizes({height-history, history});
             mainSplit_->setSizes({248, mainSplit_->width()-248});
         }
     });
@@ -444,12 +442,9 @@ Workbench::Workbench(std::filesystem::path directory)
 void Workbench::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
     if (split_applied_) return;
-    const int height=contentSplit_->height();
     const int width=mainSplit_->width();
-    if (height<200 || width<480) return;
+    if (width<480) return;
     split_applied_=true;
-    const int history=height<520 ? 128 : 156;
-    contentSplit_->setSizes({height-history, history});
     mainSplit_->setSizes({248, width-248});
 }
 
