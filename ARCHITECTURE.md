@@ -84,3 +84,25 @@ Windows 使用用户可写 D: 目录、MSYS2 MINGW64、C++17、CMake `MinGW Make
 7. 更新对应验证记录和本文件中的真实边界，只提交源码、测试与公开文档。不得修改 main、合并或发布；需要进一步授权的行为另行提出。
 
 未实现事项必须保留为未实现，不通过命名、界面标签或文档将 mock 升格为正式功能。
+
+## 下一轮实施交接
+
+状态（2026-11-23）：已验证的代码基线是 [92966ea](https://github.com/Sentheecode/logistics_trans_pi/commit/92966ea4336cc91c222d178242a57cc40e393799)，包括独立模拟采集、SQLite 单写者、只读诊断、Qt 工作台、手动单步与自动恢复确认。该基线的 Linux Qt / 核心 / 旧 runtime 测试分别为 5/5、3/3、49/49。下一轮任务在实现前中止；下面都是待办，本文更新不代表程序已升级。Windows 与现场验收仍未进行。
+
+### 复制给接手 Agent
+
+在 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 继续。先读 [现有架构](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/ARCHITECTURE.md)、[构建与启动](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/cpp-runtime/README.md)、[基线验证](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/cpp-runtime/VALIDATION.md)。先检查远端最新提交和工作区；不覆盖已有改动，只更新实验分支，不改 main、不部署。使用 C++17、Qt Widgets；Windows 构建仍以 MSYS2 MINGW64 / MinGW Makefiles 为目标。主要改动放在 `cpp-runtime/src/workbench.*`、独立目录模型/示意图资源、对应测试及构建说明；不为 UI 改写领域、旧 Node/Pi 或已有控制信箱。
+
+1. **先做目录模型。** 工厂 → 业务模式（SPS／排序区）→ 线体 → 工位。业务模式与运行模式（手动／自动）是两个独立字段。为实体使用稳定 ID；由独立关系映射表达一个控制器对应多个工位、库区与工位的关联，不用展示名做关联键。以至少两个虚构工厂和一个控制器关联多个示意工位为验收夹具。
+2. **再做联动和作用域。** 用原生下拉组件联动：切换父级后保留仍合法的子项，否则选择合法项或明确显示未配置。详情显示所选工位、归属控制器、其关联工位、库区或库位示意。目录浏览不得改变采集目标、推进任务或切换手动／自动。只在与当前模拟流明确匹配的工位提供实时数据、历史和控制。其他工位或排序区未接入时显示未配置或静态示意，不挪用 SPS 的数据和状态。
+3. **原生桌面化和图形。** 用工具栏、可调整分栏、数据表、详情和状态栏，减少网页式卡片、圆角与大留白。加原创 SVG 库区／工位简图和一张标注“示意”的设备图，图中点选与下拉双向同步；高亮同一控制器的关联工位，同时与当前选中项区分。未知库存、连接和设备状态不造数。仅合成素材，不包含任何真实布局、地址、点表、协议行为或现场照片。
+4. **验收再提交。** 新增目录约束、空列表、跨工厂与两种业务模式切换、控制器多工位、SVG 点击与下拉同步、非活动工位无实时数据且不能控制等测试。回归手动单步、恢复自动确认、切换下拉不影响采集、关闭窗口不影响运行。空目录构建并运行 CTest，记录已跑与未跑。实际渲染 SPS 与排序区／控制器详情两张 Qt 图，检查中文、缩窗及裁切；截图交给用户，不进 Git。回报提交 SHA、改动文件、测试与 Windows 限制。
+
+```bash
+cmake -S cpp-runtime -B build/handoff-check
+cmake --build build/handoff-check -j4
+ctest --test-dir build/handoff-check --output-on-failure
+npm test --prefix runtime
+```
+
+先完成上述模拟版本，不接真实设备；不要把展示目录当实际现场配置，也不要用演示行为推导生产时序。
