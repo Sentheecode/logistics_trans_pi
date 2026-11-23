@@ -20,6 +20,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTimeZone>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -102,6 +103,25 @@ void markCart(QFrame* frame, const QString& state) {
     frame->setProperty("state", state);
     frame->style()->unpolish(frame);
     frame->style()->polish(frame);
+}
+CartMark cartMark(const std::string& value) {
+    if (value=="waiting") return CartMark::wait;
+    if (value=="scanning" || value=="sorting") return CartMark::run;
+    if (value=="station_complete") return CartMark::done;
+    return CartMark::alert;
+}
+QString cardState(const std::string& value) {
+    const auto mark=cartMark(value);
+    if (mark==CartMark::wait) return "wait";
+    if (mark==CartMark::done) return "done";
+    if (mark==CartMark::alert) return "alert";
+    return "run";
+}
+QString beijingTime(qint64 epochMs, const QString& pattern) {
+    const QTimeZone zone("Asia/Shanghai");
+    const QDateTime utc=QDateTime::fromMSecsSinceEpoch(epochMs, Qt::UTC);
+    if (!zone.isValid()) return utc.toString(pattern)+" UTC";
+    return utc.toTimeZone(zone).toString(pattern)+" 北京";
 }
 }
 
@@ -339,7 +359,7 @@ Workbench::Workbench(std::filesystem::path directory)
 
     historyTable_=new QTableWidget;
     historyTable_->setObjectName("historyTable");
-    prepareTable(historyTable_, {"序号", "接收时间 / UTC", "三车阶段", "数据质量", "事件"});
+    prepareTable(historyTable_, {"序号", "接收时间 / 北京时间", "三车阶段", "数据质量", "事件"});
     historyTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     historyTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     historyTable_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -519,6 +539,7 @@ void Workbench::prepareCapture(const QString& kind) {
         return;
     }
     if (kind=="south") { activateSchematicStation(QString::fromUtf8(catalog::kStation20)); return; }
+    if (kind=="meter2") { activateSchematicStation(QString::fromUtf8(catalog::kStation40)); return; }
     if (kind=="sort") { activateSchematicStation(QString::fromUtf8(catalog::kStation210)); return; }
     if (kind=="peers") { activateSchematicStation(QString::fromUtf8(catalog::kStation150)); return; }
     if (!catalog_.live_station_id().empty()) activateSchematicStation(QString::fromStdString(catalog_.live_station_id()));
@@ -604,7 +625,7 @@ void Workbench::render() {
     else if (available_ && view_.runtime.mode=="automatic") runtime="上位机 自动";
     runtimeLabel_->setText(runtime);
     fit(runtimeLabel_);
-    heartbeatLabel_->setText(view_.runtime.heartbeat_ms>0 ? "心跳 "+QDateTime::fromMSecsSinceEpoch(view_.runtime.heartbeat_ms).toUTC().toString("HH:mm:ss") : "无心跳");
+    heartbeatLabel_->setText(view_.runtime.heartbeat_ms>0 ? "心跳 "+beijingTime(view_.runtime.heartbeat_ms, "HH:mm:ss") : "无心跳");
     fit(heartbeatLabel_);
 
     const catalog::Station* station=catalog_.find_station(selection_.station_id);
@@ -643,7 +664,11 @@ void Workbench::render() {
         glyph.live=catalog_.is_live(item->id);
         if (glyph.live && !view_.rows.empty()) {
             glyph.carts_known=true;
-            for (int index=0; index<3; ++index) glyph.cart[index]=carts_known ? stateText(view_.rows.front().carts[index]) : QString("状态未知");
+            for (int index=0; index<3; ++index) {
+                const auto raw=carts_known ? view_.rows.front().carts[index] : "UNKNOWN";
+                glyph.cart[index]=carts_known ? stateText(raw) : QString("状态未知");
+                glyph.cart_mark[index]=cartMark(raw);
+            }
         }
         glyphs.push_back(glyph);
     }
@@ -728,7 +753,7 @@ void Workbench::render() {
         QString note=value=="station_complete" ? "本工位本轮步骤结束" : value=="waiting" ? "等待前序小车" : value=="blocked" ? "模拟阻塞仍活动" : value=="UNKNOWN" ? "无可信值，不补零" : "模拟阶段已确认";
         cartPhase_[i]->setText(stateText(value));
         cartNote_[i]->setText(note);
-        markCart(cartFrame_[i], value=="UNKNOWN" || value=="blocked" ? "alert" : value=="waiting" ? "wait" : value=="station_complete" ? "done" : "run");
+        markCart(cartFrame_[i], cardState(value));
         QStringList columns={QString("小车%1").arg(i+1), stateText(value), note};
         for (int column=0; column<columns.size(); ++column) stageTable_->setItem(i, column, new QTableWidgetItem(columns[column]));
     }
@@ -738,7 +763,7 @@ void Workbench::render() {
         const auto& row=view_.rows[i];
         QStringList columns={
             QString::number(row.seq),
-            QDateTime::fromMSecsSinceEpoch(row.received_ms).toUTC().toString("HH:mm:ss.zzz"),
+            beijingTime(row.received_ms, "HH:mm:ss.zzz"),
             stateText(row.carts[0])+" / "+stateText(row.carts[1])+" / "+stateText(row.carts[2]),
             row.quality=="good" ? "正常" : "不可用",
             eventText(row.event),
@@ -750,7 +775,7 @@ void Workbench::render() {
             historyTable_->setItem(i, column, item);
         }
     }
-    eventNote_->setText(QString("最近 %1 帧 · 覆盖未知 · UTC").arg(view_.rows.size()));
+    eventNote_->setText(QString("最近 %1 帧 · 覆盖未知 · 北京时间 UTC+8").arg(view_.rows.size()));
     const auto age=std::max<std::int64_t>(0, (sim::now_ms()-latest.received_ms)/1000);
     if (!good) scopeBanner_->setText(!available_ ? "采集心跳不可用。历史不能当作当前状态。" : latest.reason=="disconnected" ? "模拟链路断开，当前值未知。这不是现场设备离线。" : view_.freshness=="clock_uncertain" ? "事件时间不确定，需要核对。" : "源质量异常，当前值不可用，不补零。");
     else scopeBanner_->setText(QString("工位 140 的本地模拟帧 #%1，任务事件 %2 秒前。不是 LWMS 回执。").arg(latest.seq).arg(age));
@@ -771,6 +796,7 @@ bool Workbench::captureReady(const QString& kind) const {
     }
     if (kind=="peers") return selection_.station_id==catalog::kStation150 && controllerPeerIds().size()>=3 && !liveScope();
     if (kind=="south") return selection_.station_id==catalog::kStation20 && !liveScope();
+    if (kind=="meter2") return selection_.station_id==catalog::kStation40 && controllerPeerIds().size()==4 && !liveScope();
     if (kind=="empty") return selection_.station_id.empty() && !selection_.plc_id.empty();
     if (kind=="dropdown") return liveScope() && areaCombo_ && areaCombo_->count()>=2;
     if (view_.rows.empty() || !liveScope()) return false;

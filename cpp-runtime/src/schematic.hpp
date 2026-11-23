@@ -8,12 +8,15 @@
 class QMouseEvent;
 class QPaintEvent;
 
+enum class CartMark { none, wait, run, done, alert };
+
 struct StationGlyph {
     std::string id;
     QString number;
     bool live=false;
     bool carts_known=false;
     QString cart[3];
+    CartMark cart_mark[3]{CartMark::none, CartMark::none, CartMark::none};
 };
 
 // Figurative layout of one PLC. Not a measured site plan and not a numbered box row.

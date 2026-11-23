@@ -157,6 +157,24 @@ int main(int argc, char** argv) {
         if (after.seq!=before.seq+1 || after.revision!=before.revision+1) throw std::runtime_error("rapid clicks advanced more than once");
         pump(1700);
         if (!step->isEnabled() || snap(directory).seq!=after.seq) throw std::runtime_error("manual wait treated as disconnected or advanced");
+        auto* link=window.findChild<QPushButton*>("disconnectButton");
+        auto* banner=window.findChild<QLabel*>("scopeBanner");
+        auto* clock=window.findChild<QLabel*>("heartbeatState");
+        if (!link || !link->isEnabled() || !banner || !clock) throw std::runtime_error("missing disconnect or clock");
+        if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
+        const auto before_break=snap(directory);
+        link->click();
+        wait([&]{ return link->isEnabled() && snap(directory).seq==before_break.seq+1; });
+        auto broken=snap(directory);
+        if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
+            throw std::runtime_error("manual disconnect did not stay on the same collector");
+        for (int guard=0; guard<4 && banner->text().contains("模拟链路断开"); ++guard) {
+            const auto current=snap(directory);
+            step->click();
+            wait([&]{ return step->isEnabled() && snap(directory).seq==current.seq+1; });
+        }
+        if (banner->text().contains("模拟链路断开") || snap(directory).mode!="manual" || snap(directory).boot!=before_break.boot)
+            throw std::runtime_error("step after disconnect did not resume the same manual collector");
         const auto held=snap(directory);
         choose(area, catalog::kAreaSeq);
         choose(plc, catalog::kPlcSeq1);
@@ -240,6 +258,39 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcSeq2);
         pump(150);
         check_labels(window);
+        choose(area, catalog::kAreaPick);
+        choose(plc, catalog::kPlcMeter2);
+        const auto meter=schematic->shapeIds();
+        if (meter.size()!=4 || !meter.contains(catalog::kStation40) || !meter.contains(catalog::kStation10) || !meter.contains(catalog::kStation70) || !meter.contains(catalog::kStation80) || meter.contains(catalog::kStation140))
+            throw std::runtime_error("meter2 layout was not exactly its four stations");
+        click_station(schematic, catalog::kStation80);
+        if (window.selectedStationId()!=catalog::kStation80 || schematic->selectedId()!=catalog::kStation80) throw std::runtime_error("meter2 graphic click missed station 80");
+        bool card_clicked=false;
+        for (auto* button : window.findChildren<QPushButton*>("stationCard")) {
+            if (button->property("stationId").toString()!=QString::fromUtf8(catalog::kStation10)) continue;
+            button->click();
+            card_clicked=true;
+        }
+        if (!card_clicked || window.selectedStationId()!=catalog::kStation10 || cell(detail, "工位").contains(catalog::kStation140) || points->rowCount()!=0)
+            throw std::runtime_error("meter2 number focus reused station 140");
+        assert_no_live_leak(window);
+        for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
+            window.resize(size);
+            pump(200);
+            check_labels(window);
+            for (auto name : {"factoryCombo", "areaCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+        }
+        const auto before_empty=snap(directory);
+        for (auto plc_id : {catalog::kPlcSeq2, catalog::kPlcSeq3, catalog::kPlcSeq4}) {
+            choose(area, catalog::kAreaSeq);
+            choose(plc, plc_id);
+            if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
+                throw std::runtime_error("empty sequence plc showed another layout");
+            check_labels(window);
+        }
+        const auto after_empty=snap(directory);
+        if (after_empty.mode!=before_empty.mode || after_empty.revision!=before_empty.revision || after_empty.boot!=before_empty.boot)
+            throw std::runtime_error("empty plc switching changed collector ownership");
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
         click_station(schematic, catalog::kStation150);

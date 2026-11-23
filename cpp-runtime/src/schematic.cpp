@@ -120,11 +120,11 @@ void SchematicView::drawBay(QPainter& painter, const Bay& bay, const StationGlyp
     add(258, 10, 118, 28, 30, 26, QColor("#efe6d4"), QColor("#c3b496"), QColor("#8d7b5e"));
     if (glyph.live && glyph.carts_known) {
         for (int index=0; index<3; ++index) {
-            const bool alert=glyph.cart[index].contains("阻塞") || glyph.cart[index].contains("未知");
-            add(118 + index * 44, 132, 4, 36, 24, 16,
-                alert ? QColor("#f6e2c4") : QColor("#f7f8fa"),
-                alert ? QColor("#c48a45") : QColor("#8ea0b5"),
-                alert ? QColor("#8a5a12") : QColor("#5d6d82"));
+            const CartMark mark=glyph.cart_mark[index];
+            const QColor top=mark==CartMark::alert ? QColor("#f6e2c4") : mark==CartMark::done ? QColor("#e7ebf0") : mark==CartMark::wait ? QColor("#f7f8fa") : QColor("#f4f7fb");
+            const QColor side=mark==CartMark::alert ? QColor("#c48a45") : mark==CartMark::done ? QColor("#5c6b7c") : mark==CartMark::wait ? QColor("#b7c0cc") : QColor("#7f97b8");
+            const QColor end=mark==CartMark::alert ? QColor("#8a5a12") : mark==CartMark::done ? QColor("#1c2430") : mark==CartMark::wait ? QColor("#8b96a6") : QColor("#1d4e89");
+            add(118 + index * 44, 132, 4, 36, 24, 16, top, side, end);
             roll(124 + index * 44, 134, 0, 6);
             roll(146 + index * 44, 134, 0, 6);
             roll(124 + index * 44, 154, 0, 6);
@@ -203,7 +203,7 @@ void SchematicView::paintEvent(QPaintEvent*) {
     caption.setPixelSize(12);
     caption.setBold(true);
     painter.setFont(caption);
-    const QString title=plc_name_.isEmpty() ? "未选择 PLC" : plc_name_+" · 示意，不是现场实测图 · 无平面坐标";
+    const QString title=plc_name_.isEmpty() ? "未选择 PLC" : plc_name_+" · 通用示意，不是实测布局 · 层数与动线未提供";
     painter.drawText(QRectF(12, 6, width()-24, 22), Qt::AlignLeft|Qt::AlignVCenter, title);
     if (!scene_set_) return;
     if (stations_.empty()) {

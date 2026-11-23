@@ -1,4 +1,34 @@
-# 钱塘二厂导航纠正（本地未推送）
+# 钱塘二厂模拟示意版交付
+
+日期：2026-11-23。在 `518cf6bd690d2a2779ffb8856e602dd3b6ec5dfb` 之上完成钱塘目录、单 PLC 示意和北京时间显示，并推回 `experiment/cpp-runtime`。`main` 保持 `82a8232202f39bd423d43c69cd19f7061cbc2336`，没有检出或推送。这是模拟示意，不是生产上线，也不是现场布局验收。
+
+环境：Linux，GCC 13.3.0，CMake 3.28.3，SQLite 3.45.1，Qt 6.4.2，Python 3.12.3，Node v22.23.4，Noto Sans CJK SC，Xvfb。Qt 配置打印 `Could NOT find XKB`；`xcb` 仍完成真实窗口抓图。未在 Windows、MINGW64、真实 DPI 或现场协议上运行。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j$(nproc)
+ctest --test-dir /tmp/logistics-release --output-on-failure
+cmake -S cpp-runtime -B /tmp/logistics-core -DBUILD_HMI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-core -j$(nproc)
+ctest --test-dir /tmp/logistics-core --output-on-failure
+npm test --prefix runtime
+```
+
+- Qt Release CTest **7/7**：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`、`widgets_controls`、`hmi_refresh`。
+- `BUILD_HMI=OFF` 核心 CTest **5/5**：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`。
+- Node runtime **49/49**，0 fail / 0 skip。`runtime/drivers/opcua` 的独立测试未跑。
+- 控件测试实际点击了图上工位和编号按钮。仪表二只含 40/10/70/80，排序二、三、四保持空态。140 的历史、质量和点表不出现在其他工位。点表每行 `executable_write` 为 false。
+- 手动连点只推进一帧；模拟断链后单步仍在同一采集器上继续；取消恢复自动不改变模式；确认后回到自动。来回切换 PLC 不改变模式、修订号和启动身份。
+- 右上心跳和历史接收时间显示北京时间（UTC+8）。SQLite 里的 `received_ms` / `heartbeat_ms` 仍是 UTC 毫秒。
+- 140 图内三辆料车与下方状态卡共用阶段色：等待灰、扫码或分拣蓝、完成深色、阻塞或未知琥珀。其他工位只画一辆无阶段料车。
+
+截图由 Xvfb + `QT_QPA_PLATFORM=xcb` 的 `hmi` 抓取，不进 Git。外装、仪表一、排序一、排序二各有 1280×800 和 1100×650；仪表二另有同两档。图题写明通用示意，层数和动线未提供。1100 宽下工位按钮在图下，状态文字未被裁切。
+
+尚未确认：现场平面和各工位真实形体、层数、动线、LWMS／华睿／库卡报文、140 点表冲突地址的现场结论、Windows 字体与 DPI、生产权限和安全联锁。
+
+---
+
+# 钱塘二厂导航纠正（中间记录，随后已纳入上一节交付）
 
 日期：2026-11-23。在 `518cf6bd690d2a2779ffb8856e602dd3b6ec5dfb` 之上改目录和界面，工作分支留在本地，没有推送 `experiment/cpp-runtime`，也没有动 `main`（`82a8232202f39bd423d43c69cd19f7061cbc2336`）。
 
