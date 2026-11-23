@@ -2,47 +2,48 @@
 #include <QColor>
 #include <QPointF>
 #include <QStringList>
-#include <QSvgRenderer>
 #include <QWidget>
-#include <memory>
 #include <string>
 #include <vector>
 class QMouseEvent;
 class QPaintEvent;
 
-struct SvgRect { std::string id; double x=0, y=0, w=0, h=0; };
+struct StationGlyph {
+    std::string id;
+    QString number;
+    bool live=false;
+    bool carts_known=false;
+    QString cart[3];
+};
 
-// Native Qt view of the synthetic SVG. Hit targets are the file's own rects.
+// Figurative layout of one PLC. Not a measured site plan and not a numbered box row.
 class SchematicView final : public QWidget {
     Q_OBJECT
 public:
     explicit SchematicView(QWidget* parent=nullptr);
-    explicit SchematicView(const QString& resource, QWidget* parent=nullptr);
-    bool loaded() const;
+    bool loaded() const { return scene_set_; }
     QString loadError() const { return error_; }
-    void setHighlight(const std::string& selected, const std::vector<std::string>& peers, const std::string& zone);
-    QString selectedId() const { return QString::fromStdString(selected_); }
+    void setScene(const QString& plcName, const QString& areaCode, const std::vector<StationGlyph>& stations, const std::string& focusId);
+    QString selectedId() const { return QString::fromStdString(focus_); }
     QStringList peerIds() const;
     QColor markerColor(const QString& id) const;
     QString stationAt(const QPointF& widgetPoint) const;
     QRectF stationRect(const QString& id) const;
     QStringList shapeIds() const;
-    QSize sizeHint() const override { return {640, 420}; }
+    QSize sizeHint() const override { return {860, 460}; }
 signals:
     void stationActivated(const QString& stationId);
 protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
 private:
-    void load();
-    void parse(const std::string& xml);
-    QRectF content() const;
-    QRectF mapSvg(const SvgRect& shape) const;
-    QString resource_;
-    std::unique_ptr<QSvgRenderer> renderer_;
-    std::vector<SvgRect> rects_;
+    struct Bay { std::string id; QRectF rect; };
+    std::vector<Bay> bays() const;
+    void drawBay(QPainter& painter, const Bay& bay, const StationGlyph& glyph) const;
+    bool scene_set_=false;
     QString error_;
-    std::string selected_, zone_;
-    std::vector<std::string> peers_;
-    double vbX_=0, vbY_=0, vbW_=1000, vbH_=640;
+    QString plc_name_;
+    QString area_code_;
+    std::vector<StationGlyph> stations_;
+    std::string focus_;
 };

@@ -87,13 +87,8 @@ void assert_no_live_leak(Workbench& window) {
     if (banner) for (const auto& word : banned) if (banner->text().contains(word)) throw std::runtime_error("leaked live banner");
 }
 void check_bad_svg() {
-    QFile file(QDir::tempPath()+"/cpp-bad-schematic.svg");
-    if (!file.open(QIODevice::WriteOnly|QIODevice::Truncate)) throw std::runtime_error("cannot write bad svg");
-    file.write("<svg viewBox=\"0 0 10 10\"><rect id=\"stn.x\" x=\"bad\" y=\"0\" width=\"1\" height=\"1\"/></svg>");
-    file.close();
-    SchematicView broken(file.fileName());
-    if (broken.loaded() || !broken.stationAt(QPointF(1, 1)).isEmpty()) throw std::runtime_error("malformed svg accepted");
-    if (broken.loadError().isEmpty()) throw std::runtime_error("malformed svg had no error");
+    SchematicView blank;
+    if (blank.loaded() || !blank.stationAt(QPointF(1, 1)).isEmpty()) throw std::runtime_error("empty layout reported a station");
 }
 void click_station(SchematicView* schematic, const char* id) {
     const auto rect=schematic->stationRect(QString::fromUtf8(id));
@@ -130,26 +125,19 @@ int main(int argc, char** argv) {
         auto* factory=window.findChild<QComboBox*>("factoryCombo");
         auto* area=window.findChild<QComboBox*>("areaCombo");
         auto* plc=window.findChild<QComboBox*>("plcCombo");
-        auto* station=window.findChild<QComboBox*>("stationCombo");
         auto* detail=window.findChild<QTableWidget*>("detailTable");
         auto* history=window.findChild<QTableWidget*>("historyTable");
         auto* points=window.findChild<QTableWidget*>("pointAuditTable");
         auto* schematic=window.findChild<SchematicView*>("schematicView");
-        if (!factory || !area || !plc || !station || !detail || !history || !points || !schematic) throw std::runtime_error("missing native chrome");
+        if (!factory || !area || !plc || !detail || !history || !points || !schematic) throw std::runtime_error("missing native chrome");
+        if (window.findChild<QComboBox*>("stationCombo")) throw std::runtime_error("station dropdown is not a navigation level");
         if (!window.findChild<QWidget*>("catalogPane") || !window.findChild<QWidget*>("commandPane") || !window.findChild<QSplitter*>("mainSplit"))
             throw std::runtime_error("missing navigation pane or splitter");
         if (QString(schematic->metaObject()->className())!="SchematicView" || !schematic->loaded())
             throw std::runtime_error("schematic resource did not load");
-        const auto model=catalog::Directory::qiantang();
-        QStringList station_shapes, plc_shapes;
-        for (const auto& id : schematic->shapeIds()) {
-            if (id.startsWith("stn.")) station_shapes.push_back(id);
-            if (id.startsWith("plc.cfg.")) plc_shapes.push_back(id);
-        }
-        if (station_shapes.size()!=static_cast<int>(model.stations.size()) || plc_shapes.size()!=static_cast<int>(model.plcs.size()))
-            throw std::runtime_error("svg coverage does not match catalog");
-        for (const auto& row : model.stations) if (!station_shapes.contains(QString::fromStdString(row.id))) throw std::runtime_error("station missing from svg");
-        for (const auto& row : model.plcs) if (!plc_shapes.contains(QString::fromStdString(row.id))) throw std::runtime_error("plc missing from svg");
+        const auto shown=schematic->shapeIds();
+        if (shown.size()!=3 || !shown.contains(catalog::kStation140) || !shown.contains(catalog::kStation150) || !shown.contains(catalog::kStation160) || shown.contains(catalog::kStation210) || shown.contains(catalog::kStation20))
+            throw std::runtime_error("layout showed stations outside the current PLC");
         wait([&]{ return mode->isEnabled(); });
         wait([&]{ return history->rowCount()>0; });
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
@@ -170,9 +158,13 @@ int main(int argc, char** argv) {
         pump(1700);
         if (!step->isEnabled() || snap(directory).seq!=after.seq) throw std::runtime_error("manual wait treated as disconnected or advanced");
         const auto held=snap(directory);
-        click_station(schematic, catalog::kStation210);
-        if (window.selectedStationId()!=catalog::kStation210 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq1 || station->currentData().toString()!=catalog::kStation210)
+        choose(area, catalog::kAreaSeq);
+        choose(plc, catalog::kPlcSeq1);
+        click_station(schematic, catalog::kStation220);
+        if (window.selectedStationId()!=catalog::kStation220 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq1)
             throw std::runtime_error("svg click did not sync dropdowns");
+        if (schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().size()!=2)
+            throw std::runtime_error("sequence layout still showed another PLC");
         if (window.confirmedMode()!="manual" || step->isEnabled() || mode->isEnabled()) throw std::runtime_error("non-live station enabled control");
         if (cell(detail, "业务模式")!="排序区" || cell(detail, "运行模式")!="手动") throw std::runtime_error("sequence selection changed runtime mode");
         if (points->rowCount()!=0) throw std::runtime_error("140 point sheet applied outside station 140");
@@ -189,9 +181,11 @@ int main(int argc, char** argv) {
         if (window.selectedStationId()!=selected) throw std::runtime_error("miss click changed selection");
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
-        choose(station, catalog::kStation150);
+        click_station(schematic, catalog::kStation150);
+        if (schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
+            throw std::runtime_error("pack layout showed another PLC");
         if (schematic->selectedId()!=catalog::kStation150 || schematic->markerColor(QString::fromUtf8(catalog::kStation150))==schematic->markerColor(QString::fromUtf8(catalog::kStation140)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation160)).isValid())
-            throw std::runtime_error("dropdown did not sync plc highlight");
+            throw std::runtime_error("diagram click did not focus the station");
         const auto peers=cell(detail, "关联工位");
         if (!peers.contains(catalog::kStation140) || !peers.contains(catalog::kStation150) || !peers.contains(catalog::kStation160) || peers.contains(catalog::kStation210))
             throw std::runtime_error("plc peer list incorrect");
@@ -199,7 +193,7 @@ int main(int argc, char** argv) {
         assert_no_live_leak(window);
         choose(area, catalog::kAreaSeq);
         choose(plc, catalog::kPlcSeq2);
-        if (!window.selectedStationId().isEmpty() || station->currentText()!="未配置" || cell(detail, "实时范围")!="未配置" || step->isEnabled())
+        if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
             throw std::runtime_error("empty plc was not unconfigured");
         for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
         if (area->currentData().toString()!=catalog::kAreaPick || window.selectedStationId()!=catalog::kStation140)
@@ -230,14 +224,14 @@ int main(int argc, char** argv) {
         });
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
-        choose(station, catalog::kStation140);
+        click_station(schematic, catalog::kStation140);
         wait([&]{ return history->rowCount()>0 && window.liveScope(); });
         for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
             window.resize(size);
             pump(250);
             if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
             check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "plcCombo", "stationCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "areaCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
         choose(area, catalog::kAreaSeq);
         window.resize(1100, 650);
@@ -248,7 +242,7 @@ int main(int argc, char** argv) {
         check_labels(window);
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
-        choose(station, catalog::kStation150);
+        click_station(schematic, catalog::kStation150);
         pump(150);
         check_labels(window);
         assert_no_live_leak(window);

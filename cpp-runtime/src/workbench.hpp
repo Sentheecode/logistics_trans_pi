@@ -37,6 +37,7 @@ private:
     void setSelection(catalog::Selection selection);
     void refill();
     void fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected);
+    void rebuildCards();
     static QString comboId(const QComboBox* box);
     std::filesystem::path directory_;
     catalog::Directory catalog_;
@@ -46,15 +47,15 @@ private:
     std::future<std::string> command_;
     bool waiting_confirmation_=false, available_=false, updating_=false, split_applied_=false;
     std::int64_t command_revision_=0, last_seq_=0;
-    std::string last_mode_;
+    std::string last_mode_, cards_plc_;
     int observations_=0;
-    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *stationCombo_=nullptr;
+    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr;
     QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
     QLabel *stationTitle_=nullptr, *stationMeta_=nullptr, *configLine_=nullptr, *lineState_=nullptr, *peerLine_=nullptr, *interfaceLine_=nullptr, *plcAuto_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
-    QWidget *cartStrip_=nullptr;
+    QWidget *cartStrip_=nullptr, *cardRow_=nullptr;
     QFrame *cartFrame_[3]{};
     QLabel *cartPhase_[3]{}, *cartNote_[3]{};
     SchematicView* schematic_=nullptr;

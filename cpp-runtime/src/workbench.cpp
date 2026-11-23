@@ -191,7 +191,6 @@ Workbench::Workbench(std::filesystem::path directory)
     addCombo("工厂", &factoryCombo_, "factoryCombo");
     addCombo("区域", &areaCombo_, "areaCombo");
     addCombo("PLC", &plcCombo_, "plcCombo");
-    addCombo("工位", &stationCombo_, "stationCombo");
     auto* commandPane=new QWidget(rail);
     commandPane->setObjectName("commandPane");
     auto* commandLayout=new QVBoxLayout(commandPane);
@@ -224,8 +223,11 @@ Workbench::Workbench(std::filesystem::path directory)
     railLayout->addStretch(1);
 
     schematic_=new SchematicView;
-    schematic_->setMinimumHeight(180);
-    auto* caption=new QLabel("蓝框当前工位，橙框同一 PLC，虚线框表示工位未配置。线体不按 PLC 推断。");
+    schematic_->setMinimumHeight(260);
+    cardRow_=new QWidget;
+    new QHBoxLayout(cardRow_);
+    cardRow_->layout()->setContentsMargins(0, 0, 0, 0);
+    auto* caption=new QLabel("只显示当前 PLC。蓝框是正在看的工位。进、出、机械臂和料仓都是示意，没有实测尺寸。线体不按 PLC 推断。");
     caption->setObjectName("schematicCaption");
     caption->setWordWrap(true);
     caption->setObjectName("muted");
@@ -291,6 +293,7 @@ Workbench::Workbench(std::filesystem::path directory)
     diagramLayout->setContentsMargins(0, 0, 0, 0);
     diagramLayout->setSpacing(0);
     diagramLayout->addWidget(schematic_, 1);
+    diagramLayout->addWidget(cardRow_);
     diagramLayout->addWidget(caption);
     diagramLayout->addWidget(stage);
 
@@ -409,12 +412,6 @@ Workbench::Workbench(std::filesystem::path directory)
         next.plc_id=comboId(plcCombo_).toStdString();
         setSelection(next);
     });
-    connect(stationCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
-        if (updating_) return;
-        auto next=selection_;
-        next.station_id=comboId(stationCombo_).toStdString();
-        setSelection(next);
-    });
     connect(step_, &QPushButton::clicked, this, [this] { command("step"); });
     connect(disconnect_, &QPushButton::clicked, this, [this] { command("disconnect"); });
     connect(modeButton_, &QPushButton::clicked, this, [this] {
@@ -478,15 +475,30 @@ void Workbench::fillCombo(QComboBox* box, const std::vector<std::pair<QString, Q
 QString Workbench::comboId(const QComboBox* box) { return box ? box->currentData().toString() : QString(); }
 
 void Workbench::refill() {
-    std::vector<std::pair<QString, QString>> factories, areas, plcs, stations;
+    std::vector<std::pair<QString, QString>> factories, areas, plcs;
     for (auto& row : catalog_.factories) factories.emplace_back(QString::fromStdString(row.id), QString::fromStdString(row.name));
     for (auto* row : catalog_.areas_of(selection_.factory_id)) areas.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.plcs_of(selection_.area_id)) plcs.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
-    for (auto* row : catalog_.stations_of(selection_.plc_id)) stations.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     fillCombo(factoryCombo_, factories, QString::fromStdString(selection_.factory_id));
     fillCombo(areaCombo_, areas, QString::fromStdString(selection_.area_id));
     fillCombo(plcCombo_, plcs, QString::fromStdString(selection_.plc_id));
-    fillCombo(stationCombo_, stations, QString::fromStdString(selection_.station_id));
+}
+
+void Workbench::rebuildCards() {
+    auto* layout=qobject_cast<QHBoxLayout*>(cardRow_->layout());
+    if (!layout) return;
+    while (QLayoutItem* item=layout->takeAt(0)) { delete item->widget(); delete item; }
+    for (auto* station : catalog_.stations_of(selection_.plc_id)) {
+        auto* button=new QPushButton(QString::fromStdString(station->name), cardRow_);
+        button->setCheckable(true);
+        button->setProperty("stationId", QString::fromStdString(station->id));
+        button->setObjectName("stationCard");
+        button->setMinimumHeight(28);
+        layout->addWidget(button);
+        const auto id=station->id;
+        connect(button, &QPushButton::clicked, this, [this, id]{ activateSchematicStation(QString::fromStdString(id)); });
+    }
+    layout->addStretch(1);
 }
 
 void Workbench::setSelection(catalog::Selection selection) {
@@ -494,12 +506,7 @@ void Workbench::setSelection(catalog::Selection selection) {
     updating_=true;
     selection_=catalog_.reconcile(std::move(selection));
     refill();
-    std::vector<std::string> peers;
-    std::string plc;
-    if (auto* owner=catalog_.plc_of_station(selection_.station_id)) plc=owner->id;
-    else plc=selection_.plc_id;
-    for (auto* station : catalog_.stations_of(plc)) peers.push_back(station->id);
-    schematic_->setHighlight(selection_.station_id, peers, plc);
+    if (cards_plc_!=selection_.plc_id) { cards_plc_=selection_.plc_id; rebuildCards(); }
     updating_=false;
     render();
     buttons();
@@ -632,6 +639,21 @@ void Workbench::render() {
     interfaceLine_->setText(area && area->code=="seq"
         ? "华睿：未连接 · 汇总/严控与完成协议未定 · 不填假数量"
         : "库卡：未授权通行 · LWMS：未连接 · 库位映射待补");
+    const bool carts_known=available_ && !view_.rows.empty() && view_.rows.front().quality=="good" && view_.freshness!="clock_uncertain" && (view_.runtime.mode=="manual" || view_.freshness=="recent");
+    std::vector<StationGlyph> glyphs;
+    for (auto* item : catalog_.stations_of(selection_.plc_id)) {
+        StationGlyph glyph;
+        glyph.id=item->id;
+        glyph.number=QString::fromStdString(item->name);
+        glyph.live=catalog_.is_live(item->id);
+        if (glyph.live && !view_.rows.empty()) {
+            glyph.carts_known=true;
+            for (int index=0; index<3; ++index) glyph.cart[index]=carts_known ? stateText(view_.rows.front().carts[index]) : QString("状态未知");
+        }
+        glyphs.push_back(glyph);
+    }
+    schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), area ? QString::fromStdString(area->code) : QString(), glyphs, selection_.station_id);
+    if (cardRow_) for (auto* button : cardRow_->findChildren<QPushButton*>()) button->setChecked(button->property("stationId").toString().toStdString()==selection_.station_id);
     setRows(detailTable_, {
         {"工位", station ? QString::fromStdString(station->id+" "+station->name) : "未配置"},
         {"业务模式", area ? QString::fromStdString(area->name) : "未配置"},
