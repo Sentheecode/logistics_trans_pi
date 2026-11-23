@@ -768,7 +768,7 @@ Workbench::Workbench(std::filesystem::path directory)
     logDetail_=new QLabel("选择一行查看详情。存储仍是 UTC 毫秒。");
     logDetail_->setObjectName("logDetail");
     logDetail_->setWordWrap(true);
-    logDetail_->setMinimumHeight(112);
+    logDetail_->setMinimumHeight(168);
     logDetail_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     auto* logPage=new QWidget;
     auto* logLayout=new QVBoxLayout(logPage);
@@ -787,7 +787,7 @@ Workbench::Workbench(std::filesystem::path directory)
     logTools->addStretch(1);
     auto* logDetailBox=new QWidget;
     logDetailBox->setObjectName("surface");
-    logDetailBox->setMinimumHeight(148);
+    logDetailBox->setMinimumHeight(208);
     auto* logDetailLayout=new QVBoxLayout(logDetailBox);
     logDetailLayout->setContentsMargins(12, 8, 12, 8);
     auto* logDetailTitle=new QLabel("详情", logDetailBox);
