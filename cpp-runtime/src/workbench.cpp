@@ -518,9 +518,14 @@ Workbench::Workbench(std::filesystem::path directory)
     recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     auto* recentLabel=new QLabel("近期记录", workspace);
     recentLabel->setObjectName("section");
+    auto* recentScope=new QLabel("当前 PLC 没有模拟记录，不展示工位 140 的日志。", workspace);
+    recentScope->setObjectName("recentScope");
+    recentScope->setWordWrap(true);
+    recentScope->hide();
     workspaceLayout->addWidget(runBody);
     workspaceLayout->addWidget(cartStrip_);
     workspaceLayout->addWidget(recentLabel);
+    workspaceLayout->addWidget(recentScope);
     workspaceLayout->addWidget(recentTable_, 1);
     workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     runLayout->addWidget(workspace, 1);
@@ -587,6 +592,8 @@ Workbench::Workbench(std::filesystem::path directory)
     pointDetail_=new QLabel("选择一行查看来源原文。英文审计码只出现在这里。");
     pointDetail_->setObjectName("pointDetail");
     pointDetail_->setWordWrap(true);
+    pointDetail_->setMinimumHeight(128);
+    pointDetail_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     auto* pointPage=new QWidget;
     auto* pointLayout=new QVBoxLayout(pointPage);
     pointLayout->setContentsMargins(16, 12, 16, 12);
@@ -599,6 +606,7 @@ Workbench::Workbench(std::filesystem::path directory)
     pointTools->addStretch(1);
     auto* detailBox=new QWidget;
     detailBox->setObjectName("surface");
+    detailBox->setMinimumHeight(168);
     auto* detailLayout=new QVBoxLayout(detailBox);
     detailLayout->setContentsMargins(12, 8, 12, 8);
     auto* detailTitle=new QLabel("选中行", detailBox);
@@ -760,6 +768,8 @@ Workbench::Workbench(std::filesystem::path directory)
     logDetail_=new QLabel("选择一行查看详情。存储仍是 UTC 毫秒。");
     logDetail_->setObjectName("logDetail");
     logDetail_->setWordWrap(true);
+    logDetail_->setMinimumHeight(112);
+    logDetail_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     auto* logPage=new QWidget;
     auto* logLayout=new QVBoxLayout(logPage);
     logLayout->setContentsMargins(16, 12, 16, 12);
@@ -777,6 +787,7 @@ Workbench::Workbench(std::filesystem::path directory)
     logTools->addStretch(1);
     auto* logDetailBox=new QWidget;
     logDetailBox->setObjectName("surface");
+    logDetailBox->setMinimumHeight(148);
     auto* logDetailLayout=new QVBoxLayout(logDetailBox);
     logDetailLayout->setContentsMargins(12, 8, 12, 8);
     auto* logDetailTitle=new QLabel("详情", logDetailBox);
@@ -1163,6 +1174,11 @@ void Workbench::syncModuleChrome() {
     }
     applyHistoryFilter();
     applyPointFilter();
+    if (recentTable_) {
+        const bool live=liveScope();
+        recentTable_->setVisible(live);
+        if (auto* note=findChild<QLabel*>("recentScope")) note->setVisible(!live);
+    }
     auto setFact=[&](const char* name, const QString& text){ if(auto* label=findChild<QLabel*>(name)) label->setText(text); };
     if(collectOwner_) collectOwner_->setText(view_.runtime.liveness=="recent" ? "独立采集进程 · 心跳正常" : "独立采集进程 · 心跳不可用");
     if(collectLive_) collectLive_->setText(liveScope() ? "sim.three-cart.v1 · 工位 140" : "当前工位没有模拟源");
