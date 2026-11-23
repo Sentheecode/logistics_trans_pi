@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/catalog">
+        <file>schematic.svg</file>
+        <file>device.svg</file>
+    </qresource>
+</RCC>

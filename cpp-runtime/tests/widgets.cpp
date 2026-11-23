@@ -1,61 +1,273 @@
+#include "catalog.hpp"
+#include "schematic.hpp"
 #include "workbench.hpp"
 #include <QApplication>
-#include <QAbstractButton>
+#include <QComboBox>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFont>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
+#include <QSplitter>
+#include <QTableWidget>
 #include <QThread>
 #include <QTimer>
+#include <QToolBar>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
-void wait(const std::function<bool()>& condition,int timeout=6000){
-    QElapsedTimer clock;clock.start();
-    while(clock.elapsed()<timeout){QCoreApplication::processEvents();if(condition())return;QThread::msleep(10);}
+#include <string>
+
+void wait(const std::function<bool()>& condition, int timeout=6000) {
+    QElapsedTimer clock; clock.start();
+    while (clock.elapsed()<timeout) { QCoreApplication::processEvents(); if (condition()) return; QThread::msleep(10); }
     throw std::runtime_error("widget condition timed out");
 }
-void pump(int ms){QElapsedTimer t;t.start();wait([&]{return t.elapsed()>ms;},ms+1000);}
-int main(int argc,char** argv){
-    QApplication app(argc,argv);
-    QFont font;font.setFamilies({"Noto Sans CJK SC","Microsoft YaHei UI","Microsoft YaHei","sans-serif"});font.setPixelSize(13);app.setFont(font);
-    if(argc!=3)return 2;
-    try{
-        Workbench window(std::filesystem::u8path(argv[1]));window.resize(1100,650);window.show();
-        auto* mode=window.findChild<QPushButton*>("modeButton");auto* step=window.findChild<QPushButton*>("primary");
-        if(std::string(argv[2])=="offline"){
-            pump(700);if(mode->isEnabled()||step->isEnabled())throw std::runtime_error("offline controls enabled");
-            std::cout<<"PASS offline controls disabled\n";return 0;
+void pump(int ms) { QElapsedTimer timer; timer.start(); wait([&]{ return timer.elapsed()>ms; }, ms+1000); }
+
+QString cell(QTableWidget* table, const QString& key) {
+    if (!table) throw std::runtime_error("missing detail table");
+    for (int row=0; row<table->rowCount(); ++row) {
+        auto* name=table->item(row, 0);
+        auto* value=table->item(row, 1);
+        if (name && value && name->text()==key) return value->text();
+    }
+    throw std::runtime_error(("missing row "+key).toStdString());
+}
+void choose(QComboBox* box, const char* id) {
+    const QString wanted=QString::fromUtf8(id);
+    const int index=box->findData(wanted);
+    if (index<0) throw std::runtime_error(std::string("missing combo id ")+id);
+    box->setCurrentIndex(index);
+}
+struct Snap { std::string mode, boot; long long revision=-1, seq=-1; };
+Snap snap(const std::filesystem::path& directory) {
+    auto view=sim::read(directory, "status");
+    return {view.runtime.mode, view.runtime.boot, view.runtime.revision, view.rows.empty()?-1:view.rows.front().seq};
+}
+void check_labels(QWidget& window) {
+    for (auto* label : window.findChildren<QLabel*>()) {
+        if (!label->isVisible() || label->wordWrap()) continue;
+        if (label->fontMetrics().horizontalAdvance(label->text())>label->contentsRect().width()+2)
+            throw std::runtime_error(("clipped label: "+label->text()).toStdString());
+        if (!label->fontMetrics().inFont(QChar(0x6a21))) throw std::runtime_error("missing Chinese glyph");
+    }
+}
+void assert_inside(QWidget& window, const char* name) {
+    auto* widget=window.findChild<QWidget*>(name);
+    if (!widget || !widget->isVisible()) throw std::runtime_error(std::string("missing visible control ")+name);
+    const QPoint point=widget->mapTo(&window, QPoint(0, 0));
+    if (point.x()<0 || point.y()<0 || point.x()+widget->width()>window.width()+2 || point.y()+widget->height()>window.height()+2)
+        throw std::runtime_error(std::string("control outside window: ")+name);
+}
+void assert_no_live_leak(Workbench& window) {
+    auto* history=window.findChild<QTableWidget*>("historyTable");
+    auto* stage=window.findChild<QTableWidget*>("stageTable");
+    auto* detail=window.findChild<QTableWidget*>("detailTable");
+    auto* peers=window.findChild<QTableWidget*>("peerTable");
+    auto* banner=window.findChild<QLabel*>("scopeBanner");
+    if (!history || history->rowCount()!=0) throw std::runtime_error("non-live station showed history");
+    if (!stage || stage->isVisible() || stage->rowCount()!=0) throw std::runtime_error("non-live station showed stages");
+    const auto scope=cell(detail, "实时范围");
+    if (scope!="未接入" && scope!="未配置") throw std::runtime_error(("unexpected scope "+scope).toStdString());
+    if (cell(detail, "模拟质量")=="正常") throw std::runtime_error("non-live station reused simulation quality");
+    if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知") throw std::runtime_error("fabricated device or stock value");
+    const QStringList banned={"扫码中", "分拣中", "工位完成", "模拟阻塞"};
+    for (auto* table : {history, stage, detail, peers}) {
+        if (!table) continue;
+        for (int row=0; row<table->rowCount(); ++row) for (int column=0; column<table->columnCount(); ++column) {
+            auto* item=table->item(row, column);
+            if (!item) continue;
+            for (const auto& word : banned) if (item->text().contains(word)) throw std::runtime_error(("leaked live text "+word).toStdString());
         }
-        wait([&]{return mode->isEnabled();});
-        if(window.confirmedMode()!="automatic"||step->isEnabled())throw std::runtime_error("auto mode controls incorrect");
-        mode->click();wait([&]{return window.confirmedMode()=="manual"&&step->isEnabled();});
-        auto before=sim::read(std::filesystem::u8path(argv[1]),"status");
-        step->click();step->click();step->click();
-        wait([&]{return step->isEnabled();});
-        auto after=sim::read(std::filesystem::u8path(argv[1]),"status");
-        if(after.rows.front().seq!=before.rows.front().seq+1)throw std::runtime_error("rapid clicks advanced more than once");
+    }
+    if (banner) for (const auto& word : banned) if (banner->text().contains(word)) throw std::runtime_error("leaked live banner");
+}
+void check_bad_svg() {
+    QFile file(QDir::tempPath()+"/cpp-bad-schematic.svg");
+    if (!file.open(QIODevice::WriteOnly|QIODevice::Truncate)) throw std::runtime_error("cannot write bad svg");
+    file.write("<svg viewBox=\"0 0 10 10\"><rect id=\"stn.x\" x=\"bad\" y=\"0\" width=\"1\" height=\"1\"/></svg>");
+    file.close();
+    SchematicView broken(file.fileName());
+    if (broken.loaded() || !broken.stationAt(QPointF(1, 1)).isEmpty()) throw std::runtime_error("malformed svg accepted");
+    if (broken.loadError().isEmpty()) throw std::runtime_error("malformed svg had no error");
+}
+void click_station(SchematicView* schematic, const char* id) {
+    const auto rect=schematic->stationRect(QString::fromUtf8(id));
+    if (rect.width()<5 || rect.height()<5) throw std::runtime_error("schematic layout empty");
+    const auto center=rect.center();
+    if (schematic->stationAt(center)!=QString::fromUtf8(id)) throw std::runtime_error("svg hit target does not match id");
+    QMouseEvent press(QEvent::MouseButtonPress, center, QPointF(schematic->mapToGlobal(center.toPoint())), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(schematic, &press);
+}
+
+int main(int argc, char** argv) {
+    QApplication app(argc, argv);
+    QFont font; font.setFamilies({"Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", "sans-serif"}); font.setPixelSize(13); app.setFont(font);
+    if (argc!=3) return 2;
+    try {
+        check_bad_svg();
+        const auto directory=std::filesystem::u8path(argv[1]);
+        Workbench window(directory);
+        window.resize(1100, 650);
+        window.show();
+        auto* mode=window.findChild<QPushButton*>("modeButton");
+        auto* step=window.findChild<QPushButton*>("primary");
+        if (!mode || !step) throw std::runtime_error("missing buttons");
+        if (std::string(argv[2])=="offline") {
+            pump(700);
+            auto* factory=window.findChild<QComboBox*>("factoryCombo");
+            auto* schematic=window.findChild<SchematicView*>("schematicView");
+            if (!factory || factory->count()<2 || !factory->isEnabled()) throw std::runtime_error("offline catalog disabled");
+            if (!schematic || !schematic->loaded()) throw std::runtime_error("offline schematic missing");
+            if (mode->isEnabled() || step->isEnabled()) throw std::runtime_error("offline controls enabled");
+            std::cout<<"PASS offline controls disabled\n";
+            return 0;
+        }
+        auto* factory=window.findChild<QComboBox*>("factoryCombo");
+        auto* business=window.findChild<QComboBox*>("businessModeCombo");
+        auto* line=window.findChild<QComboBox*>("lineCombo");
+        auto* station=window.findChild<QComboBox*>("stationCombo");
+        auto* detail=window.findChild<QTableWidget*>("detailTable");
+        auto* history=window.findChild<QTableWidget*>("historyTable");
+        auto* schematic=window.findChild<SchematicView*>("schematicView");
+        auto* device=window.findChild<QWidget*>("deviceFigure");
+        if (!factory || !business || !line || !station || !detail || !history || !schematic || !device) throw std::runtime_error("missing native chrome");
+        if (!window.findChild<QToolBar*>("catalogToolbar") || !window.findChild<QToolBar*>("commandToolbar") || !window.findChild<QSplitter*>("mainSplit"))
+            throw std::runtime_error("missing toolbar or splitter");
+        if (QString(schematic->metaObject()->className())!="SchematicView" || !schematic->loaded() || !static_cast<DeviceFigure*>(device)->loaded())
+            throw std::runtime_error("schematic resource did not load");
+        const auto model=catalog::Directory::synthetic();
+        QStringList station_shapes, zone_shapes;
+        for (const auto& id : schematic->shapeIds()) {
+            if (id.startsWith("stn.")) station_shapes.push_back(id);
+            if (id.startsWith("zone.")) zone_shapes.push_back(id);
+        }
+        if (station_shapes.size()!=static_cast<int>(model.stations.size()) || zone_shapes.size()!=static_cast<int>(model.zones.size()))
+            throw std::runtime_error("svg coverage does not match catalog");
+        for (const auto& row : model.stations) if (!station_shapes.contains(QString::fromStdString(row.id))) throw std::runtime_error("station missing from svg");
+        for (const auto& row : model.zones) if (!zone_shapes.contains(QString::fromStdString(row.id))) throw std::runtime_error("zone missing from svg");
+        wait([&]{ return mode->isEnabled(); });
+        wait([&]{ return history->rowCount()>0; });
+        if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
+        if (factory->count()<3 || business->count()!=2) throw std::runtime_error("catalog dropdowns incomplete");
+        for (int i=0; i<business->count(); ++i) if (business->itemText(i).contains("手动") || business->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into business dropdown");
+        if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知") throw std::runtime_error("live station fabricated device state");
+        if (cell(detail, "业务模式")==cell(detail, "运行模式") || !cell(detail, "实时范围").contains(QString::fromUtf8(catalog::kStream))) throw std::runtime_error("business and runtime modes not independent");
+        if (window.controllerPeerIds().size()!=3 || schematic->markerColor(QString::fromUtf8(catalog::kStationA1))==schematic->markerColor(QString::fromUtf8(catalog::kStationA2)) || !schematic->markerColor(QString::fromUtf8(catalog::kStationA2)).isValid() || schematic->markerColor(QString::fromUtf8(catalog::kStationB1)).isValid())
+            throw std::runtime_error("controller highlight incorrect");
+        mode->click();
+        wait([&]{ return window.confirmedMode()=="manual" && step->isEnabled(); });
+        auto before=snap(directory);
+        step->click(); step->click(); step->click();
+        wait([&]{ return step->isEnabled(); });
+        auto after=snap(directory);
+        if (after.seq!=before.seq+1 || after.revision!=before.revision+1) throw std::runtime_error("rapid clicks advanced more than once");
         pump(1700);
-        if(!step->isEnabled()||sim::read(std::filesystem::u8path(argv[1]),"status").rows.front().seq!=after.rows.front().seq)throw std::runtime_error("manual wait treated as disconnected or advanced");
-        // Cancellation is the default and sends no automatic-mode command.
-        QTimer::singleShot(50,[&]{auto* box=window.findChild<QMessageBox*>("confirmAutomatic");if(box)box->button(QMessageBox::No)->click();});
-        mode->click();pump(300);
-        if(window.confirmedMode()!="manual")throw std::runtime_error("cancel resumed automatic");
-        QTimer::singleShot(50,[&]{auto* box=window.findChild<QMessageBox*>("confirmAutomatic");if(box)box->button(QMessageBox::Yes)->click();});
-        mode->click();wait([&]{return window.confirmedMode()=="automatic"&&mode->isEnabled();});
-        if(step->isEnabled())throw std::runtime_error("step enabled in automatic");
-        // No leaf label may silently clip in either documented viewport.
-        for(auto size:{QSize(1100,650),QSize(1280,800)}){
-            window.resize(size);pump(250);
-            for(auto* l:window.findChildren<QLabel*>()){
-                if(!l->isVisible()||l->wordWrap())continue;
-                if(l->fontMetrics().horizontalAdvance(l->text())>l->contentsRect().width()+2)throw std::runtime_error(("clipped label: "+l->text()).toStdString());
-                if(!l->fontMetrics().inFont(QChar(0x6a21)))throw std::runtime_error("missing Chinese glyph");
-            }
+        if (!step->isEnabled() || snap(directory).seq!=after.seq) throw std::runtime_error("manual wait treated as disconnected or advanced");
+        const auto held=snap(directory);
+        click_station(schematic, catalog::kStationB1);
+        if (window.selectedStationId()!=catalog::kStationB1 || factory->currentData().toString()!=catalog::kFactoryNorth || business->currentData().toString()!=catalog::kModeNorthSort || station->currentData().toString()!=catalog::kStationB1)
+            throw std::runtime_error("svg click did not sync dropdowns");
+        if (window.confirmedMode()!="manual" || step->isEnabled() || mode->isEnabled()) throw std::runtime_error("non-live station enabled control");
+        if (cell(detail, "业务模式")!="排序区" || cell(detail, "运行模式")!="手动") throw std::runtime_error("sort selection changed runtime mode");
+        assert_no_live_leak(window);
+        step->click(); mode->click();
+        QPointF miss;
+        bool found_miss=false;
+        for (int y=0; y<schematic->height() && !found_miss; y+=7) for (int x=0; x<schematic->width() && !found_miss; x+=7)
+            if (schematic->stationAt(QPointF(x, y)).isEmpty()) { miss=QPointF(x, y); found_miss=true; }
+        if (!found_miss) throw std::runtime_error("no schematic miss point");
+        const auto selected=window.selectedStationId();
+        QMouseEvent miss_press(QEvent::MouseButtonPress, miss, QPointF(schematic->mapToGlobal(miss.toPoint())), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(schematic, &miss_press);
+        if (window.selectedStationId()!=selected) throw std::runtime_error("miss click changed selection");
+        choose(factory, catalog::kFactoryNorth);
+        choose(business, catalog::kModeNorthSps);
+        choose(line, catalog::kLineNorthSps);
+        choose(station, catalog::kStationA3);
+        if (schematic->selectedId()!=catalog::kStationA3 || schematic->markerColor(QString::fromUtf8(catalog::kStationA3))==schematic->markerColor(QString::fromUtf8(catalog::kStationA1)) || !schematic->markerColor(QString::fromUtf8(catalog::kStationA1)).isValid())
+            throw std::runtime_error("dropdown did not sync svg highlight");
+        const auto peers=cell(detail, "关联工位");
+        if (!peers.contains(catalog::kStationA1) || !peers.contains(catalog::kStationA2) || !peers.contains(catalog::kStationA3) || peers.contains(catalog::kStationB1))
+            throw std::runtime_error("controller peer list incorrect");
+        if (step->isEnabled()) throw std::runtime_error("peer station enabled control");
+        assert_no_live_leak(window);
+        choose(line, catalog::kLineNorthEmpty);
+        if (!window.selectedStationId().isEmpty() || station->currentText()!="未配置" || cell(detail, "实时范围")!="未配置" || step->isEnabled())
+            throw std::runtime_error("empty line was not unconfigured");
+        choose(factory, catalog::kFactoryEmpty);
+        if (!window.selectedStationId().isEmpty() || business->currentText()!="未配置" || line->currentText()!="未配置")
+            throw std::runtime_error("empty factory still exposed children");
+        choose(factory, catalog::kFactorySouth);
+        if (business->count()!=2) throw std::runtime_error("south business modes missing");
+        choose(business, catalog::kModeSouthSort);
+        choose(station, catalog::kStationD1);
+        const auto gamma=window.controllerPeerIds();
+        if (window.selectedStationId()!=catalog::kStationD1 || !gamma.contains(catalog::kStationC1) || !gamma.contains(catalog::kStationD1) || schematic->markerColor(QString::fromUtf8(catalog::kStationC1))==schematic->markerColor(QString::fromUtf8(catalog::kStationD1)))
+            throw std::runtime_error("cross-mode controller link not shown");
+        if (cell(detail, "业务模式")!="排序区") throw std::runtime_error("cross-mode selection changed business mode");
+        assert_no_live_leak(window);
+        for (int i=0; i<20; ++i) choose(factory, i%2 ? catalog::kFactoryNorth : catalog::kFactorySouth);
+        if (factory->currentData().toString()!=catalog::kFactoryNorth || window.selectedStationId()!=catalog::kStationA1)
+            throw std::runtime_error("parent switch did not select a legal child by id");
+        const auto browsed=snap(directory);
+        if (browsed.mode!=held.mode || browsed.revision!=held.revision || browsed.seq!=held.seq || browsed.boot!=held.boot)
+            throw std::runtime_error("directory browsing changed collector state");
+        if (!step->isEnabled() || !window.liveScope()) throw std::runtime_error("live control did not return");
+        const auto before_step=snap(directory);
+        step->click();
+        wait([&]{ return step->isEnabled() && snap(directory).seq==before_step.seq+1; });
+        if (snap(directory).revision!=before_step.revision+1) throw std::runtime_error("returned live step did not commit once");
+        QTimer::singleShot(50, [&]{ auto* box=window.findChild<QMessageBox*>("confirmAutomatic"); if (box) box->button(QMessageBox::No)->click(); });
+        mode->click();
+        pump(300);
+        if (window.confirmedMode()!="manual") throw std::runtime_error("cancel resumed automatic");
+        QTimer::singleShot(50, [&]{ auto* box=window.findChild<QMessageBox*>("confirmAutomatic"); if (box) box->button(QMessageBox::Yes)->click(); });
+        mode->click();
+        wait([&]{ return window.confirmedMode()=="automatic" && mode->isEnabled(); });
+        if (step->isEnabled()) throw std::runtime_error("step enabled in automatic");
+        const auto running=snap(directory);
+        choose(business, catalog::kModeNorthSort);
+        wait([&]{
+            if (history->rowCount()!=0) throw std::runtime_error("sort view showed live history");
+            const auto now=snap(directory);
+            if (now.mode!="automatic" || now.revision!=running.revision || now.boot!=running.boot) throw std::runtime_error("browsing changed automatic collector");
+            return now.seq>running.seq;
+        });
+        choose(factory, catalog::kFactoryNorth);
+        choose(business, catalog::kModeNorthSps);
+        choose(station, catalog::kStationA1);
+        wait([&]{ return history->rowCount()>0 && window.liveScope(); });
+        for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
+            window.resize(size);
+            pump(250);
+            if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
+            check_labels(window);
+            for (auto name : {"factoryCombo", "businessModeCombo", "lineCombo", "stationCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
-        std::cout<<"PASS widgets: actual mode buttons, rapid-click suppression, explicit confirmation/cancel, two viewport sizes, Chinese glyphs\n";
+        choose(business, catalog::kModeNorthSort);
+        window.resize(1100, 650);
+        pump(200);
+        check_labels(window);
+        choose(factory, catalog::kFactoryNorth);
+        choose(business, catalog::kModeNorthSps);
+        choose(line, catalog::kLineNorthEmpty);
+        pump(150);
+        check_labels(window);
+        choose(line, catalog::kLineNorthSps);
+        choose(station, catalog::kStationA2);
+        pump(150);
+        check_labels(window);
+        assert_no_live_leak(window);
+        std::cout<<"PASS widgets: manual/automatic retained, dropdown and svg sync, controller fan-out, simulated scope, two viewport sizes\n";
         return 0;
-    }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
+    } catch (const std::exception& error) {
+        std::cerr<<error.what()<<'\n';
+        return 1;
+    }
 }

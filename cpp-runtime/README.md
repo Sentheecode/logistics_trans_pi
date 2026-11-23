@@ -2,7 +2,7 @@
 
 这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。旧 Node runtime、Pi 扩展和已发布契约保持原样。
 
-交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询、展示状态和最近 40 帧历史，并通过独立本地通道请求有限模拟操作。HMI、诊断均不启动或停止采集进程。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
+交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。工作台包含工厂、业务模式、线体、工位四级下拉，控制器一对多示意图，以及只对唯一模拟流工位展示的最近 40 帧历史和有限模拟操作。HMI、诊断均不启动或停止采集进程。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
 
 ## 已实现的演示
 
@@ -26,7 +26,7 @@ HMI 不启动/停止采集；关窗和重开都不会改变模式或推进任务
 
 控制通道为同用户本地文件锁单槽信箱 `control.mailbox`，仅四种有限模拟命令。请求有启动身份、修订号、截止时间和长度上限；过期、重复修订号、并发忙均失败。不是通用控制面，无网络监听和设备通道。使用用户私有本地目录；Linux 0600 文件权限，Windows 继承目录 ACL，Windows 文件锁/权限仍待实测。CLI/Pi 仍只读。BUILD_TESTING 下的 `control_test_client` 是自动化测试夹具，不作为产品 CLI。
 
-界面为中文，标准窗口 1280×800，也支持缩到 1100×650。Linux 需要中文字体（例如 Debian/Ubuntu 的 `fonts-noto-cjk` 包提供 Noto Sans CJK SC）；Windows 优先已有微软雅黑字体。没有 WebView、Qt Charts 或图片替代真实状态。
+界面为中文，标准窗口 1280×800，也支持缩到 1100×650。Linux 需要中文字体（例如 Debian/Ubuntu 的 `fonts-noto-cjk` 包提供 Noto Sans CJK SC）；Windows 优先已有微软雅黑字体。没有 WebView 或 Qt Charts。库区／工位图和设备图是合成 SVG，设备图标注“示意”；它们不代替质量、阶段和历史文字。业务模式（SPS／排序区）与手动／自动是两个字段。只有目录中标记为 `sim.three-cart.v1` 的工位显示实时数据和原有控制按钮，浏览其他工位不改变采集。
 
 ## Windows 下载、构建、启动（非管理员）
 
@@ -41,7 +41,7 @@ git rev-parse HEAD
 # 已有上一版目录：确认没有未提交改动后用 git pull --ff-only origin experiment/cpp-runtime 更新。
 
 # 在用户可写的 D:/msys64 内安装开发包，不需要 Windows 管理员权限。
-pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
+pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-svg mingw-w64-x86_64-python
 export PATH=/mingw64/bin:$PATH
 g++ --version
 cmake --version
@@ -53,7 +53,7 @@ cmake --build /d/build/logistics-cpp -j4
 ctest --test-dir /d/build/logistics-cpp --output-on-failure
 ```
 
-若 Qt 不可用，可加 `-DBUILD_HMI=OFF` 构建核心与 CLI；这不会生成伪 HMI。测试使用 Python，纯构建可用 `-DBUILD_TESTING=OFF`。程序不依赖 Qt Charts。
+若 Qt 不可用，可加 `-DBUILD_HMI=OFF` 构建核心与 CLI；这不会生成伪 HMI。测试使用 Python，纯构建可用 `-DBUILD_TESTING=OFF`。程序不依赖 Qt Charts。HMI 需要 Qt Svg 来绘制合成示意图；没有该组件时不要改用网页代替。
 
 打开三个独立 MINGW64 终端（每个设置 `export PATH=/mingw64/bin:$PATH`）：
 

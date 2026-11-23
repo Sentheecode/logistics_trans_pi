@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640">
+  <title>合成目录示意</title>
+  <rect width="1000" height="640" fill="#e8eaed"/>
+  <text x="16" y="26" font-size="16" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">合成目录示意 · 不是现场布局</text>
+  <text x="930" y="26" font-size="16" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">示意</text>
+  <rect x="12" y="40" width="560" height="580" fill="#fbfcfd" stroke="#d5dbe3"/>
+  <rect x="588" y="40" width="396" height="580" fill="#fbfcfd" stroke="#d5dbe3"/>
+  <text x="24" y="62" font-size="15" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">北岸合成厂</text>
+  <text x="24" y="86" font-size="13" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">SPS · 合成线甲</text>
+  <rect id="zone.north.rack" x="24" y="96" width="248" height="150" fill="#eef2f6" stroke="#9aa6b4"/>
+  <text x="32" y="116" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">合成库区甲</text>
+  <rect id="stn.north.sps.a1" x="36" y="132" width="104" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <rect id="stn.north.sps.a2" x="152" y="132" width="104" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <rect id="stn.north.sps.a3" x="292" y="132" width="104" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <text x="70" y="166" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">A1</text>
+  <text x="58" y="186" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位甲</text>
+  <text x="186" y="166" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">A2</text>
+  <text x="174" y="186" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位乙</text>
+  <text x="326" y="166" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">A3</text>
+  <text x="314" y="186" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位丙</text>
+  <rect x="24" y="252" width="220" height="28" fill="none" stroke="#b7c0cc" stroke-dasharray="4 3"/>
+  <text x="32" y="271" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">空线：目录中无工位</text>
+  <text x="24" y="308" font-size="13" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">排序区 · 排序线乙</text>
+  <rect id="zone.north.sortbin" x="24" y="316" width="132" height="120" fill="#eef2f6" stroke="#9aa6b4"/>
+  <text x="32" y="334" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">库区乙</text>
+  <rect id="stn.north.sort.b1" x="36" y="348" width="104" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <rect id="stn.north.sort.b2" x="180" y="348" width="104" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <text x="70" y="382" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">B1</text>
+  <text x="58" y="402" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位丁</text>
+  <text x="214" y="382" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">B2</text>
+  <text x="202" y="402" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位戊</text>
+  <text x="620" y="62" font-size="15" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">南湾合成厂</text>
+  <text x="620" y="86" font-size="13" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">SPS · 合成线丙</text>
+  <rect id="stn.south.sps.c1" x="636" y="132" width="140" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <text x="688" y="166" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">C1</text>
+  <text x="670" y="186" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位甲</text>
+  <text x="620" y="308" font-size="13" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">排序区 · 排序线丁</text>
+  <rect id="zone.south.rack" x="620" y="316" width="168" height="120" fill="#eef2f6" stroke="#9aa6b4"/>
+  <text x="628" y="334" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">合成库区丙</text>
+  <rect id="stn.south.sort.d1" x="636" y="348" width="140" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <rect id="stn.south.sort.d2" x="820" y="348" width="140" height="76" fill="#ffffff" stroke="#5c6b7a"/>
+  <text x="690" y="382" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">D1</text>
+  <text x="672" y="402" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位己</text>
+  <text x="874" y="382" font-size="14" font-family="Noto Sans CJK SC, sans-serif" fill="#1c2430">D2</text>
+  <text x="856" y="402" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">工位庚</text>
+  <text x="24" y="590" font-size="12" font-family="Noto Sans CJK SC, sans-serif" fill="#526072">点选工位。高亮由程序按控制器关系绘制，图中不表示在线或库存。</text>
+</svg>

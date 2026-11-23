@@ -1,3 +1,32 @@
+# 目录、控制器一对多与 SVG 联动验证
+
+日期：2026-11-23。起点：`ab0d660d5a2cdf6f270b2a795e597fda33f6b5a9`。`main` 在验证开始时为 `82a8232202f39bd423d43c69cd19f7061cbc2336`，本轮没有检出或提交 `main`。只使用合成目录和合成采集，没有连接 PLC 或其他工业设备。
+
+环境：Linux，GCC 13.3.0，CMake 3.28.3，SQLite 3.45.1，Qt 6.4.2，Python 3.12.3，Node v22.23.4，Noto Sans CJK SC，Xvfb。Qt 配置打印 `Could NOT find XKB`；`xcb` 平台仍完成真实窗口抓图。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j4
+ctest --test-dir /tmp/logistics-release --output-on-failure
+cmake -S cpp-runtime -B /tmp/logistics-core -DBUILD_HMI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-core -j4
+ctest --test-dir /tmp/logistics-core --output-on-failure
+npm test --prefix runtime
+```
+
+- Qt Release CTest **6/6** 通过：`domain`、`catalog`、`modes`、`acceptance`、`widgets_controls`、`hmi_refresh`。
+- 无 HMI 的核心 CTest **4/4** 通过：`domain`、`catalog`、`modes`、`acceptance`。
+- Node runtime **49/49** 通过，0 fail / 0 skip。`runtime/drivers/opcua` 的独立测试未跑。
+- 手动连点仍只推进一帧；取消恢复自动不改变模式；确认后自动继续。关闭 HMI 不停止采集。
+- 手动时切换工厂、业务模式、空线和 SVG 点选，模式、修订号、序号、启动身份不变。
+- 自动时选中排序区，序号继续增加，修订号不变，历史表保持为空。
+- 非实时工位的控制按钮禁用；详情中的设备连接为“未探测”，库存为“未知”。
+- 南湾工位 C1 与北岸工位 A1 同名，控制器关系仍按 ID 分开；C1 与 D1 跨业务模式同属一个控制器。
+
+截图是 Xvfb 上 `QT_QPA_PLATFORM=xcb` 的 `hmi` 抓图，外加 `import -window root` 的桌面图，不进 Git。主要文件：`cpp-sps-auto.png`、`cpp-sps-manual.png`、`cpp-dropdown.png` 与 `cpp-dropdown-popup.png`、`cpp-plc-peers.png`、`cpp-sort.png`、`cpp-south-factory.png`、`cpp-unconfigured.png`、`cpp-sps-compact.png`（1100×650）、`cpp-sps-alarm.png`。语义和未跑项见仓库 `ARCHITECTURE.md` 的实施记录。
+
+---
+
 # 中文工作台与模拟模式迭代验证
 
 日期：2026-11-23。迭代基线：`bd92ab0f2b16aca25b5ae6aa799931af25b959f5`；仍仅修改实验分支。环境沿用下方记录：Linux GCC 14.2 / CMake 3.31.6 / SQLite 3.46.1 / Qt 6.8.2。Qt 中文字体使用 Noto Sans CJK SC。

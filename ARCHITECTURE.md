@@ -12,11 +12,14 @@
 | `cpp-runtime/src/adapters.hpp/.cpp` | `SampleSource`、`HistorySink` 边界，唯一已实现输入是 `SimulationAdapter`；可依赖领域层 |
 | `cpp-runtime/src/core.hpp/.cpp` | SQLite 写入适配器 `Writer`、只读查询 `read`、有界结果 `View`；不依赖 Qt |
 | `cpp-runtime/src/control.hpp/.cpp` | 同用户本地文件锁信箱，仅四个模拟命令；无网络端口 |
-| `cpp-runtime/src/workbench.hpp/.cpp` | 模式确认、任务概览、三张阶段卡片、质量/历史；Qt 异步刷新 |
+| `cpp-runtime/src/catalog.hpp/.cpp` | 合成目录：工厂、业务模式、线体、工位、控制器与库区；只用稳定 ID 和关系表；仅标准库 |
+| `cpp-runtime/src/schematic.hpp/.cpp` | Qt 绘制原创 SVG；点选区域取自 SVG 中未变换的 `rect` |
+| `cpp-runtime/resources/` | `schematic.svg` 与 `device.svg`；合成示意，不是现场布局或照片 |
+| `cpp-runtime/src/workbench.hpp/.cpp` | Qt 工具栏、可调分栏、详情表、历史表、状态栏；目录浏览不写库 |
 | `cpp-runtime/src/collector.cpp` | 组合模拟输入和存储适配器；独立采集进程 |
 | `cpp-runtime/src/diagnose.cpp` | 有界只读 CLI/REPL；只调用查询边界 |
 | `cpp-runtime/src/hmi.cpp` | Qt Widgets 中文工作台；只读查询 + 独立有限模拟控制请求，不写库 |
-| `cpp-runtime/tests` | 纯领域测试、独立进程黑盒验收、真实 Qt 事件循环刷新测试；全部合成数据 |
+| `cpp-runtime/tests` | 纯领域、目录约束、独立进程黑盒验收、真实 Qt 事件循环与联动测试；全部合成数据 |
 
 依赖方向是入口/界面 → 边界模块 → 领域；基础设施不得反向进入领域。当前小型 `runtime_core` 库同时承载读写基础设施实现，读端 API 与写端类分离，运行时只读由 SQLite open flags 和 query_only 执行。未来可按编译目标拆分库，但不得为了拆分改变已有观测语义。
 
@@ -31,6 +34,7 @@ flowchart LR
     R --> DB
     H --> M[有限本地模拟控制信箱]
     M --> C
+    Cat[合成目录与 SVG] --> H
 ```
 
 ## 进程与故障边界
@@ -55,9 +59,13 @@ CLI/Pi 继续只读；`control_test_client` 仅在 BUILD_TESTING 构建的测试
 
 ## Qt 工作台设计
 
-保留原生 Qt Widgets / C++17，不使用 WebView 或 Qt Charts。浅中性底色、深色正文、蓝色主操作；琥珀只用于未知/异常提示，状态同时有文字。顶栏显示模拟环境、采集端确认的模式和实际心跳；任务概览提供有限模拟操作与禁用原因；三张独立阶段卡片显示原始观测对应的阶段；下方是有界事件/历史。坏质量不冒充零，过期时历史与当前状态分开。
+保留原生 Qt Widgets / C++17，不使用 WebView 或 Qt Charts。界面是工具栏、可调整分栏、表格、详情和状态栏，不再用圆角卡片充当主界面。蓝色只标当前选中项，橙色只标同一控制器的其他工位；琥珀文字只用于未知或异常。状态同时有文字。
 
-查询与控制各只有一个在途异步操作，界面线程不等 SQLite 或信箱。正常和手动两种界面实际以 1280×800 / 1100×650 渲染检查；中文字体优先 Noto Sans CJK SC，Windows 回退 Microsoft YaHei UI。Linux 图像不能替代 Windows 字体、DPI、文件锁或部署验收。
+目录层级是工厂 → 业务模式（SPS／排序区）→ 线体 → 工位。业务模式与采集端运行模式（手动／自动）是两个字段。关联使用稳定 ID：一个控制器可对应多个工位，库区另行关联工位，展示名可以重复，不能当键。切换父级时，子项 ID 仍属于新父级才保留，否则选中合法项；没有子项则显示未配置。
+
+示意图和设备图都是原创 SVG，设备图标明“示意”。图中工位矩形与下拉双向同步。库存数量和设备连接保持未知／未探测，不造数。只有目录中明确标记为当前模拟流 `sim.three-cart.v1` 的工位显示实时帧、历史和原有手动／自动按钮。其他工位与排序区只显示静态示意，不复用该模拟流的阶段或历史。目录浏览不改变采集目标、不暂停自动推进、不切换手动／自动。
+
+查询与控制各只有一个在途异步操作，界面线程不等 SQLite 或信箱。正常和手动两种界面以 1280×800 / 1100×650 渲染检查；中文字体优先 Noto Sans CJK SC，Windows 回退 Microsoft YaHei UI。Linux 图像不能替代 Windows 字体、DPI、文件锁或部署验收。
 
 ## Adapter 扩展纪律
 
@@ -87,22 +95,69 @@ Windows 使用用户可写 D: 目录、MSYS2 MINGW64、C++17、CMake `MinGW Make
 
 ## 下一轮实施交接
 
-状态（2026-11-23）：已验证的代码基线是 [92966ea](https://github.com/Sentheecode/logistics_trans_pi/commit/92966ea4336cc91c222d178242a57cc40e393799)，包括独立模拟采集、SQLite 单写者、只读诊断、Qt 工作台、手动单步与自动恢复确认。该基线的 Linux Qt / 核心 / 旧 runtime 测试分别为 5/5、3/3、49/49。下一轮任务在实现前中止；下面都是待办，本文更新不代表程序已升级。Windows 与现场验收仍未进行。
+上一基线 [92966ea](https://github.com/Sentheecode/logistics_trans_pi/commit/92966ea4336cc91c222d178242a57cc40e393799) 已有独立模拟采集、SQLite 单写者、只读诊断、Qt 工作台、手动单步与自动恢复确认。本轮从 `ab0d660d5a2cdf6f270b2a795e597fda33f6b5a9` 继续，只改实验分支。开始时 `main` 与 `origin/main` 均为 `82a8232202f39bd423d43c69cd19f7061cbc2336`，本轮不提交、不合并、不推送 `main`。
 
-### 复制给接手 Agent
+### 本轮已实现的语义
 
-在 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 继续。先读 [现有架构](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/ARCHITECTURE.md)、[构建与启动](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/cpp-runtime/README.md)、[基线验证](https://github.com/Sentheecode/logistics_trans_pi/blob/experiment/cpp-runtime/cpp-runtime/VALIDATION.md)。先检查远端最新提交和工作区；不覆盖已有改动，只更新实验分支，不改 main、不部署。使用 C++17、Qt Widgets；Windows 构建仍以 MSYS2 MINGW64 / MinGW Makefiles 为目标。主要改动放在 `cpp-runtime/src/workbench.*`、独立目录模型/示意图资源、对应测试及构建说明；不为 UI 改写领域、旧 Node/Pi 或已有控制信箱。
+目录、示意图和界面都在 Qt 进程内，不进入领域状态机，也不改 `control.mailbox` 的四种命令。采集器仍是唯一写库进程。
 
-1. **先做目录模型。** 工厂 → 业务模式（SPS／排序区）→ 线体 → 工位。业务模式与运行模式（手动／自动）是两个独立字段。为实体使用稳定 ID；由独立关系映射表达一个控制器对应多个工位、库区与工位的关联，不用展示名做关联键。以至少两个虚构工厂和一个控制器关联多个示意工位为验收夹具。
-2. **再做联动和作用域。** 用原生下拉组件联动：切换父级后保留仍合法的子项，否则选择合法项或明确显示未配置。详情显示所选工位、归属控制器、其关联工位、库区或库位示意。目录浏览不得改变采集目标、推进任务或切换手动／自动。只在与当前模拟流明确匹配的工位提供实时数据、历史和控制。其他工位或排序区未接入时显示未配置或静态示意，不挪用 SPS 的数据和状态。
-3. **原生桌面化和图形。** 用工具栏、可调整分栏、数据表、详情和状态栏，减少网页式卡片、圆角与大留白。加原创 SVG 库区／工位简图和一张标注“示意”的设备图，图中点选与下拉双向同步；高亮同一控制器的关联工位，同时与当前选中项区分。未知库存、连接和设备状态不造数。仅合成素材，不包含任何真实布局、地址、点表、协议行为或现场照片。
-4. **验收再提交。** 新增目录约束、空列表、跨工厂与两种业务模式切换、控制器多工位、SVG 点击与下拉同步、非活动工位无实时数据且不能控制等测试。回归手动单步、恢复自动确认、切换下拉不影响采集、关闭窗口不影响运行。空目录构建并运行 CTest，记录已跑与未跑。实际渲染 SPS 与排序区／控制器详情两张 Qt 图，检查中文、缩窗及裁切；截图交给用户，不进 Git。回报提交 SHA、改动文件、测试与 Windows 限制。
+- 夹具有北岸合成厂、南湾合成厂和没有业务模式的空目录厂。业务模式只有 `sps` 与 `sort`，与手动／自动分开存放。北岸 SPS 下有一条没有工位的空线。
+- `stn.north.sps.a1`、`a2`、`a3` 同属 `ctl.alpha`。`stn.south.sps.c1` 与 `stn.south.sort.d1` 同属 `ctl.gamma`，跨业务模式。`stn.north.sps.a1` 与 `stn.south.sps.c1` 展示名都是“示意工位甲”，关系只认 ID。
+- 父级变化后，子级 ID 仍落在新父级内才保留，否则取该父级的第一个合法项；没有子项时下拉显示“未配置”。
+- 唯一实时工位是 `stream == sim.three-cart.v1` 的 `stn.north.sps.a1`。只有它显示三车阶段、历史和原有控制按钮。排序区、其他工厂和其他工位显示“未接入”或“未配置”，历史表为空。
+- 库存单元格固定为“未知”，设备连接固定为“未探测”。采集进程在线不会被写成设备在线。
+- 手动模式下连续切换下拉不改变模式、修订号、序号和启动身份。自动模式下改到排序区后，序号仍增加，修订号和模式不变，界面仍不显示这些帧。
+- SVG 点选调用与下拉同一条选择路径。橙色框是同一控制器的其他工位，蓝色框是当前项。设备图是独立 SVG，文字包含“示意”。
+- 损坏的 SVG 矩形不会被当成可点击工位。信箱命令、坏质量空值和手动确认对话框保持原语义。
+
+没有加入网络客户端、OPC UA、端点、IP、DB 地址或真实点表。目录不是现场配置，也不能从演示节拍推断生产时序。
+
+### 验证命令与结果
+
+环境：Linux，GCC 13.3.0，CMake 3.28.3，SQLite 3.45.1，Qt 6.4.2（Widgets 与 Svg），Python 3.12.3，Node 22.23.4，字体 Noto Sans CJK SC。系统包提供这些依赖。配置 Qt 时出现 `Could NOT find XKB`；随后 `QT_QPA_PLATFORM=xcb` 仍在 Xvfb 上完成窗口抓图，因此不把缺少 XKB 开发头文件当成界面失败，也不把它当成键盘布局验收。
+
+空目录 Release（含 Qt）与关闭 HMI 的核心构建都从干净目录执行。最后一次结果：
 
 ```bash
-cmake -S cpp-runtime -B build/handoff-check
-cmake --build build/handoff-check -j4
-ctest --test-dir build/handoff-check --output-on-failure
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j4
+ctest --test-dir /tmp/logistics-release --output-on-failure
+```
+
+6/6 通过：`domain`、`catalog`、`modes`、`acceptance`、`widgets_controls`、`hmi_refresh`。合计约 30.5 秒。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-core -DBUILD_HMI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-core -j4
+ctest --test-dir /tmp/logistics-core --output-on-failure
+```
+
+4/4 通过：`domain`、`catalog`、`modes`、`acceptance`。没有生成 HMI。合计约 13.4 秒。
+
+```bash
 npm test --prefix runtime
 ```
 
-先完成上述模拟版本，不接真实设备；不要把展示目录当实际现场配置，也不要用演示行为推导生产时序。
+49/49 通过，0 失败、0 跳过。旧 OPC UA 驱动目录有独立测试，本轮没有重跑，也不把它算进这 49 项。
+
+`widgets_controls` 覆盖原手动单步、连点只提交一次、恢复自动的取消与确认、离线禁用，以及目录约束在界面上的表现：SVG 点击与四个下拉同步、下拉改选后示意图颜色反向更新、控制器多工位、跨工厂同名工位不串数据、空线与空厂、非实时工位不能控制且历史为空、手动浏览不改采集、自动浏览不暂停采集、1100×650 与 1280×800 的可见短标签和中文字形。`catalog` 覆盖关系校验和非法目录：重复 ID、悬空引用、一工位两控制器、两个实时流、把端点字符串写入流字段、把 `manual` 当作业务模式、展示名撞上别人的 ID。
+
+### 运行与截图
+
+截图由实际 `hmi` 进程在 Xvfb（1440×900）上用 `QT_QPA_PLATFORM=xcb` 调用 `QWidget::grab()` 生成，另用 ImageMagick `import -window root` 截虚拟桌面。文件不进 Git。抓图前先独立启动 `collector`。`manual` 那张在采集端确认手动模式之后再打开界面。`hmi` 的第五个参数可以是 `normal`、`manual`、`alarm`、`unavailable`、`sort`、`peers`、`south`、`empty`、`dropdown`；第六个参数 `compact` 为 1100×650。`dropdown` 会同时写出 `*-popup.png`。
+
+已查看的抓图包括：SPS 自动与手动、业务模式下拉弹出“SPS／排序区”、控制器甲的 A1/A2/A3 高亮、排序区 B1/B2、南湾工厂 C1 与跨模式关联的 D1、空线“未配置”、告警帧，以及 1100×650。非实时画面的历史表为空，运行模式文本仍显示采集进程自己的手动或自动。
+
+### 剩余待办
+
+- 未在 Windows 11、MSYS2 MINGW64、Qt 6.11.x、MinGW GCC 16.2 或 CMake 4.4.4 上构建或运行。
+- 未验收真实桌面 DPI、多显示器、窗口管理器主题和 Windows 文件锁。
+- 未连接、未探测、未写入任何 PLC、OPC UA 服务器、AGV 或 LWMS。目录不能升格成现场配置。
+- 未重跑 `runtime/drivers/opcua` 的独立测试，没有新增 open62541。
+- 历史容量、物理掉电、生产权限和联锁仍未实现。信箱仍只是同一用户的本地模拟通道。
+- SVG 命中只支持未使用 `transform` 的 `rect`。空目录厂有界面测试，但没有单独的空厂截图；空线截图已覆盖“未配置”。
+- XKB 开发库缺失只记录为配置警告。
+
+### Codex 复查入口
+
+继续使用 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 。先读本段、[构建与启动](cpp-runtime/README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，再看 `cpp-runtime/src/catalog.*`、`schematic.*`、`workbench.*`、`resources/*.svg`、`tests/catalog.cpp` 与 `tests/widgets.cpp`。不要改 `main`，不要 force-push，不要为界面改领域、旧 Node/Pi 或信箱协议，不要添加设备地址或网络写入。复查时重跑上面三条命令；截图用 `hmi` 的捕获参数重新生成，不要把 PNG 提交进仓库。
