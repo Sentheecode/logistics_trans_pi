@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "control.hpp"
 #include <csignal>
 #include <iostream>
 #include <thread>
@@ -8,12 +9,37 @@ int main(int argc,char** argv){
         if(argc<2||argc>4){std::cerr<<"Usage: collector DATA_DIR [ticks:1..1000000; omitted=continuous] [interval_ms:20..1000]\n";return 2;}
         int count=argc>=3?sim::number(argv[2],1,1000000):0,interval=argc>=4?sim::number(argv[3],20,1000):500;
         std::signal(SIGINT,stop);std::signal(SIGTERM,stop);
-        sim::Writer writer(std::filesystem::u8path(argv[1]));
-        sim::SimulationAdapter source;
+        const auto dir=std::filesystem::u8path(argv[1]);
+        sim::Writer writer(dir);sim::SimulationAdapter source;source.resume_after(writer.last_phase());
+        sim::initialize_control(dir);
         std::cout<<"SIMULATION_ONLY: independent collector; dedicated SQLite writer\n"<<std::flush;
-        for(int i=0;!stopped&&(count==0||i<count);i=(i+1)%100000000){
-            writer.append(source.next());
-            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+        auto next=std::chrono::steady_clock::now(),heartbeat=next;
+        int samples=0;
+        while(!stopped&&(count==0||samples<count)){
+            sim::poll_control(dir,[&](const sim::ControlRequest& request){
+                auto info=writer.info();
+                if(request.boot!=info.boot)return std::string("session_changed");
+                if(request.revision!=info.revision)return std::string("stale_revision");
+                if(request.command=="manual"){
+                    if(info.mode=="manual")return std::string("already_manual");
+                    writer.publish(nullptr,"manual",true);
+                }else if(request.command=="automatic_confirmed"){
+                    if(info.mode!="manual")return std::string("already_automatic");
+                    writer.publish(nullptr,"automatic",true);
+                    next=std::chrono::steady_clock::now()+std::chrono::milliseconds(interval);
+                }else{
+                    if(info.mode!="manual")return std::string("manual_required");
+                    sim::Observation observation;
+                    if(request.command=="step")observation=source.next();
+                    else{observation.phase=writer.last_phase();observation.available=false;observation.quality="bad";observation.reason="disconnected";observation.link="down";observation.alarm="unknown";observation.event="SIM_MANUAL_DISCONNECT";}
+                    writer.publish(&observation,"manual",true);++samples;
+                }
+                return std::string("ok");
+            });
+            auto now=std::chrono::steady_clock::now();
+            if(writer.info().mode=="automatic"&&now>=next){writer.append(source.next());++samples;next=now+std::chrono::milliseconds(interval);}
+            if(now>=heartbeat){writer.publish(nullptr,writer.info().mode);heartbeat=now+std::chrono::milliseconds(200);}
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         return 0;
     }catch(const std::exception& e){std::cerr<<"collector error: "<<e.what()<<'\n';return 1;}

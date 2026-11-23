@@ -13,7 +13,11 @@ struct Row {
     std::string boot, quality, reason, link, alarm, event;
     std::string carts[3];
 };
-struct View { std::vector<Row> rows; bool more{}; std::string freshness; };
+struct RuntimeInfo {
+    std::string mode="unknown", boot, liveness="unavailable";
+    std::int64_t revision{}, heartbeat_ms{};
+};
+struct View { std::vector<Row> rows; bool more{}; std::string freshness; RuntimeInfo runtime; };
 class Writer final : public HistorySink {
 public:
     explicit Writer(const std::filesystem::path& directory);
@@ -21,6 +25,9 @@ public:
     Writer(const Writer&) = delete;
     Writer& operator=(const Writer&) = delete;
     void append(const Observation& observation) override;
+    void publish(const Observation* observation, const std::string& mode, bool command=false);
+    RuntimeInfo info() const;
+    int last_phase() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> p;

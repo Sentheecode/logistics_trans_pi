@@ -1,4 +1,55 @@
-# 本次验证记录
+# 中文工作台与模拟模式迭代验证
+
+日期：2026-11-23。迭代基线：`bd92ab0f2b16aca25b5ae6aa799931af25b959f5`；仍仅修改实验分支。环境沿用下方记录：Linux GCC 14.2 / CMake 3.31.6 / SQLite 3.46.1 / Qt 6.8.2。Qt 中文字体使用 Noto Sans CJK SC。
+
+## 本轮实际命令与结果
+
+从空目录构建 Qt Release 和无 Qt 核心，最终源码增量重建后再次运行同一套测试：
+
+```bash
+export LD_LIBRARY_PATH=/workspace/deps/root/usr/lib/x86_64-linux-gnu
+export QT_PLUGIN_PATH=/workspace/deps/root/usr/lib/x86_64-linux-gnu/qt6/plugins
+export XDG_CACHE_HOME=/workspace/deps/cache
+/workspace/deps/root/usr/bin/cmake -S cpp-runtime -B /workspace/cpp-v2-release \
+  -DCMAKE_PREFIX_PATH=/workspace/deps/root/usr -DCMAKE_BUILD_TYPE=Release
+/workspace/deps/root/usr/bin/cmake --build /workspace/cpp-v2-release -j4
+/workspace/deps/root/usr/bin/ctest --test-dir /workspace/cpp-v2-release --output-on-failure
+/workspace/deps/root/usr/bin/cmake -S cpp-runtime -B /workspace/cpp-v2-core \
+  -DBUILD_HMI=OFF -DCMAKE_PREFIX_PATH=/workspace/deps/root/usr -DCMAKE_BUILD_TYPE=Release
+/workspace/deps/root/usr/bin/cmake --build /workspace/cpp-v2-core -j4
+/workspace/deps/root/usr/bin/ctest --test-dir /workspace/cpp-v2-core --output-on-failure
+npm test --prefix runtime
+```
+
+- Qt CTest **5/5 通过**：domain、modes、acceptance、widgets_controls、hmi_refresh。
+- 核心 CTest **3/3 通过**：domain、modes、acceptance。
+- 原 Node runtime **49/49 通过**，0 fail / skip。
+- 自动持续推进；手动等待超过 3 秒，事件不变、心跳仍更新；每次成功单步只增加一帧。
+- 实际 Qt 按钮快速连点只提交一次；恢复自动的取消分支不推进、确认分支恢复推进；自动模式下单步禁用。
+- 并发客户端、旧修订号、过期请求、旧启动身份拒绝；超长/损坏信箱输入不导致任务推进；无采集进程时请求有界失败，结果未知不重试。
+- HMI 在自动/手动两种模式退出都不停止采集；手动模式重开 HMI 不切模式、不推进；采集器重启保留手动模式和历史。
+- 缺失端点及心跳过期时 Qt 控件禁用；CLI 新增观察到的 mode/process 元信息，仍拒绝 step/manual 等写命令。
+- 合成 v1 数据库升级到 v2，原始帧保留；原正常/异常/坏质量/断链恢复/崩溃与单写者测试仍通过。
+
+## 真实截图与尺寸检查
+
+最终 Qt 程序使用 offscreen 平台、实际 SQLite 和实际模式确认渲染；没有设计稿或虚构状态。两张交付 PNG：`cpp-workbench-auto.png`、`cpp-workbench-manual.png`，均为 1280×800；另生成 1100×650 的 compact 版本供检查。四张均已人工查看，中文没有方块，顶栏、任务、卡片、按钮和底栏无裁切。Qt 控件测试也检查两种尺寸的可见标签宽度与中文字形。
+
+复现方式：独立启动 `collector DATA_DIR 100 800`，使用 HMI 的“切换手动”按钮进入采集端确认的手动模式。自动化截图流程中的测试夹具调用与同一有限信箱等价；产品诊断 CLI 不提供该操作。以下命令只读现有模式并截图，不会为截图而切模式：
+
+```bash
+export QT_QPA_PLATFORM=offscreen
+/workspace/cpp-v2-release/hmi DATA_DIR 800 /workspace/cpp-workbench-auto.png normal
+# 先在交互界面切换手动，等待采集端确认，再运行：
+/workspace/cpp-v2-release/hmi DATA_DIR 800 /workspace/cpp-workbench-manual.png manual
+# 在同类命令末尾增加 compact 得到 1100×650。
+```
+
+截图独立保存在 Library，不提交 Git。仍未在 Windows/MINGW64、Qt 6.11.x、真实桌面 DPI 或实际设备上验证。Windows LockFileEx 分支已提供但未运行；本地文件信箱只适用于受信任同用户的私有本地目录，不是生产权限/联锁系统。不连接任何现场端点，不部署。
+
+---
+
+# 首版验证记录
 
 日期：2026-11-23。基线：`82a8232202f39bd423d43c69cd19f7061cbc2336`。只使用匿名合成数据；未连接任何真实设备或外部业务服务。
 

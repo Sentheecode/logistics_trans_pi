@@ -38,7 +38,7 @@ struct Stmt {
     std::string text(int i){auto t=sqlite3_column_text(s,i); return t?reinterpret_cast<const char*>(t):"UNKNOWN";}
 };
 std::int64_t scalar(Db& d,const char* sql){Stmt s(d,sql); if(s.step()!=SQLITE_ROW)throw std::runtime_error("missing metadata");return sqlite3_column_int64(s.s,0);}
-void validate(Db& d){if(scalar(d,"PRAGMA application_id")!=app_id || scalar(d,"PRAGMA user_version")!=1)throw std::runtime_error("not a cpp-runtime simulation schema v1; refused");}
+void validate(Db& d){if(scalar(d,"PRAGMA application_id")!=app_id || (scalar(d,"PRAGMA user_version")!=1 && scalar(d,"PRAGMA user_version")!=2))throw std::runtime_error("not a cpp-runtime simulation schema v1/v2; refused");}
 std::string fresh(std::int64_t t){auto delta=now_ms()-t;return delta<0?"clock_uncertain":delta>3000?"stale":"recent";}
 }
 std::int64_t now_ms(){return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
@@ -49,6 +49,7 @@ int number(const std::string& s,int lo,int hi){
 struct Writer::Impl {
     std::unique_ptr<Db> lease,db;
     std::string boot;
+    RuntimeInfo info;
     std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
 };
 Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
@@ -56,7 +57,7 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     // A dedicated directory is mandatory; never reuse legacy runtime.sqlite.
     for(const auto& e:std::filesystem::directory_iterator(dir)){
         const auto n=e.path().filename().string();
-        if(e.is_symlink() || !e.is_regular_file() || (n!="simulation.sqlite"&&n!="simulation.sqlite-wal"&&n!="simulation.sqlite-shm"&&n!="writer.lease"&&n!="writer.lease-journal"))
+        if(e.is_symlink() || !e.is_regular_file() || (n!="simulation.sqlite"&&n!="simulation.sqlite-wal"&&n!="simulation.sqlite-shm"&&n!="writer.lease"&&n!="writer.lease-journal"&&n!="control.mailbox"))
             throw std::runtime_error("data directory contains unrelated files; use a new dedicated directory");
     }
     p->lease=std::make_unique<Db>(dir/"writer.lease",SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE);
@@ -70,29 +71,55 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     }
     p->db->exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     Stmt s(*p->db,"SELECT lower(hex(randomblob(16)))");s.step();p->boot=s.text(0);
+    if(scalar(*p->db,"PRAGMA user_version")==1){
+        p->db->exec("BEGIN IMMEDIATE; CREATE TABLE runtime_state(id INTEGER PRIMARY KEY CHECK(id=1),mode TEXT NOT NULL,revision INTEGER NOT NULL,heartbeat_ms INTEGER NOT NULL,boot TEXT NOT NULL); INSERT INTO runtime_state VALUES(1,'automatic',0,0,''); PRAGMA user_version=2; COMMIT;");
+    }
+    Stmt state(*p->db,"SELECT mode,revision FROM runtime_state WHERE id=1");
+    if(state.step()!=SQLITE_ROW)throw std::runtime_error("missing runtime state");
+    p->info.mode=state.text(0);p->info.revision=sqlite3_column_int64(state.s,1);
+    if(p->info.revision<0||(p->info.mode!="manual"&&p->info.mode!="automatic"))throw std::runtime_error("invalid runtime mode");
+    p->info.boot=p->boot;publish(nullptr,p->info.mode);
+
 }
 Writer::~Writer()=default;
-void Writer::append(const Observation& observation){
-    const auto& o=observation;
+RuntimeInfo Writer::info() const{return p->info;}
+int Writer::last_phase() const{
+    auto phase=scalar(*p->db,"SELECT COALESCE((SELECT phase FROM frames ORDER BY seq DESC LIMIT 1),-1)");
+    if(phase < -1 || phase > 15)throw std::runtime_error("invalid persisted simulation phase");
+    return static_cast<int>(phase);
+}
+void Writer::append(const Observation& observation){publish(&observation,p->info.mode);}
+void Writer::publish(const Observation* observation,const std::string& mode,bool command){
+    if(mode!="manual"&&mode!="automatic")throw std::runtime_error("invalid mode");
     auto t=now_ms();
     auto ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-p->start).count();
     p->db->exec("BEGIN IMMEDIATE");
     try {
+        if(observation){
+        const auto& o=*observation;
         Stmt s(*p->db,"INSERT INTO frames(received_ms,source_ms,server_ms,boot,monotonic_ns,phase,cart1,cart2,cart3,quality,reason,link,alarm,event) VALUES(?,?,NULL,?,?,?,?,?,?,?,?,?,?,?)");
         s.integer(1,t);if(o.link!="down")s.integer(2,t);s.text(3,p->boot);s.integer(4,ns);s.integer(5,o.phase);
         for(int i=0;i<3;++i)if(o.available)s.text(6+i,o.state.carts[i]);
         s.text(9,o.quality);s.text(10,o.reason);s.text(11,o.link);s.text(12,o.alarm);s.text(13,o.event);s.step();
+        }
+        Stmt status(*p->db,"UPDATE runtime_state SET mode=?,revision=?,heartbeat_ms=?,boot=? WHERE id=1");
+        status.text(1,mode);status.integer(2,p->info.revision+(command?1:0));status.integer(3,t);status.text(4,p->boot);status.step();
         p->db->exec("COMMIT");
+        p->info.mode=mode;p->info.revision+=command?1:0;p->info.heartbeat_ms=t;p->info.liveness="recent";
     }catch(...){p->db->exec("ROLLBACK");throw;}
 }
 View read(const std::filesystem::path& dir,const std::string& command,int limit){
     if(limit<1||limit>200)throw std::runtime_error("limit must be 1..200");
     if(command!="status"&&command!="history"&&command!="recent"&&command!="alarms")throw std::runtime_error("unknown command; use help");
-    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);d.exec("PRAGMA query_only=ON");validate(d);
+    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);d.exec("PRAGMA query_only=ON");validate(d);d.exec("BEGIN");
     // Indexed, bounded tail queries. alarms reports the latest condition, not a fabricated occurrence history.
     if(command=="status"||command=="alarms")limit=1;
     Stmt s(d,"SELECT seq,received_ms,source_ms,boot,cart1,cart2,cart3,quality,reason,link,alarm,event FROM frames ORDER BY seq DESC LIMIT ?");
     s.integer(1,limit+1);View v;
+    if(scalar(d,"PRAGMA user_version")==2){
+        Stmt state(d,"SELECT mode,revision,heartbeat_ms,boot FROM runtime_state WHERE id=1");
+        if(state.step()==SQLITE_ROW){v.runtime.mode=state.text(0);v.runtime.revision=sqlite3_column_int64(state.s,1);v.runtime.heartbeat_ms=sqlite3_column_int64(state.s,2);v.runtime.boot=state.text(3);auto age=now_ms()-v.runtime.heartbeat_ms;v.runtime.liveness=age<0?"clock_uncertain":age>1500?"stale":"recent";}
+    }
     while(s.step()==SQLITE_ROW){
         if(static_cast<int>(v.rows.size())==limit){v.more=true;break;}
         Row r;r.seq=sqlite3_column_int64(s.s,0);r.received_ms=sqlite3_column_int64(s.s,1);r.source_ms=sqlite3_column_int64(s.s,2);r.boot=s.text(3);
@@ -103,7 +130,7 @@ View read(const std::filesystem::path& dir,const std::string& command,int limit)
 }
 std::string render(const View& v){
     std::ostringstream out;
-    out<<"SIMULATION_ONLY\tcoverage=unknown\tfreshness="<<v.freshness<<"\tmore="<<(v.more?"true":"false")<<"\n";
+    out<<"SIMULATION_ONLY\tcoverage=unknown\tfreshness="<<v.freshness<<"\tmode="<<v.runtime.mode<<"\tprocess="<<v.runtime.liveness<<"\tmore="<<(v.more?"true":"false")<<"\n";
     out<<"seq\treceived_utc_ms\tsource_utc_ms\tboot\tcart1\tcart2\tcart3\tquality\treason\tlink\talarm_condition\tevent\n";
     for(const auto& r:v.rows){out<<r.seq<<'\t'<<r.received_ms<<'\t'<<(r.source_ms?std::to_string(r.source_ms):"UNKNOWN")<<'\t'<<r.boot;
         for(const auto& c:r.carts)out<<'\t'<<c;

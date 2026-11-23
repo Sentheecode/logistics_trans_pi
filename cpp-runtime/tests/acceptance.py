@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix="cpp-simulation-") as tmp:
     output = run(diagnose, str(d), "history", "200").stdout
     assert "UNKNOWN" in output and "coverage=unknown" in output and "more=false" in output
     assert "more=true" in run(diagnose, str(d), "history", "2").stdout
-    for args in [("history", "201"), ("history", "0"), ("history", "1 OR 1"), ("status", "2"), ("sql",), ("write",), ("help", "x")]:
+    for args in [("history", "201"), ("history", "0"), ("history", "1 OR 1"), ("status", "2"), ("sql",), ("write",), ("step",), ("manual",), ("help", "x")]:
         run(diagnose, str(d), *args, ok=False)
     run(diagnose, str(root / "missing"), "status", ok=False)
     assert not (root / "missing").exists()
