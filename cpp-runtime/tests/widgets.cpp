@@ -13,6 +13,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
@@ -297,6 +298,24 @@ int main(int argc, char** argv) {
         pump(150);
         check_labels(window);
         assert_no_live_leak(window);
+        auto* modules=window.findChild<QTabWidget*>("moduleTabs");
+        if (!modules || modules->count()!=5) throw std::runtime_error("module tabs missing");
+        const auto tabbed=window.selectedStationId();
+        const auto before_tabs=snap(directory);
+        for (auto title : {"运行", "工位", "事件", "点表", "边界"}) {
+            bool found=false;
+            for (int i=0; i<modules->count(); ++i) if (modules->tabText(i)==QString::fromUtf8(title)) { modules->setCurrentIndex(i); found=true; }
+            if (!found) throw std::runtime_error("missing module tab");
+            pump(80);
+            check_labels(window);
+            if (window.selectedStationId()!=tabbed || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
+                throw std::runtime_error("module switch changed the PLC scope");
+            if (history->rowCount()!=0 || points->rowCount()!=0) throw std::runtime_error("module switch copied station 140 records");
+        }
+        const auto after_tabs=snap(directory);
+        if (after_tabs.mode!=before_tabs.mode || after_tabs.revision!=before_tabs.revision || after_tabs.boot!=before_tabs.boot)
+            throw std::runtime_error("module switch changed collector ownership");
+        modules->setCurrentIndex(0);
         std::cout<<"PASS widgets: Qiantang navigation, manual/automatic retained, svg sync, plc fan-out, simulated scope\n";
         return 0;
     } catch (const std::exception& error) {

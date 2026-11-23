@@ -7,7 +7,7 @@
 
 SchematicView::SchematicView(QWidget* parent): QWidget(parent) {
     setObjectName("schematicView");
-    setMinimumHeight(220);
+    setMinimumHeight(120);
     setMouseTracking(false);
     error_="未选择 PLC";
 }

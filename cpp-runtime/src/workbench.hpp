@@ -12,6 +12,7 @@ class QLabel;
 class QPushButton;
 class QSplitter;
 class QTableWidget;
+class QTabWidget;
 class SchematicView;
 
 class Workbench final : public QMainWindow {
@@ -38,6 +39,8 @@ private:
     void refill();
     void fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected);
     void rebuildCards();
+    void syncModuleChrome();
+    void applyHistoryFilter();
     static QString comboId(const QComboBox* box);
     std::filesystem::path directory_;
     catalog::Directory catalog_;
@@ -54,7 +57,10 @@ private:
     QLabel *stationTitle_=nullptr, *stationMeta_=nullptr, *configLine_=nullptr, *lineState_=nullptr, *peerLine_=nullptr, *interfaceLine_=nullptr, *plcAuto_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
+    QTabWidget* moduleTabs_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
+    QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr;
+    QComboBox* historyFilter_=nullptr;
     QWidget *cartStrip_=nullptr, *cardRow_=nullptr;
     QFrame *cartFrame_[3]{};
     QLabel *cartPhase_[3]{}, *cartNote_[3]{};

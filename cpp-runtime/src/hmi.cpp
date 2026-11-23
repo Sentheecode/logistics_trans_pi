@@ -8,11 +8,11 @@
 int main(int argc,char** argv){
     QApplication app(argc,argv);
     QFont font;font.setFamilies({"Noto Sans CJK SC","Microsoft YaHei UI","Microsoft YaHei","sans-serif"});font.setPixelSize(13);app.setFont(font);
-    if(argc<2||argc>6){std::cerr<<"Usage: hmi DATA_DIR [smoke_ms [capture.png [normal|manual|alarm|unavailable|sort|peers|south|meter2|empty|dropdown [compact]]]]\n";return 2;}
+    if(argc<2||argc>6){std::cerr<<"Usage: hmi DATA_DIR [smoke_ms [capture.png [normal|manual|alarm|unavailable|sort|peers|south|meter2|roster|stations|events|points|boundary|empty|dropdown [compact]]]]\n";return 2;}
     try{
         int smoke=argc>=3?sim::number(argv[2],500,60000):0;
         QString capture=argc>=4?QString::fromUtf8(argv[3]):QString(),kind=argc>=5?argv[4]:"normal";
-        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="peers"&&kind!="south"&&kind!="meter2"&&kind!="empty"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
+        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="peers"&&kind!="south"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="points"&&kind!="boundary"&&kind!="empty"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
         Workbench window(std::filesystem::u8path(argv[1]));if(argc==6){if(std::string(argv[5])!="compact")throw std::runtime_error("invalid size");window.resize(1100,650);}
         window.prepareCapture(kind);
         bool captured=false;QTimer timer;
