@@ -143,6 +143,24 @@ QFont figureFont() {
 void setFigure(QTableWidgetItem* item) {
     item->setFont(figureFont());
 }
+class DetailFit : public QObject {
+public:
+    DetailFit(QScrollArea* scroll, QLabel* label) : QObject(scroll), scroll_(scroll), label_(label) {
+        scroll->viewport()->installEventFilter(this);
+    }
+    bool eventFilter(QObject*, QEvent* event) override {
+        if (event->type()==QEvent::Resize || event->type()==QEvent::Show) fit();
+        return false;
+    }
+    void fit() {
+        const int width=std::max(1, scroll_->viewport()->width());
+        const int height=std::max(label_->heightForWidth(width), label_->sizeHint().height());
+        if (label_->minimumHeight()!=height) label_->setMinimumHeight(height);
+    }
+private:
+    QScrollArea* scroll_;
+    QLabel* label_;
+};
 class ViewportFill : public QObject {
 public:
     ViewportFill(QScrollArea* area, QWidget* page) : QObject(area), area_(area), page_(page) {
@@ -195,7 +213,8 @@ QString consoleStyle() {
         QPushButton#navButton:focus { border:1px solid %6; }
         QWidget#surface { background:%2; border:1px solid %4; border-radius:8px; }
         QLabel#title { font-size:16px; font-weight:600; color:%3; }
-        QLabel#pageTitle { font-size:18px; font-weight:600; color:%3; }
+        QLabel#pageTitle, QLabel#emptyTitle { font-size:18px; font-weight:600; color:%3; }
+        QLabel#emptySource, QLabel#emptyAction, QLabel#runHint { color:%5; font-size:13px; }
         QLabel#fieldLabel { color:%5; font-size:12px; }
         QLabel#section, QLabel#collectChangeLabel { color:%3; font-size:14px; font-weight:600; }
         QLabel#stationTitle { font-size:18px; font-weight:600; color:%3; }
@@ -488,16 +507,34 @@ Workbench::Workbench(std::filesystem::path directory)
     runTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto* runHint=new QLabel("操作只推进工位 140。概览是通用示意，层数和动线未提供。", run);
     runHint->setWordWrap(true);
-    runHint->setObjectName("muted");
+    runHint->setObjectName("runHint");
     runHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    auto* emptyRun=new QWidget(run);
+    emptyRun->setObjectName("emptyRun");
+    emptyRun->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    auto* emptyLayout=new QVBoxLayout(emptyRun);
+    emptyLayout->setContentsMargins(0, 8, 0, 0);
+    emptyLayout->setSpacing(8);
+    auto addEmpty=[&](const QString& text, const char* name){
+        auto* label=new QLabel(text, emptyRun);
+        label->setObjectName(name);
+        label->setWordWrap(true);
+        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        emptyLayout->addWidget(label);
+    };
+    addEmpty("尚未配置工位", "emptyTitle");
+    addEmpty("当前 PLC 未绑定模拟源", "emptySource");
+    addEmpty("暂无法执行模拟操作", "emptyAction");
+    emptyRun->hide();
     auto* workspace=new QWidget(run);
-    workspace->setObjectName("surface");
+    workspace->setObjectName("runWorkspace");
     auto* workspaceLayout=new QVBoxLayout(workspace);
     workspaceLayout->setContentsMargins(12, 8, 12, 8);
     workspaceLayout->setSpacing(4);
     workspaceLayout->addWidget(commandPane);
     runLayout->addWidget(runTitle);
     runLayout->addWidget(runHint);
+    runLayout->addWidget(emptyRun);
     auto* runBody=new QWidget(run);
     auto* runColumns=new QHBoxLayout(runBody);
     runColumns->setContentsMargins(0, 0, 0, 0);
@@ -610,8 +647,8 @@ Workbench::Workbench(std::filesystem::path directory)
     pointDetail_=new QLabel("选择一行查看来源原文。英文审计码只出现在这里。");
     pointDetail_->setObjectName("pointDetail");
     pointDetail_->setWordWrap(true);
-    pointDetail_->setMinimumHeight(128);
     pointDetail_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    pointDetail_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     auto* pointPage=new QWidget;
     auto* pointLayout=new QVBoxLayout(pointPage);
     pointLayout->setContentsMargins(16, 12, 16, 12);
@@ -624,13 +661,23 @@ Workbench::Workbench(std::filesystem::path directory)
     pointTools->addStretch(1);
     auto* detailBox=new QWidget;
     detailBox->setObjectName("surface");
-    detailBox->setMinimumHeight(168);
     auto* detailLayout=new QVBoxLayout(detailBox);
     detailLayout->setContentsMargins(12, 8, 12, 8);
     auto* detailTitle=new QLabel("选中行", detailBox);
     detailTitle->setObjectName("section");
+    auto* pointDetailScroll=new QScrollArea(detailBox);
+    pointDetailScroll->setObjectName("pointDetailScroll");
+    pointDetailScroll->setWidgetResizable(true);
+    pointDetailScroll->setFrameShape(QFrame::NoFrame);
+    pointDetailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    pointDetailScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    pointDetailScroll->setWidget(pointDetail_);
+    pointDetailScroll->setMinimumHeight(120);
+    pointDetailScroll->setMaximumHeight(220);
+    pointDetailScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    new DetailFit(pointDetailScroll, pointDetail_);
     detailLayout->addWidget(detailTitle);
-    detailLayout->addWidget(pointDetail_);
+    detailLayout->addWidget(pointDetailScroll);
     pointLayout->addWidget(pointHeading);
     pointLayout->addWidget(pointScope_);
     pointLayout->addLayout(pointTools);
@@ -860,7 +907,7 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(collectChanges_, {"时间", "变化"});
     collectChanges_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     collectChanges_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    auto* collectUnbound=new QLabel("当前 PLC 未绑定模拟源。顶栏心跳是采集进程，不是这个 PLC 的帧。工位 140 的序号、质量和链路不在这里。", collectPage);
+    auto* collectUnbound=new QLabel("当前 PLC 未绑定模拟源。顶栏心跳是采集进程，不是这个 PLC 的数据。", collectPage);
     collectUnbound->setObjectName("collectUnbound");
     collectUnbound->setWordWrap(true);
     collectUnbound->hide();
@@ -1088,7 +1135,7 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
         if(recentTable_) recentTable_->setRowCount(0);
         if(collectChanges_) collectChanges_->setRowCount(0);
         logTable_->setRowCount(0);
-        if(logEmpty_){ logEmpty_->setVisible(true); logEmpty_->setText("当前 PLC 未绑定模拟源。顶栏心跳仍是采集进程。工位 140 的日志不在这里。"); }
+        if(logEmpty_){ logEmpty_->setVisible(true); logEmpty_->setText("当前 PLC 未绑定模拟源。这里没有该 PLC 的日志。"); }
         if(logDetail_) logDetail_->setText("没有当前 PLC 的记录。模拟免责声明只保留在日志页说明里。");
         return;
     }
@@ -1185,15 +1232,20 @@ void Workbench::showLogDetail() {
     if(!item || logTable_->isRowHidden(row)) logDetail_->setText("选择一行查看详情。时间显示为北京时间，库里仍是 UTC 毫秒。");
     else logDetail_->setText(item->data(Qt::UserRole).toString());
 }
+void fitPointDetail(QScrollArea* scroll, QLabel* label) {
+    if (!scroll || !label) return;
+    const int width=std::max(1, scroll->viewport()->width());
+    const int height=std::max(label->heightForWidth(width), label->sizeHint().height());
+    if (label->minimumHeight()!=height) label->setMinimumHeight(height);
+}
 void Workbench::showPointDetail() {
     if (!pointDetail_ || !pointTable_) return;
     const int row=pointTable_->currentRow();
     auto* name=row<0 ? nullptr : pointTable_->item(row, 0);
     if (!name || pointTable_->isRowHidden(row)) {
         pointDetail_->setText(pointTable_->rowCount()==0 ? "没有可查看的源项。" : "选择一行查看完整源项。英文审计码只出现在这里。");
-        return;
-    }
-    pointDetail_->setText(name->data(Qt::UserRole).toString());
+    } else pointDetail_->setText(name->data(Qt::UserRole).toString());
+    fitPointDetail(findChild<QScrollArea*>("pointDetailScroll"), pointDetail_);
 }
 void Workbench::syncModuleChrome() {
     const bool has=!catalog_.stations_of(selection_.plc_id).empty();
@@ -1499,7 +1551,11 @@ void Workbench::render() {
             pointTable_->setItem(i, column, item);
         }
     }
-    if (eventSource_) eventSource_->setText(live ? "来源：工位 140 · 模拟流 sim.three-cart.v1 · 北京时间 UTC+8" : "来源：当前工位没有模拟流，不显示工位 140 的帧。");
+    if (eventSource_) eventSource_->setText(live ? "来源：工位 140 · 模拟流 sim.three-cart.v1 · 北京时间 UTC+8" : "来源：当前 PLC 未绑定模拟源。");
+    const bool unconfigured=selection_.station_id.empty();
+    if (auto* empty=findChild<QWidget*>("emptyRun")) empty->setVisible(unconfigured);
+    if (auto* workspace=findChild<QWidget*>("runWorkspace")) workspace->setVisible(!unconfigured);
+    if (auto* hint=findChild<QLabel*>("runHint")) hint->setVisible(!unconfigured);
 
     if (!live) {
         stageTable_->setRowCount(0);

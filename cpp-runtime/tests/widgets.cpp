@@ -15,6 +15,8 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -59,6 +61,27 @@ void check_labels(QWidget& window) {
             throw std::runtime_error(("clipped label: "+label->text()).toStdString());
         if (!label->fontMetrics().inFont(QChar(0x6a21))) throw std::runtime_error("missing Chinese glyph");
     }
+}
+void assert_point_detail_reachable(QWidget& window) {
+    auto* tabs=window.findChild<QTabWidget*>("moduleTabs");
+    auto* points=window.findChild<QTableWidget*>("pointAuditTable");
+    auto* scroll=window.findChild<QScrollArea*>("pointDetailScroll");
+    auto* label=window.findChild<QLabel*>("pointDetail");
+    if (!tabs || !points || !scroll || !label || points->rowCount()<1) throw std::runtime_error("missing point detail scroll");
+    const int previous=tabs->currentIndex();
+    for (int i=0; i<tabs->count(); ++i) if (tabs->tabText(i)=="点表") tabs->setCurrentIndex(i);
+    points->selectRow(0);
+    pump(100);
+    if (!label->text().contains("审计码")) throw std::runtime_error("point detail has no audit line");
+    const QPoint origin=scroll->mapTo(&window, QPoint(0, 0));
+    if (!scroll->isVisible() || origin.y()<0 || origin.y()+scroll->height()>window.height()+2)
+        throw std::runtime_error("point detail scroll is outside the window");
+    const int need=label->heightForWidth(std::max(1, scroll->viewport()->width()));
+    if (label->height()+2<need) throw std::runtime_error("point detail label is shorter than its wrapped text");
+    const int hidden=label->height()-scroll->viewport()->height();
+    if (hidden>4 && scroll->verticalScrollBar()->maximum()+4<hidden)
+        throw std::runtime_error("point detail scroll cannot reach the last line");
+    tabs->setCurrentIndex(previous);
 }
 void assert_inside(QWidget& window, const char* name) {
     auto* widget=window.findChild<QWidget*>(name);
@@ -262,6 +285,15 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcSeq2);
         if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
             throw std::runtime_error("empty plc was not unconfigured");
+        auto* emptyRun=window.findChild<QWidget*>("emptyRun");
+        auto* runHint=window.findChild<QLabel*>("runHint");
+        auto* runWorkspace=window.findChild<QWidget*>("runWorkspace");
+        if (!emptyRun || !emptyRun->isVisible() || (runHint && runHint->isVisible()) || (runWorkspace && runWorkspace->isVisible()))
+            throw std::runtime_error("unconfigured plc still showed the live run card");
+        const QPoint emptyAt=emptyRun->mapTo(&window, QPoint(0, 0));
+        if (emptyAt.y()>220 || emptyRun->height()>180) throw std::runtime_error("unconfigured run state is not a short block at the top");
+        if (window.findChild<QLabel*>("emptyTitle")->text()!="尚未配置工位" || window.findChild<QLabel*>("emptySource")->text()!="当前 PLC 未绑定模拟源" || window.findChild<QLabel*>("emptyAction")->text()!="暂无法执行模拟操作")
+            throw std::runtime_error("unconfigured copy changed");
         for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
         if (area->currentData().toString()!=catalog::kAreaPick || window.selectedStationId()!=catalog::kStation140)
             throw std::runtime_error("parent switch did not select a legal child by id");
@@ -324,6 +356,11 @@ int main(int argc, char** argv) {
         points->selectRow(0);
         pump(30);
         if (!detailText->text().contains("plc-auto-not-host-mode") || !detailText->text().contains("DB1900.DBX0.0")) throw std::runtime_error("point detail hid the source code");
+        for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
+            window.resize(size);
+            pump(200);
+            assert_point_detail_reachable(window);
+        }
         search->setText("没有这个地址ZZZ");
         pump(30);
         for (int row=0; row<points->rowCount(); ++row) if (!points->isRowHidden(row)) throw std::runtime_error("point search kept a row");
