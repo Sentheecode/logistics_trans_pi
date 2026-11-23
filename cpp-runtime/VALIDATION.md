@@ -1,3 +1,32 @@
+# 日志去重与跨 PLC 隔离（收尾）
+
+日期：2026-11-23。本地分支 `cursor/qiantang-workbench-d21d`，没有推送，没有动 `main`（`82a8232202f39bd423d43c69cd19f7061cbc2336`）。
+
+相位 10 和 11 都是模拟链路断开。原先只要事件名是 `SIM_LINK_DOWN` 就再写一行，所以 1100 日志里连续两行是同一句话。现在只在链路或质量相对上一帧变化时写采集日志，重启时用最后一帧记住上次状态。列表用短句（模拟链路断开、模拟链路恢复、数据质量不可用），「不是现场离线、没有 S7 重连」只留在日志页说明。非 140 的运行、日志、事件、点表和采集页不展示 140 的帧或日志；顶栏心跳仍是采集进程。150/160 示意图不使用 140 的三车颜色。运行页直接铺满当前视口，近期记录在表内滚动。质量正常浅绿，未知和未连接为灰，模拟断开为琥珀。
+
+审查原则来自 Damir Sokolovsky，heydamir/unslop，CC BY 4.0。技能未装入仓库。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-release -j$(nproc)
+ctest --test-dir /tmp/logistics-release --output-on-failure
+cmake -S cpp-runtime -B /tmp/logistics-core -DBUILD_HMI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-core -j$(nproc)
+ctest --test-dir /tmp/logistics-core --output-on-failure
+npm test --prefix runtime
+```
+
+同一最终树上：
+
+- Release CTest **8/8** 通过，0 失败：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`、`logs`、`widgets_controls`、`hmi_refresh`。
+- `BUILD_HMI=OFF` **6/6** 通过，0 失败：`domain`、`catalog`、`point_audit`、`modes`、`acceptance`、`logs`。
+- Node runtime **49/49** 通过，0 失败，0 跳过。`runtime/drivers/opcua` 未跑。
+- `logs` 覆盖 v1→v3 与 v2→v3 迁移、`sim_logs` 上限 300、采集日志少于帧数、相邻采集日志不重复、断开帧数多于断开日志、日志不含凭据字样、第二采集进程拿不到 `writer.lease`。
+
+尚未做：Windows DPI 与字体、真实 S7/LWMS/库卡/华睿报文、工位真实形体。截图由这次提交的 `hmi` 在新数据目录当场抓取，不复用旧图。
+
+---
+
 # 左侧导航工作台（本轮）
 
 日期：2026-11-23。仍在实验分支上本地修改，没有推送，没有动 `main`（`82a8232202f39bd423d43c69cd19f7061cbc2336`）。只模拟，不连接现场设备。

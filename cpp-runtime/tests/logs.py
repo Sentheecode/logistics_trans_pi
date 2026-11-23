@@ -48,6 +48,17 @@ with tempfile.TemporaryDirectory() as tmp:
     frames, logs, collector_rows, version = counts(path)
     if version != 3 or frames < 30 or logs < 1 or logs > 300 or collector_rows >= frames:
         raise AssertionError((frames, logs, collector_rows, version))
+    texts = [row[0] for row in query(path, "select text from sim_logs where category='collector' order by id")]
+    for previous, current in zip(texts, texts[1:]):
+        if previous == current:
+            raise AssertionError(("repeated collector state", previous))
+    down_frames = query(path, "select count(*) from frames where link='down'")[0][0]
+    down_logs = sum(1 for text in texts if "链路断开" in text)
+    if down_frames >= 2 and down_logs >= down_frames:
+        raise AssertionError(("link-down logged once per frame", down_frames, down_logs))
+    for text in texts:
+        if "模拟源 sim.three-cart" in text or "凭据" in text or "password" in text.lower():
+            raise AssertionError(("log text not brief", text))
 
     with closing(sqlite3.connect(path)) as db:
         db.execute("drop table sim_logs")

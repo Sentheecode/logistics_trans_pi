@@ -91,7 +91,14 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     if(state.step()!=SQLITE_ROW)throw std::runtime_error("missing runtime state");
     p->info.mode=state.text(0);p->info.revision=sqlite3_column_int64(state.s,1);
     if(p->info.revision<0||(p->info.mode!="manual"&&p->info.mode!="automatic"))throw std::runtime_error("invalid runtime mode");
-    p->info.boot=p->boot;publish(nullptr,p->info.mode);
+    p->info.boot=p->boot;
+    Stmt last(*p->db,"SELECT link,quality,event,cart1,cart2,cart3 FROM frames ORDER BY seq DESC LIMIT 1");
+    if(last.step()==SQLITE_ROW){
+        p->seen_frame=true;
+        p->prev_link=last.text(0); p->prev_quality=last.text(1); p->prev_event=last.text(2);
+        for(int i=0;i<3;++i) p->prev_carts[i]=last.text(3+i);
+    }
+    publish(nullptr,p->info.mode);
 
 }
 void Writer::note(const std::string& level, const std::string& category, const std::string& object, const std::string& text, std::int64_t frame_seq){
@@ -125,13 +132,15 @@ void Writer::publish(const Observation* observation,const std::string& mode,bool
         const bool quality_changed=!p->seen_frame || o.quality!=p->prev_quality;
         bool carts_changed=o.available && !p->seen_frame;
         if(o.available) for(int i=0;i<3;++i) if(o.state.carts[i]!=p->prev_carts[i]) carts_changed=true;
-        if(link_changed || quality_changed || o.event=="SIM_MANUAL_DISCONNECT" || o.event=="SIM_LINK_DOWN" || o.event=="SIM_LINK_RECOVERED" || o.event=="SIM_BAD_QUALITY"){
+        if(link_changed || quality_changed){
             const auto level=o.link=="down" || o.quality!="good" ? "warn" : "info";
-            std::string text="模拟源 sim.three-cart.v1";
-            if(o.link=="down") text+=" 链路断开。这是模拟证据，不是现场设备离线，也没有 S7 重连。";
-            else if(p->seen_frame && p->prev_link=="down") text+=" 模拟链路恢复。没有真实客户端重连。";
-            else if(o.quality!="good") text+=" 质量不可用，原因 "+o.reason+"。不补零。";
-            else text+=" 质量 "+o.quality+"，链路 "+o.link+"。";
+            std::string text;
+            if(o.event=="SIM_MANUAL_DISCONNECT") text="手动模拟断链，当前值未知。不补零。";
+            else if(o.link=="down") text=o.quality!="good" ? "模拟链路断开，数据质量不可用。不补零。" : "模拟链路断开";
+            else if(p->seen_frame && p->prev_link=="down") text=o.quality=="good" ? "模拟链路恢复，数据质量正常" : "模拟链路恢复，数据质量不可用。不补零。";
+            else if(o.quality!="good") text="数据质量不可用，原因 "+o.reason+"。不补零。";
+            else if(quality_changed && p->seen_frame) text="数据质量恢复为正常";
+            else text="模拟链路接通，数据质量正常";
             write_log(*p->db,t,level,"collector","sim.three-cart.v1",text,seq);
         }
         if(carts_changed){

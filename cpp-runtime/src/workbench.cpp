@@ -195,10 +195,13 @@ QString consoleStyle() {
         QPushButton#navButton:focus { border:1px solid %6; }
         QWidget#surface { background:%2; border:1px solid %4; border-radius:8px; }
         QLabel#title { font-size:16px; font-weight:600; color:%3; }
-        QLabel#pageTitle { font-size:15px; font-weight:600; color:%3; }
+        QLabel#pageTitle { font-size:18px; font-weight:600; color:%3; }
         QLabel#fieldLabel { color:%5; font-size:12px; }
-        QLabel#section { color:%3; font-size:13px; font-weight:600; }
-        QLabel#stationTitle { font-size:16px; font-weight:600; color:%3; }
+        QLabel#section, QLabel#collectChangeLabel { color:%3; font-size:14px; font-weight:600; }
+        QLabel#stationTitle { font-size:18px; font-weight:600; color:%3; }
+        QLabel#collectQuality[state="ok"], QLabel#collectLink[state="ok"] { color:#1f7a4d; font-weight:600; }
+        QLabel#collectQuality[state="warn"], QLabel#collectLink[state="warn"] { color:%8; font-weight:600; }
+        QLabel#collectQuality[state="unknown"], QLabel#collectLink[state="unknown"], QLabel#collectPlc[state="unknown"] { color:%5; }
         QLabel#muted, QLabel#controlReason, QLabel#controlFeedback { color:%5; font-size:12px; }
         QLabel#phase { font-size:15px; font-weight:600; color:%3; }
         QLabel#simBadge { background:%6; color:#ffffff; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600; }
@@ -313,8 +316,18 @@ QString showLogText(QString text) {
     text.replace("质量 good", "质量正常");
     text.replace("链路 up", "链路接通");
     text.replace("source_bad", "源质量异常");
-    text.replace("sim.three-cart.v1", "工位 140 模拟源");
-    return text;
+    text.replace("sim.three-cart.v1", "工位 140");
+    text.replace("模拟源 工位 140 模拟源", "模拟源");
+    text.replace("这是模拟证据，不是现场设备离线，也没有 S7 重连。", "");
+    text.replace("没有真实客户端重连。", "");
+    if (text.contains("链路断开") && !text.contains("模拟链路断开")) text.replace("链路断开", "模拟链路断开");
+    return text.simplified();
+}
+void markState(QLabel* label, const QString& state) {
+    if (!label) return;
+    label->setProperty("state", state);
+    label->style()->unpolish(label);
+    label->style()->polish(label);
 }
 }
 
@@ -410,8 +423,9 @@ Workbench::Workbench(std::filesystem::path directory)
     commandLayout->addWidget(feedback_);
 
     schematic_=new SchematicView;
-    schematic_->setFixedHeight(148);
-    schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    schematic_->setMinimumHeight(96);
+    schematic_->setMaximumHeight(120);
+    schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     cardRow_=new QWidget;
     cardRow_->setFixedHeight(44);
     new QHBoxLayout(cardRow_);
@@ -467,8 +481,8 @@ Workbench::Workbench(std::filesystem::path directory)
 
     auto* run=new QWidget;
     auto* runLayout=new QVBoxLayout(run);
-    runLayout->setContentsMargins(16, 12, 16, 16);
-    runLayout->setSpacing(8);
+    runLayout->setContentsMargins(12, 8, 12, 8);
+    runLayout->setSpacing(4);
     auto* runTitle=new QLabel("运行", run);
     runTitle->setObjectName("pageTitle");
     runTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -479,8 +493,8 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* workspace=new QWidget(run);
     workspace->setObjectName("surface");
     auto* workspaceLayout=new QVBoxLayout(workspace);
-    workspaceLayout->setContentsMargins(12, 12, 12, 12);
-    workspaceLayout->setSpacing(8);
+    workspaceLayout->setContentsMargins(12, 8, 12, 8);
+    workspaceLayout->setSpacing(4);
     workspaceLayout->addWidget(commandPane);
     runLayout->addWidget(runTitle);
     runLayout->addWidget(runHint);
@@ -516,6 +530,9 @@ Workbench::Workbench(std::filesystem::path directory)
     recentTable_->setObjectName("recentTable");
     prepareTable(recentTable_, {"时间", "记录"});
     recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    recentTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    recentTable_->setMinimumHeight(72);
+    recentTable_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     auto* recentLabel=new QLabel("近期记录", workspace);
     recentLabel->setObjectName("section");
     auto* recentScope=new QLabel("当前 PLC 没有模拟记录，不展示工位 140 的日志。", workspace);
@@ -776,7 +793,7 @@ Workbench::Workbench(std::filesystem::path directory)
     logLayout->setSpacing(8);
     auto* logHeading=new QLabel("日志", logPage);
     logHeading->setObjectName("pageTitle");
-    auto* logHint=new QLabel("时间列是北京时间（UTC+8），库内仍是 UTC 毫秒。操作来源是本地模拟，没有操作者身份。", logPage);
+    auto* logHint=new QLabel("时间列是北京时间（UTC+8），库内仍是 UTC 毫秒。链路和质量变化是模拟证据，不是现场设备离线，也没有 S7 重连。", logPage);
     logHint->setWordWrap(true);
     logHint->setObjectName("muted");
     auto* logTools=new QHBoxLayout;
@@ -842,24 +859,29 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(collectChanges_, {"时间", "变化"});
     collectChanges_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     collectChanges_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto* collectUnbound=new QLabel("当前 PLC 未绑定模拟源。顶栏心跳是采集进程，不是这个 PLC 的帧。工位 140 的序号、质量和链路不在这里。", collectPage);
+    collectUnbound->setObjectName("collectUnbound");
+    collectUnbound->setWordWrap(true);
+    collectUnbound->hide();
     auto* changeLabel=new QLabel("最近采集变化", collectPage);
-    changeLabel->setObjectName("section");
+    changeLabel->setObjectName("collectChangeLabel");
     collectLayout->addWidget(collectHeading);
     collectLayout->addWidget(collectBox);
     collectLayout->addWidget(changeLabel);
+    collectLayout->addWidget(collectUnbound);
     collectLayout->addWidget(collectChanges_, 1);
 
     moduleTabs_=new QTabWidget;
     moduleTabs_->setObjectName("moduleTabs");
     moduleTabs_->setFocusPolicy(Qt::StrongFocus);
     moduleTabs_->tabBar()->setFocusPolicy(Qt::StrongFocus);
-    moduleTabs_->addTab(scrollPage(run), "运行");
+    moduleTabs_->addTab(run, "运行");
     moduleTabs_->addTab(scrollPage(stationPage), "工位");
     moduleTabs_->addTab(historyPage, "事件");
     moduleTabs_->addTab(pointPage, "点表");
     moduleTabs_->addTab(scrollPage(boundaryPage), "接口");
     moduleTabs_->addTab(logPage, "日志");
-    moduleTabs_->addTab(scrollPage(collectPage), "采集");
+    moduleTabs_->addTab(collectPage, "采集");
     moduleTabs_->setCurrentIndex(0);
     moduleTabs_->tabBar()->hide();
     auto* side=new QWidget;
@@ -1060,6 +1082,15 @@ void Workbench::applyPointFilter() {
 }
 void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
     if(!logTable_) return;
+    if(!liveScope()){
+        shown_log_id_=-1; shown_log_count_=-1;
+        if(recentTable_) recentTable_->setRowCount(0);
+        if(collectChanges_) collectChanges_->setRowCount(0);
+        logTable_->setRowCount(0);
+        if(logEmpty_){ logEmpty_->setVisible(true); logEmpty_->setText("当前 PLC 未绑定模拟源。顶栏心跳仍是采集进程。工位 140 的日志不在这里。"); }
+        if(logDetail_) logDetail_->setText("没有当前 PLC 的记录。模拟免责声明只保留在日志页说明里。");
+        return;
+    }
     const auto id=logs.empty()?0:logs.front().id;
     const auto count=static_cast<int>(logs.size());
     if(id==shown_log_id_ && count==shown_log_count_) { applyLogFilter(); return; }
@@ -1103,10 +1134,11 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
         const auto& row=logs[static_cast<std::size_t>(i)];
         const auto level=row.level=="warn"?"警告":"信息";
         const auto category=row.category=="audit"?"操作":row.category=="collector"?"采集":"业务";
+        const auto brief=showLogText(QString::fromStdString(row.text));
         const auto detail=QString("时间：%1（北京时间 UTC+8）\nUTC 毫秒：%2\n等级：%3\n类别：%4\n对象：%5\n对象原文：%6\n关联帧：%7\n%8")
             .arg(beijingTime(row.received_ms,"HH:mm:ss.zzz"), QString::number(row.received_ms), level, category,
-                 readableObject(row.object), QString::fromStdString(row.object), row.has_frame?QString::number(row.frame_seq):QString("无"), showLogText(QString::fromStdString(row.text)));
-        QStringList columns={beijingTime(row.received_ms,"HH:mm:ss"), level, category, readableObject(row.object), showLogText(QString::fromStdString(row.text))};
+                 readableObject(row.object), QString::fromStdString(row.object), row.has_frame?QString::number(row.frame_seq):QString("无"), brief);
+        QStringList columns={beijingTime(row.received_ms,"HH:mm:ss"), level, category, readableObject(row.object), brief};
         for(int column=0; column<columns.size(); ++column){
             auto* item=new QTableWidgetItem(columns[column]);
             item->setFlags(Qt::ItemIsEnabled|Qt::ItemIsSelectable);
@@ -1181,15 +1213,24 @@ void Workbench::syncModuleChrome() {
     }
     auto setFact=[&](const char* name, const QString& text){ if(auto* label=findChild<QLabel*>(name)) label->setText(text); };
     if(collectOwner_) collectOwner_->setText(view_.runtime.liveness=="recent" ? "独立采集进程 · 心跳正常" : "独立采集进程 · 心跳不可用");
-    if(collectLive_) collectLive_->setText(liveScope() ? "sim.three-cart.v1 · 工位 140" : "当前工位没有模拟源");
-    const bool frame=liveScope() && !view_.rows.empty();
+    const bool bound=liveScope();
+    if(collectLive_) collectLive_->setText(bound ? "工位 140 · sim.three-cart.v1" : "当前 PLC 未绑定");
+    const bool frame=bound && !view_.rows.empty();
     const auto age=view_.runtime.heartbeat_ms>0 ? QString::number(std::max<qint64>(0, (QDateTime::currentMSecsSinceEpoch()-view_.runtime.heartbeat_ms)/1000))+" 秒" : QString("无");
-    setFact("collectSeen", view_.runtime.heartbeat_ms>0 ? beijingTime(view_.runtime.heartbeat_ms,"HH:mm:ss")+" · 年龄 "+age : "无");
+    setFact("collectSeen", view_.runtime.heartbeat_ms>0 ? beijingTime(view_.runtime.heartbeat_ms,"HH:mm:ss")+" · 年龄 "+age+" · 采集进程" : "无");
     setFact("collectFrame", frame ? QString("#%1").arg(view_.rows.front().seq) : "无");
-    setFact("collectQuality", frame ? QString(view_.rows.front().quality=="good"?"正常":"不可用") : "无");
-    setFact("collectLink", frame ? QString(view_.rows.front().link=="down"?"断开":"接通") : "无");
-    setFact("collectMode", view_.runtime.mode=="manual" ? "手动" : "自动");
+    const QString qualityText=frame ? QString(view_.rows.front().quality=="good"?"正常":"不可用") : "无";
+    const QString linkText=!frame ? "无" : view_.rows.front().link=="down" ? "模拟断开" : "接通";
+    setFact("collectQuality", qualityText);
+    setFact("collectLink", linkText);
+    setFact("collectMode", QString(view_.runtime.mode=="manual" ? "手动" : "自动")+" · 上位机");
     setFact("collectPlc", "未连接");
+    markState(findChild<QLabel*>("collectQuality"), !frame ? "unknown" : view_.rows.front().quality=="good" ? "ok" : "warn");
+    markState(findChild<QLabel*>("collectLink"), !frame ? "unknown" : view_.rows.front().link=="down" ? "warn" : "ok");
+    markState(findChild<QLabel*>("collectPlc"), "unknown");
+    if(auto* note=findChild<QLabel*>("collectUnbound")) note->setVisible(!bound);
+    if(auto* heading=findChild<QLabel*>("collectChangeLabel")) heading->setVisible(bound);
+    if(collectChanges_) collectChanges_->setVisible(bound);
     refillLogs(view_.logs);
 }
 
@@ -1315,7 +1356,7 @@ void Workbench::refresh() {
     }
     if (read_.valid() && read_.wait_for(std::chrono::milliseconds(0))==std::future_status::ready) {
         try { display(read_.get()); }
-        catch (const std::exception&) { unavailable("无法读取本地采集数据，请先独立启动模拟采集器。"); }
+        catch (const std::exception& error) { unavailable(QString::fromUtf8("无法读取本地采集数据：") + QString::fromUtf8(error.what())); }
     }
     if (!read_.valid()) read_=std::async(std::launch::async, [dir=directory_] { return sim::read(dir, "recent", 40); });
     buttons();
@@ -1393,7 +1434,7 @@ void Workbench::render() {
         glyph.id=item->id;
         glyph.number=QString::fromStdString(item->name);
         glyph.live=catalog_.is_live(item->id);
-        if (glyph.live && !view_.rows.empty()) {
+        if (glyph.live && glyph.id==selection_.station_id && !view_.rows.empty()) {
             glyph.carts_known=true;
             for (int index=0; index<3; ++index) {
                 const auto raw=carts_known ? view_.rows.front().carts[index] : "UNKNOWN";
