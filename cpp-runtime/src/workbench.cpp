@@ -423,8 +423,8 @@ Workbench::Workbench(std::filesystem::path directory)
     commandLayout->addWidget(feedback_);
 
     schematic_=new SchematicView;
-    schematic_->setMinimumHeight(96);
-    schematic_->setMaximumHeight(120);
+    schematic_->setMinimumHeight(88);
+    schematic_->setMaximumHeight(96);
     schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     cardRow_=new QWidget;
     cardRow_->setFixedHeight(44);
@@ -449,7 +449,7 @@ Workbench::Workbench(std::filesystem::path directory)
     plcAuto_->setObjectName("muted");
     fit(plcAuto_);
     cartStrip_=new QWidget;
-    cartStrip_->setFixedHeight(68);
+    cartStrip_->setFixedHeight(60);
     auto* cartLayout=new QHBoxLayout(cartStrip_);
     cartLayout->setContentsMargins(0, 0, 0, 0);
     cartLayout->setSpacing(8);
@@ -505,7 +505,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* facts=new QWidget(runBody);
     auto* factsLayout=new QVBoxLayout(facts);
     factsLayout->setContentsMargins(0, 0, 0, 0);
-    factsLayout->setSpacing(8);
+    factsLayout->setSpacing(4);
     factsLayout->addWidget(stationTitle_);
     factsLayout->addWidget(stationMeta_);
     factsLayout->addWidget(interfaceLine_);
@@ -531,7 +531,8 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(recentTable_, {"时间", "记录"});
     recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     recentTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    recentTable_->setMinimumHeight(72);
+    recentTable_->setMinimumHeight(96);
+    recentTable_->verticalHeader()->setDefaultSectionSize(28);
     recentTable_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     auto* recentLabel=new QLabel("近期记录", workspace);
     recentLabel->setObjectName("section");
