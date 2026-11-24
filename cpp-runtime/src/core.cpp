@@ -181,7 +181,7 @@ void Writer::publish(const Observation* observation,const std::string& mode,bool
     }catch(...){p->db->exec("ROLLBACK");throw;}
 }
 namespace {
-View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* window){
+View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* window,LogDetail detail){
     // Keep a fixed upper bound even for old schemas without a receive-time index.
     int query_budget=1000; // callbacks every 1000 SQLite instructions
 
@@ -217,12 +217,17 @@ View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* wind
         v.log_retention=LogRetention{sqlite3_column_int64(retention.s,0),sqlite3_column_int64(retention.s,1)};
     }
     v.logs_available=version>=3;
-    if(v.logs_available){
-        const char* sql=window
-            ? "SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs WHERE received_ms>=?1 AND received_ms<?2 ORDER BY id DESC LIMIT 80"
-            : "SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs ORDER BY id DESC LIMIT 80";
-        Stmt logs(d,sql);
+    if(v.logs_available && detail!=LogDetail::none){
+        std::string sql="SELECT id,received_ms,";
+        sql+=detail==LogDetail::full ? "level,category,object,text" :
+            "CASE WHEN level IN ('info','warn') THEN level END,"
+            "CASE WHEN category IN ('audit','business','collector') THEN category END,'',''";
+        sql+=",frame_seq FROM sim_logs";
+        if (window) sql+=" WHERE received_ms>=?1 AND received_ms<?2";
+        sql+=" ORDER BY id DESC LIMIT ?3";
+        Stmt logs(d,sql.c_str());
         if (window) { logs.integer(1,window->from_ms); logs.integer(2,window->to_ms); }
+        logs.integer(3, detail==LogDetail::full ? 80 : limit+1);
         while(logs.step()==SQLITE_ROW){
             LogRecord row; row.id=sqlite3_column_int64(logs.s,0); row.received_ms=sqlite3_column_int64(logs.s,1);
             row.level=logs.text(2); row.category=logs.text(3); row.object=logs.text(4); row.text=logs.text(5);
@@ -233,19 +238,24 @@ View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* wind
     v.freshness=v.rows.empty()?"no_evidence":fresh(v.rows.front().received_ms);return v;
 }
 }
-View read(const std::filesystem::path& dir,const std::string& command,int limit){
+View read(const std::filesystem::path& dir,const std::string& command,int limit,LogDetail log_detail){
     if(command!="status"&&command!="history"&&command!="recent"&&command!="alarms")
         throw std::runtime_error("unknown command; use help");
     if(limit<1||limit>200)throw std::runtime_error("limit must be 1..200");
     // alarms reports the latest condition, not a fabricated occurrence history.
-    return read_view(dir,command=="status"||command=="alarms"?1:limit,nullptr);
+    return read_view(dir,command=="status"||command=="alarms"?1:limit,nullptr,log_detail);
 }
-View read_window(const std::filesystem::path& dir,TimeWindow window,int limit){
+View read_window(const std::filesystem::path& dir,TimeWindow window,int limit,LogDetail log_detail){
     constexpr std::int64_t max_utc_ms=253402300799999; // UTC year 9999
     if (window.from_ms<0 || window.to_ms>max_utc_ms || window.from_ms>=window.to_ms ||
         window.to_ms-window.from_ms>86400000)
         throw std::runtime_error("expected a nonempty UTC millisecond window of at most 24 hours");
-    return read_view(dir,limit,&window);
+    return read_view(dir,limit,&window,log_detail);
+}
+bool current_frame_usable(const View& view) {
+    return !view.rows.empty() && view.freshness=="recent" && view.runtime.liveness=="recent"
+        && view.rows.front().boot==view.runtime.boot && view.rows.front().quality=="good"
+        && view.rows.front().link=="up";
 }
 std::vector<EventBucket> event_buckets(const std::filesystem::path& dir,TimeWindow window,int bucket_ms){
     constexpr std::int64_t max_utc_ms=253402300799999;

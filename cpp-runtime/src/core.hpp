@@ -47,8 +47,12 @@ private:
     struct Impl;
     std::unique_ptr<Impl> p;
 };
-View read(const std::filesystem::path& directory, const std::string& command, int limit=20);
-View read_window(const std::filesystem::path& directory, TimeWindow window, int limit);
+enum class LogDetail { full, metadata, none };
+View read(const std::filesystem::path& directory, const std::string& command, int limit=20,
+          LogDetail log_detail=LogDetail::full);
+View read_window(const std::filesystem::path& directory, TimeWindow window, int limit,
+                 LogDetail log_detail=LogDetail::full);
+bool current_frame_usable(const View& view);
 std::string render(const View& view);
 std::string help();
 }

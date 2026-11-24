@@ -1,8 +1,8 @@
-# C++ 物流上位机首版（仅模拟）
+# C++ 物流工作台运行手册
 
-这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。旧 Node runtime 和已发布契约保留。Pi 现在可选用默认 C++ 快照桥，旧 HTTP 需显式选择。
+这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。[快速开始](../README.md) 提供当前构建命令；[迁移表](../docs/cpp-migration.md) 记录旧工具的保留与退役。
 
-交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航是钱塘二厂 → 分拣区或排序区 → PLC 配置 → 已给定工位。一个 PLC 只挂一处采集；当前模拟帧只挂在工位 140，不复制到 150/160。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
+工作台入口独立运行：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航按工厂 → 业务模式 → 线体 → 工位联动，PLC 按配置关联。当前模拟帧只挂在一个 SPS 工位。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
 
 ## 已实现的演示
 
@@ -24,9 +24,9 @@ CLI/HMI 查询用 SQLite READONLY 与 query_only，不提供 SQL、shell、脚�
 
 HMI 不启动/停止采集；关窗和重开都不会改变模式或推进任务。采集器重启保持已提交模式；手动模式重启仍待步。任务记录过期与采集进程心跳过期分开显示，手动停住不会仅因没点击就被当作断链。心跳超过 1500ms、时钟不确定或本地控制不可达时给出明确提示；结果未知不自动重试。
 
-控制通道为同用户本地文件锁单槽信箱 `control.mailbox`，仅四种有限模拟命令。请求有启动身份、修订号、截止时间和长度上限；过期、重复修订号、并发忙均失败。不是通用控制面，无网络监听和设备通道。使用用户私有本地目录；Linux 0600 文件权限，Windows 继承目录 ACL，Windows 文件锁/权限仍待实测。CLI/Pi 仍只读。BUILD_TESTING 下的 `control_test_client` 是自动化测试夹具，不作为产品 CLI。
+控制通道为同用户本地文件锁单槽信箱 `control.mailbox`，仅四种有限模拟命令。请求有启动身份、修订号、截止时间和长度上限；过期、重复修订号、并发忙均失败。不是通用控制面，无网络监听和设备通道。使用用户私有本地目录；Linux 0600 文件权限，Windows 继承目录 ACL，Windows 文件锁/权限仍待实测。CLI 和 MCP 仍只读。BUILD_TESTING 下的 `control_test_client` 是自动化测试夹具，不作为产品 CLI。
 
-界面为中文，标准窗口 1280×800，也支持缩到 1100×650。程序把界面字体设为 Noto Sans CJK SC，并回退到 Noto Sans CJK JP 与微软雅黑；Linux 依赖 `fonts-noto-cjk`，不靠系统偶然的宋体。没有 WebView 或 Qt Charts。主图是钱塘二厂的工位示意，不是测量图，也不是设备照片。上位机手动／自动和 PLC 设备自动是两回事；后者显示未读取。工位 140 的点表只在「点表」页作审计，不生成写地址，也不套用到其他工位。浏览目录不改变采集。采集器在 schema v3 写入最多 300 条 `sim_logs`：操作审计、采集变化和三车阶段。日志显示北京时间，库里仍是 UTC 毫秒；不记录凭据或二维码原文。没有真实 S7 重连。
+界面为中文，标准窗口 1280×800，也支持缩到 1100×650。程序把界面字体设为 Noto Sans CJK SC，并回退到 Noto Sans CJK JP 与微软雅黑；Linux 依赖 `fonts-noto-cjk`，不靠系统偶然的宋体。没有 WebView 或 Qt Charts。主图区分合成工位、固定设备与共用通道。上位机手动／自动和 PLC 设备自动是两回事；后者显示未读取。工位 140 的点表只在「点表」页作审计，不生成写地址，也不套用到其他工位。浏览目录不改变采集。采集器在 schema v4 保留最近 300 条 `sim_logs`：操作审计、采集变化和三车阶段。日志显示北京时间，库里仍是 UTC 毫秒；不记录凭据或二维码原文。没有真实 S7 重连。
 
 ## Windows 下载、构建、启动（非管理员）
 
@@ -41,7 +41,7 @@ git rev-parse HEAD
 # 已有上一版目录：确认没有未提交改动后用 git pull --ff-only origin experiment/cpp-runtime 更新。
 
 # 在用户可写的 D:/msys64 内安装开发包，不需要 Windows 管理员权限。
-pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
+pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-nlohmann-json mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
 export PATH=/mingw64/bin:$PATH
 g++ --version
 cmake --version
@@ -82,7 +82,7 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 
 命令有界：recent/history 默认 20，最大 200，超过范围报错；status/alarms 只返回最后一帧。`more` 表示还有更老的帧，不是精确匹配总数；交互命令只提供按序号倒序的尾部原始历史。单次执行可用 `snapshot-json [limit]` 或 `window-json FROM_UTC_MS TO_UTC_MS [limit]` 返回固定模拟范围的保留帧与日志，每类最多 40 条。`window-json` 按接收时间筛选且无游标。另有 `rollup-json FROM_UTC_MS TO_UTC_MS BUCKET_MS`，按源→服务端→接收时间回退统计保留模拟帧，刻度为 1000/60000/3600000 毫秒且 UTC 对齐，最多 24 小时、120 桶，空桶省略。输入每行最多 256 字节，未知命令和额外参数拒绝。coverage 固定 unknown；没有记录不能证明无异常，只能说证据不足。C++ CLI 不需要 LLM、Pi 或 Node，也不推断根因。
 
-| 旧契约 | 此 C++ 首版 |
+| 旧契约 | 当前 C++ 版 |
 |---|---|
 | query_tags / GET tags | 未实现 HTTP 兼容；status 仅展示合成三车帧 |
 | query_history / GET history | CLI 提供尾部、接收时间窗与事件时间帧统计；无 HTTP 契约、逐标签值聚合或覆盖证明 |
@@ -92,25 +92,16 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 | health / events WebSocket | 未实现 |
 | 提案、确认和设备写入 | 未实现且无入口 |
 
-首选 C++ CLI。[Pi 可选桥和 legacy 入口](../agent/README.md)明确区分 C++ 快照和旧五工具。旧 Node HTTP 服务仍只兼容旧库；C++ 查询不监听端口。完整差异见[迁移验收表](../docs/cpp-migration.md)。
+人工诊断使用 C++ CLI，客户端集成使用 [MCP](deploy/README.md)。完整差异见 [迁移验收表](../docs/cpp-migration.md)。
 
-## Linux 验证与遗留
+## MCP 工具与运行边界
 
-常规已有依赖的 Linux 环境：
+启动 `logistics-mcp DATA_DIR`，由 MCP 客户端在 stdio 协议上列出和调用工具。每次调用指定 `station: "stn.140"`。日志只返回序号、时间、允许的级别和分类及关联帧序号。历史默认返回 10 条，最多 40 条；同时给出 `from_utc_ms`、`to_utc_ms` 可按接收时间筛选；再提供 `bucket_ms` 则统计事件时间桶。报警是最近的模拟条件，并明确是否有当前有效证据。
 
-```bash
-cmake -S cpp-runtime -B /tmp/logistics-cpp-build -DCMAKE_BUILD_TYPE=Debug
-cmake --build /tmp/logistics-cpp-build -j4
-ctest --test-dir /tmp/logistics-cpp-build --output-on-failure
-npm test --prefix runtime
-```
+Linux 可通过管理员批准的 [HTTPS 网关部署](deploy/README.md)。[验证记录](VALIDATION.md) 列出实际测试，Windows 和现场部署尚未执行。
 
-[VALIDATION.md](VALIDATION.md) 记录本次实际命令、版本及测试结果。Qt 测试用 offscreen 平台运行真实 Widgets 和事件循环，读取真实模拟 SQLite；不是窗口管理器、显卡或 Windows 部署验收。
+## OPC UA 与恢复验证
 
-后续适配器入口为 `SampleSource`、`HistorySink`；只读诊断边界为 `sim::read`，领域纯函数为 `domain::advance`。真实 PLC NodeId、生产握手触发/复位、两家 AGV 签版 API、外部任务协议均未就绪，不定义假端点。可选 `-DBUILD_OPCUA_LOOPBACK_FIXTURE=ON` 需 open62541 1.4.11 CMake 包，运行 `ctest --test-dir <构建目录> -R opcua_loopback -V`。测试临时监听 IPv4 环回，使用匿名合成节点和 SecurityPolicy None。实际 Read 验证类型、值、质量、双时间戳及未知节点；默认构建不依赖这一组件。安全策略、证书、订阅／重连与采集适配器仍待验收。[open62541 Server 指南](https://open62541.org/doc/v1.4.11/server.html)
+可选 `-DBUILD_OPCUA_LOOPBACK_FIXTURE=ON` 需要 open62541 1.4.11 CMake 包。测试仅在 IPv4 环回执行合成 Read，以及临时证书的加密订阅、信任拒绝、模拟服务重启后重新建立会话和订阅。默认采集器仍使用模拟适配器，真实设备及生产证书未接入。
 
-
-顶部按工厂 → 业务模式 → 线体 → 工位选择。关联 PLC 可辅助浏览其所有工位，在拓扑点选工位会同步到对应线体。北岸及南湾均为虚构工厂，库区和仓库是示例配置。实时数据及手动控制仍只属于原模拟流工位。空线或未绑定工位显示空态。
-
-
-SPS 主屏新增模拟单据、目标料车与工位完成进度，并用共用通道区分可移动料车和固定货架／机械臂。设计见 [架构与维护入口](../ARCHITECTURE.md)；最新执行结果见 [验证记录](VALIDATION.md)。排序区无业务流，物流 MCP 仍为提案。
+SQLite 备份测试在独立目录验证完整性、帧和日志恢复以及重启续写。旧 JSONL 归档仍属于独立的 legacy 栈。对照见 [迁移表](../docs/cpp-migration.md)。

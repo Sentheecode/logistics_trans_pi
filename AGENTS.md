@@ -1,9 +1,9 @@
 # 物流上位机协作约定
 
-本项目仅服务工业物流。灯光检测和无人检测属于其他项目。开始前读 [架构](ARCHITECTURE.md)、[运行入口](cpp-runtime/README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，核对目标分支与工作区变更。
+本项目仅服务工业物流。灯光检测和无人检测属于其他项目。开始前读 [架构](ARCHITECTURE.md)、[运行入口](README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，核对目标分支与工作区变更。
 
 修改行为、数据模型、配置、界面或交付步骤时，在同一提交更新对应架构、运行说明、验证记录和已知限制。改变长期边界时新增或更新 [架构决策](docs/adr/0001-logistics-workbench.md)。交接写明可运行入口、实际执行的命令和结果、未完成项、未实测项及下一步。截图仅用合成数据，作为独立交付物。
 
 公开提交仅用通用抽象和虚构示例，避免用户规划图、真实现场映射、内部地址、数据库、账号、凭据和现场配置。现场连接、写设备、生产部署另行授权。实验功能提交到约定实验分支，未经授权不得变更 main。
 
-整理旧 Node/Pi 工程前，按[迁移验收表](docs/cpp-migration.md)验证替代入口和关键能力，记录差异与可回溯基线。仅删除已替代或明确退役的内容，随后进入 [MCP 运维 ADR](docs/adr/0002-logistics-mcp-operations-proposal.md) 的本机只读与内网授权验收。内网访问须独立验收，默认开启 stdio 不得产生监听。
+旧 Node 证据、独有能力与移除记录集中在 [迁移验收表](docs/cpp-migration.md)。当前 C++ 和 MCP 验收无需 Node。按 [运维 ADR](docs/adr/0002-logistics-mcp-operations.md) 复跑协议、权限和界面回归；HTTP 显式启用并始终保留环回边界。

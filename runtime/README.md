@@ -1,6 +1,8 @@
-# runtime：独立 mock 服务与 T4 存储加固
+# 旧 Node runtime：独立 mock、T4 存储与 T5 驱动对照
 
-零 LLM、零 pi 依赖、零 npm 运行依赖。当前提供可实际定时运行的 mock runtime 和独立监督进程；没有真实 PLC、HTTP/WS、agent 工具或 HMI。测试不加载 140 点表，不执行现场写入。
+此目录保留尚未迁移的 JSONL 归档恢复、逐标签时间序列、旧只读 HTTP 契约和驱动对照。它与 C++、MCP 使用独立数据目录。当前运行入口见 [快速开始](../README.md)，历史 Pi 包装器与替换记录见 [迁移表](../docs/cpp-migration.md)。
+
+这里的 mock 采集、SQLite 和监督进程只需要 Node。独立只读 HTTP 可用于旧契约回归；测试使用合成数据，不执行现场写入。
 
 当前实测 Node v24.22.1 / Linux / SQLite 3.53.4。最低版本声明为 Node22.19，但该最低版本、Windows 和 Electron 打包尚未验收，不把 Linux 成功等同现场可部署。
 

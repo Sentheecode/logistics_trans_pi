@@ -31,9 +31,7 @@ std::string snapshot_json(const View& v,int limit,std::optional<TimeWindow> wind
     std::ostringstream out;
     out.imbue(std::locale::classic());
     const auto& runtime=v.runtime;
-    const bool current=!window && !v.rows.empty() && v.freshness=="recent" &&
-        runtime.liveness=="recent" && v.rows.front().boot==runtime.boot &&
-        v.rows.front().quality=="good" && v.rows.front().link=="up";
+    const bool current=!window && current_frame_usable(v);
     out<<"{\"schema\":\"ltp.cpp.sim-snapshot.v1\",\"simulation_only\":true"
        <<",\"scope\":{\"stream_id\":"<<quote(catalog::kStream)
        <<",\"station_id\":"<<quote(catalog::kStation140)
