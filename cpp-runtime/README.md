@@ -14,9 +14,9 @@
 
 ## 数据边界
 
-显式指定一个专用本地数据目录；请使用新的空目录。程序拒绝包含无关文件、符号链接或其他 schema 的目录，绝不复用旧 `runtime.sqlite`。目录中仅有 `simulation.sqlite`、其 WAL/SHM、`writer.lease` 和 `control.mailbox`。SQLite `application_id` 与 schema v1/v2 用于辨识；新版在单写者租约内迁移 v1→v2，新增模式/心跳表，保留原帧。旧版程序不能打开 v2，不支持降级。单写者由独立租约数据库的排他事务约束，进程死亡后由操作系统释放。历史每帧事务提交，WAL + synchronous=FULL；进程崩溃测试通过不等于物理断电验证。
+显式指定一个专用本地数据目录；请使用新的空目录。程序拒绝包含无关文件、符号链接或其他 schema 的目录，绝不复用旧 `runtime.sqlite`。目录中仅有 `simulation.sqlite`、其 WAL/SHM、`writer.lease` 和 `control.mailbox`。SQLite `application_id` 与 schema v1–v4 用于辨识；单写者租约内逐版迁移，保留原帧，旧客户端不能打开更高版本。v4 在同一事务内写日志、淘汰超过 300 条的旧记录并更新淘汰依据。单写者由独立租约数据库的排他事务约束，进程死亡后由操作系统释放。历史每帧事务提交，WAL + synchronous=FULL；进程崩溃测试通过不等于物理断电验证。
 
-CLI/HMI 查询用 SQLite READONLY 与 query_only，不提供 SQL、shell、脚本、设备写点或网络入口。HMI 的模拟控制只写本地信箱，SQLite 仍由采集器单写。操作系统账户权限仍需部署方配置；WAL 共享内存配套文件的访问条件须在目标系统验证。不要使用网络共享目录。磁盘错误使采集显式失败；没有自动拉起服务、容量保留/降采样、完整日志覆盖证明或生产看门狗。首次建库中途损坏、未知 schema 均拒绝自动修复，保留原文件人工处理。历史持续增长，本版只适合短时模拟验收。
+CLI/HMI 查询用 SQLite READONLY 与 query_only，不提供 SQL、shell、脚本、设备写点或网络入口。HMI 的模拟控制只写本地信箱，SQLite 仍由采集器单写。操作系统账户权限仍需部署方配置；WAL 共享内存配套文件的访问条件须在目标系统验证。不要使用网络共享目录。磁盘错误使采集显式失败。Linux 可选 `collector --supervise DATA_DIR [interval_ms]` 用独立父进程检测心跳并有限重启自有子进程。采样历史尚无容量保留、降采样或完整覆盖证明；未交付系统服务。首次建库中途损坏、未知 schema 均拒绝自动修复，保留原文件人工处理。历史持续增长，本版只适合短时模拟验收。
 
 ## 中文工作台与模拟手动/自动
 
@@ -80,14 +80,14 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 
 ## CLI 与旧接口兼容范围
 
-命令有界：recent/history 默认 20，最大 200，超过范围报错；status/alarms 只返回最后一帧。`more` 表示还有更老的帧，不是精确匹配总数；交互命令只提供按序号倒序的尾部原始历史。单次执行可用 `snapshot-json [limit]` 或 `window-json FROM_UTC_MS TO_UTC_MS [limit]` 返回固定模拟范围的保留帧与日志，每类最多 40 条。后者是接收时间窗，不等同旧历史的事件时间；没有游标或聚合。输入每行最多 256 字节，未知命令和额外参数拒绝。coverage 固定 unknown；没有记录不能证明无异常，只能说证据不足。C++ CLI 不需要 LLM、Pi 或 Node，也不推断根因。
+命令有界：recent/history 默认 20，最大 200，超过范围报错；status/alarms 只返回最后一帧。`more` 表示还有更老的帧，不是精确匹配总数；交互命令只提供按序号倒序的尾部原始历史。单次执行可用 `snapshot-json [limit]` 或 `window-json FROM_UTC_MS TO_UTC_MS [limit]` 返回固定模拟范围的保留帧与日志，每类最多 40 条。`window-json` 按接收时间筛选且无游标。另有 `rollup-json FROM_UTC_MS TO_UTC_MS BUCKET_MS`，按源→服务端→接收时间回退统计保留模拟帧，刻度为 1000/60000/3600000 毫秒且 UTC 对齐，最多 24 小时、120 桶，空桶省略。输入每行最多 256 字节，未知命令和额外参数拒绝。coverage 固定 unknown；没有记录不能证明无异常，只能说证据不足。C++ CLI 不需要 LLM、Pi 或 Node，也不推断根因。
 
 | 旧契约 | 此 C++ 首版 |
 |---|---|
 | query_tags / GET tags | 未实现 HTTP 兼容；status 仅展示合成三车帧 |
-| query_history / GET history | 未实现契约兼容；history 仅有界尾部帧 |
+| query_history / GET history | CLI 提供尾部、接收时间窗与事件时间帧统计；无 HTTP 契约、逐标签值聚合或覆盖证明 |
 | list_alarms / GET alarms | 未实现契约兼容；alarms 仅最新合成条件 |
-| search_logs / GET logs | 未实现，recent 不能当日志覆盖证明 |
+| search_logs / GET logs | CLI 提供保留日志、时间窗及 v4 淘汰计数；无旧筛选字段及时间覆盖证明 |
 | correlate_time_window / GET correlations | 未实现 |
 | health / events WebSocket | 未实现 |
 | 提案、确认和设备写入 | 未实现且无入口 |
@@ -107,7 +107,7 @@ npm test --prefix runtime
 
 [VALIDATION.md](VALIDATION.md) 记录本次实际命令、版本及测试结果。Qt 测试用 offscreen 平台运行真实 Widgets 和事件循环，读取真实模拟 SQLite；不是窗口管理器、显卡或 Windows 部署验收。
 
-后续适配器入口为 `SampleSource`、`HistorySink`；只读诊断边界为 `sim::read`，领域纯函数为 `domain::advance`。真实 PLC NodeId、生产握手触发/复位、两家 AGV 签版 API、外部任务协议均未就绪，不定义假端点。没有新增 open62541 适配器或实测；已有 Node 本地协议测试不构成新 C++ OPC UA 测试。[open62541 1.5.8 加密后端说明](https://open62541.org/doc/v1.5.8/security/backends.html)已参考，后续若增加适配器，须单独锁定版本、UA_ENABLE_ENCRYPTION 后端与依赖，并只先连接隔离本地模拟服务器。
+后续适配器入口为 `SampleSource`、`HistorySink`；只读诊断边界为 `sim::read`，领域纯函数为 `domain::advance`。真实 PLC NodeId、生产握手触发/复位、两家 AGV 签版 API、外部任务协议均未就绪，不定义假端点。可选 `-DBUILD_OPCUA_LOOPBACK_FIXTURE=ON` 需 open62541 1.4.11 CMake 包，运行 `ctest --test-dir <构建目录> -R opcua_loopback -V`。测试临时监听 IPv4 环回，使用匿名合成节点和 SecurityPolicy None。实际 Read 验证类型、值、质量、双时间戳及未知节点；默认构建不依赖这一组件。安全策略、证书、订阅／重连与采集适配器仍待验收。[open62541 Server 指南](https://open62541.org/doc/v1.4.11/server.html)
 
 
 顶部按工厂 → 业务模式 → 线体 → 工位选择。关联 PLC 可辅助浏览其所有工位，在拓扑点选工位会同步到对应线体。北岸及南湾均为虚构工厂，库区和仓库是示例配置。实时数据及手动控制仍只属于原模拟流工位。空线或未绑定工位显示空态。

@@ -1,4 +1,4 @@
-"""Schema v3 log bounds: migration, capacity, no per-frame collector spam, single writer."""
+"""Schema v4 log bounds: migration, capacity, no per-frame collector spam, single writer."""
 from contextlib import closing
 import pathlib
 import sqlite3
@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as tmp:
     if one.returncode != 0:
         raise AssertionError(one.stderr)
     frames, logs, collector_rows, version = counts(path)
-    if version != 3 or frames < 30 or logs < 1 or logs > 300 or collector_rows >= frames:
+    if version != 4 or frames < 30 or logs < 1 or logs > 300 or collector_rows >= frames:
         raise AssertionError((frames, logs, collector_rows, version))
     texts = [row[0] for row in query(path, "select text from sim_logs where category='collector' order by id")]
     for previous, current in zip(texts, texts[1:]):
@@ -60,15 +60,27 @@ with tempfile.TemporaryDirectory() as tmp:
         if "模拟源 sim.three-cart" in text or "凭据" in text or "password" in text.lower():
             raise AssertionError(("log text not brief", text))
 
+    # v3 migration keeps existing logs and starts a new, explicit v4 retention counter.
+    preserved_ids = query(path, "SELECT id FROM sim_logs ORDER BY id")
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("DROP TABLE sim_log_retention")
+        db.execute("PRAGMA user_version=3")
+        db.commit()
+    subprocess.run([collector, tmp, "1", "20"], capture_output=True, text=True, timeout=8, check=True)
+    assert query(path, "SELECT id FROM sim_logs ORDER BY id")[:len(preserved_ids)] == preserved_ids
+    assert query(path, "SELECT evicted, evicted_through_id FROM sim_log_retention") == [(0, 0)]
+    frames += 1
+
     with closing(sqlite3.connect(path)) as db:
         db.execute("drop table sim_logs")
+        db.execute("drop table sim_log_retention")
         db.execute("pragma user_version=2")
         db.commit()
     migrated = subprocess.run([collector, tmp, "1", "20"], capture_output=True, text=True, timeout=8)
     if migrated.returncode != 0:
         raise AssertionError(migrated.stderr)
     frames2, logs2, _, version2 = counts(path)
-    if version2 != 3 or frames2 != frames + 1 or logs2 < 1:
+    if version2 != 4 or frames2 != frames + 1 or logs2 < 1:
         raise AssertionError(("v2", frames2, logs2, version2))
 
     # Force an audit insert error in this disposable fixture. Mode and revision
@@ -101,20 +113,46 @@ with tempfile.TemporaryDirectory() as tmp:
     with closing(sqlite3.connect(path)) as db:
         db.execute("drop table runtime_state")
         db.execute("drop table sim_logs")
+        db.execute("drop table sim_log_retention")
         db.execute("pragma user_version=1")
         db.commit()
     legacy = subprocess.run([collector, tmp, "1", "20"], capture_output=True, text=True, timeout=8)
     if legacy.returncode != 0:
         raise AssertionError(legacy.stderr)
     frames3, logs3, _, version3 = counts(path)
-    if version3 != 3 or frames3 != before + 1 or logs3 < 1:
+    if version3 != 4 or frames3 != before + 1 or logs3 < 1:
         raise AssertionError(("v1", frames3, logs3, version3))
 
     capped = subprocess.run([collector, tmp, "360", "20"], capture_output=True, text=True, timeout=20)
     if capped.returncode != 0:
         raise AssertionError(capped.stderr)
     frames4, logs4, collector_rows4, version4 = counts(path)
-    if version4 != 3 or frames4 < 300 or logs4 > 300 or logs4 < 1 or collector_rows4 >= frames4:
+    if version4 != 4 or frames4 < 300 or logs4 > 300 or logs4 < 1 or collector_rows4 >= frames4:
         raise AssertionError(("cap", frames4, logs4, collector_rows4, version4))
+
+    # Simulate a failed prune in the same write transaction, then recover.
+    with closing(sqlite3.connect(path)) as db:
+        n = db.execute("SELECT COUNT(*) FROM sim_logs").fetchone()[0]
+        db.executemany("INSERT INTO sim_logs(received_ms,level,category,object,text) VALUES(1,'info','audit','fixture','fill')",
+                       [() for _ in range(300-n)])
+        db.execute("CREATE TRIGGER interrupted_prune BEFORE DELETE ON sim_logs BEGIN SELECT RAISE(ABORT,'fixture interrupted prune'); END")
+        db.commit()
+    meta_sql = "SELECT evicted, evicted_through_id FROM sim_log_retention"
+    before_meta = query(path, meta_sql)
+    before_ids = query(path, "SELECT id FROM sim_logs ORDER BY id")
+    failed = subprocess.run([collector,tmp,"16","20"],capture_output=True,text=True,timeout=8)
+    assert failed.returncode != 0 and "fixture interrupted prune" in failed.stderr
+    assert query(path, meta_sql)==before_meta
+    assert query(path, "SELECT id FROM sim_logs ORDER BY id")==before_ids
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("DROP TRIGGER interrupted_prune")
+        db.commit()
+    subprocess.run([collector,tmp,"16","20"],check=True,capture_output=True,text=True,timeout=8)
+    after_ids = query(path, "SELECT id FROM sim_logs ORDER BY id")
+    evicted = set(before_ids)-set(after_ids)
+    count, through = query(path,meta_sql)[0]
+    assert len(after_ids)==300 and evicted
+    assert count==before_meta[0][0]+len(evicted)
+    assert through==max(evicted)[0]
 
 print("PASS: log schema migration, capacity, single writer, collector rows are not one per frame")

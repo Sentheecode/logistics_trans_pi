@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 namespace sim {
@@ -23,7 +24,14 @@ struct LogRecord {
     std::string level, category, object, text;
 };
 struct TimeWindow { std::int64_t from_ms, to_ms; };
-struct View { std::vector<Row> rows; std::vector<LogRecord> logs; bool more{}, logs_available{}; std::string freshness; RuntimeInfo runtime; };
+struct EventBucket {
+    std::int64_t start_ms{}, samples{}, good{}, bad{}, uncertain{}, unknown_quality{};
+    std::int64_t source{}, server{}, received{}, complete{}, active_alarm{};
+};
+std::vector<EventBucket> event_buckets(const std::filesystem::path& directory,
+                                      TimeWindow window, int bucket_ms);
+struct LogRetention { std::int64_t evicted{}, evicted_through_id{}; };
+struct View { std::vector<Row> rows; std::vector<LogRecord> logs; std::optional<LogRetention> log_retention; bool more{}, logs_available{}; std::string freshness; RuntimeInfo runtime; };
 class Writer final : public HistorySink {
 public:
     explicit Writer(const std::filesystem::path& directory);

@@ -39,13 +39,30 @@ struct Stmt {
     std::string text(int i){auto t=sqlite3_column_text(s,i); return t?std::string(reinterpret_cast<const char*>(t),sqlite3_column_bytes(s,i)):"UNKNOWN";}
 };
 std::int64_t scalar(Db& d,const char* sql){Stmt s(d,sql); if(s.step()!=SQLITE_ROW)throw std::runtime_error("missing metadata");return sqlite3_column_int64(s.s,0);}
-void validate(Db& d){auto v=scalar(d,"PRAGMA user_version"); if(scalar(d,"PRAGMA application_id")!=app_id || (v!=1 && v!=2 && v!=3))throw std::runtime_error("not a cpp-runtime simulation schema v1/v2/v3; refused");}
+void validate(Db& d){auto v=scalar(d,"PRAGMA user_version"); if(scalar(d,"PRAGMA application_id")!=app_id || (v<1 || v>4))throw std::runtime_error("not a cpp-runtime simulation schema v1/v2/v3/v4; refused");}
 void write_log(Db& db, std::int64_t t, const std::string& level, const std::string& category, const std::string& object, const std::string& text, std::int64_t frame_seq){
+    if (text.size()>4096 || level.size()>32 || category.size()>32 || object.size()>128)
+        throw std::runtime_error("simulation log payload exceeds limit");
     Stmt s(db,"INSERT INTO sim_logs(received_ms,level,category,object,text,frame_seq) VALUES(?,?,?,?,?,?)");
     s.integer(1,t); s.text(2,level); s.text(3,category); s.text(4,object); s.text(5,text);
     if(frame_seq<0) s.null(6); else s.integer(6,frame_seq);
     s.step();
-    db.exec("DELETE FROM sim_logs WHERE id < COALESCE((SELECT MIN(id) FROM (SELECT id FROM sim_logs ORDER BY id DESC LIMIT 300)), 0)");
+    const auto cutoff=scalar(db,"SELECT COALESCE((SELECT id FROM sim_logs ORDER BY id DESC LIMIT 1 OFFSET 299),0)");
+    if (cutoff!=0) {
+        Stmt retired(db,"SELECT COUNT(*),COALESCE(MAX(id),0) FROM sim_logs WHERE id<?1");
+        retired.integer(1,cutoff);
+        retired.step();
+        const auto count=sqlite3_column_int64(retired.s,0);
+        if (count==0) return;
+        Stmt meta(db,"UPDATE sim_log_retention SET evicted=evicted+?1,evicted_through_id=MAX(evicted_through_id,?2) WHERE id=1");
+        meta.integer(1,count);
+        meta.integer(2,sqlite3_column_int64(retired.s,1));
+        meta.step();
+        if (sqlite3_changes(db.db)!=1) throw std::runtime_error("missing log retention metadata");
+        Stmt prune(db,"DELETE FROM sim_logs WHERE id<?1");
+        prune.integer(1,cutoff);
+        prune.step();
+    }
 }
 std::string fresh(std::int64_t t){auto delta=now_ms()-t;return delta<0?"clock_uncertain":delta>3000?"stale":"recent";}
 }
@@ -87,6 +104,9 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     const bool needs_log_migration=scalar(*p->db,"PRAGMA user_version")==2;
     if(needs_log_migration){
         p->db->exec("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS sim_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,received_ms INTEGER NOT NULL,level TEXT NOT NULL,category TEXT NOT NULL,object TEXT NOT NULL,text TEXT NOT NULL,frame_seq INTEGER); PRAGMA user_version=3; COMMIT;");
+    }
+    if(scalar(*p->db,"PRAGMA user_version")==3){
+        p->db->exec("BEGIN IMMEDIATE; CREATE TABLE sim_log_retention(id INTEGER PRIMARY KEY CHECK(id=1),evicted INTEGER NOT NULL,evicted_through_id INTEGER NOT NULL); INSERT INTO sim_log_retention VALUES(1,0,0); PRAGMA user_version=4; COMMIT;");
     }
     Stmt state(*p->db,"SELECT mode,revision FROM runtime_state WHERE id=1");
     if(state.step()!=SQLITE_ROW)throw std::runtime_error("missing runtime state");
@@ -190,7 +210,13 @@ View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* wind
         for(int i=0;i<3;++i)r.carts[i]=s.text(4+i);
         r.quality=s.text(7);r.reason=s.text(8);r.link=s.text(9);r.alarm=s.text(10);r.event=s.text(11);v.rows.push_back(r);
     }
-    v.logs_available=scalar(d,"PRAGMA user_version")>=3;
+    const auto version=scalar(d,"PRAGMA user_version");
+    if (version>=4) {
+        Stmt retention(d,"SELECT evicted,evicted_through_id FROM sim_log_retention WHERE id=1");
+        if (retention.step()!=SQLITE_ROW) throw std::runtime_error("missing log retention metadata");
+        v.log_retention=LogRetention{sqlite3_column_int64(retention.s,0),sqlite3_column_int64(retention.s,1)};
+    }
+    v.logs_available=version>=3;
     if(v.logs_available){
         const char* sql=window
             ? "SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs WHERE received_ms>=?1 AND received_ms<?2 ORDER BY id DESC LIMIT 80"
@@ -220,6 +246,45 @@ View read_window(const std::filesystem::path& dir,TimeWindow window,int limit){
         window.to_ms-window.from_ms>86400000)
         throw std::runtime_error("expected a nonempty UTC millisecond window of at most 24 hours");
     return read_view(dir,limit,&window);
+}
+std::vector<EventBucket> event_buckets(const std::filesystem::path& dir,TimeWindow window,int bucket_ms){
+    constexpr std::int64_t max_utc_ms=253402300799999;
+    if ((bucket_ms!=1000 && bucket_ms!=60000 && bucket_ms!=3600000) ||
+        window.from_ms<0 || window.to_ms>max_utc_ms || window.from_ms>=window.to_ms ||
+        window.from_ms%bucket_ms || window.to_ms%bucket_ms ||
+        (window.to_ms-window.from_ms)/bucket_ms>120 || window.to_ms-window.from_ms>86400000)
+        throw std::runtime_error("expected aligned UTC window, at most 24 hours and 120 buckets");
+    int budget=1000;
+    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);
+    d.exec("PRAGMA query_only=ON; BEGIN");
+    validate(d);
+    sqlite3_progress_handler(d.db,1000,[](void* remaining) {
+        return --*static_cast<int*>(remaining)<=0 ? 1 : 0;
+    },&budget);
+    Stmt s(d,R"SQL(
+        WITH events AS (
+          SELECT COALESCE(source_ms,server_ms,received_ms) AS ts,
+                 source_ms,server_ms,quality,cart1,cart2,cart3,alarm
+          FROM frames
+        )
+        SELECT (ts/?1)*?1 AS bucket, count(*),
+               sum(quality='good'), sum(quality='bad'), sum(quality='uncertain'),
+               sum(quality NOT IN ('good','bad','uncertain')),
+               sum(source_ms IS NOT NULL),
+               sum(source_ms IS NULL AND server_ms IS NOT NULL),
+               sum(source_ms IS NULL AND server_ms IS NULL),
+               sum(CASE WHEN quality='good' AND cart1='station_complete' AND
+                             cart2='station_complete' AND cart3='station_complete' THEN 1 ELSE 0 END),
+               sum(quality='good' AND alarm='active')
+        FROM events WHERE ts>=?2 AND ts<?3 GROUP BY bucket ORDER BY bucket
+    )SQL");
+    s.integer(1,bucket_ms); s.integer(2,window.from_ms); s.integer(3,window.to_ms);
+    std::vector<EventBucket> result;
+    while(s.step()==SQLITE_ROW){
+        auto at=[&](int i){return sqlite3_column_int64(s.s,i);};
+        result.push_back({at(0),at(1),at(2),at(3),at(4),at(5),at(6),at(7),at(8),at(9),at(10)});
+    }
+    return result;
 }
 std::string render(const View& v){
     std::ostringstream out;

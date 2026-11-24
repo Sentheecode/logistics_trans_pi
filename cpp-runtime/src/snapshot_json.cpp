@@ -50,6 +50,11 @@ std::string snapshot_json(const View& v,int limit,std::optional<TimeWindow> wind
        <<",\"log_has_more\":";
     if (!v.logs_available) out<<"null";
     else out<<(v.logs.size()>static_cast<std::size_t>(limit)?"true":"false");
+    out<<",\"log_retention\":";
+    if (v.log_retention) out<<"{\"row_cap\":300,\"evicted_since_v4\":"<<quote(std::to_string(v.log_retention->evicted))
+                           <<",\"evicted_through_id\":"<<(v.log_retention->evicted_through_id
+                               ?quote(std::to_string(v.log_retention->evicted_through_id)):"null")<<'}';
+    else out<<"null";
     out<<",\"runtime\":{\"mode\":"<<quote(runtime.mode)<<",\"liveness\":"<<quote(runtime.liveness)
        <<",\"boot\":"<<quote(runtime.boot)<<",\"revision\":"<<quote(std::to_string(runtime.revision))
        <<",\"heartbeat_utc_ms\":"<<nullable_stamp(runtime.heartbeat_ms)<<"},\"frames\":[";

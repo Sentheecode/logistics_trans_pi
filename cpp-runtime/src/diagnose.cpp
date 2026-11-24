@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "catalog.hpp"
 #include "snapshot_json.hpp"
 #include <charconv>
 #include <iostream>
@@ -12,6 +13,23 @@ std::int64_t utc_ms(std::string_view value) {
     if (parsed.ec!=std::errc{} || parsed.ptr!=end)
         throw std::runtime_error("expected integer UTC milliseconds");
     return result;
+}
+void rollup(const std::filesystem::path& dir,sim::TimeWindow window,int width) {
+    const auto buckets=sim::event_buckets(dir,window,width);
+    std::cout<<"{\"schema\":\"ltp.cpp.event-counts.v1\",\"simulation_only\":true,\"scope\":\""
+             <<catalog::kStation140<<"\",\"coverage\":\"unknown\",\"from_inclusive\":"<<window.from_ms
+             <<",\"to_exclusive\":"<<window.to_ms<<",\"bucket_ms\":"<<width<<",\"buckets\":[";
+    bool first=true;
+    for (const auto& b:buckets) {
+        if (!first) std::cout<<',';
+        first=false;
+        std::cout<<"{\"start_utc_ms\":"<<b.start_ms<<",\"samples\":"<<b.samples
+                 <<",\"good\":"<<b.good<<",\"bad\":"<<b.bad<<",\"uncertain\":"<<b.uncertain
+                 <<",\"unknown_quality\":"<<b.unknown_quality<<",\"source_time\":"<<b.source
+                 <<",\"server_time\":"<<b.server<<",\"received_time\":"<<b.received
+                 <<",\"good_complete_frames\":"<<b.complete<<",\"good_active_alarm_frames\":"<<b.active_alarm<<'}';
+    }
+    std::cout<<"]}\n";
 }
 bool execute(const std::filesystem::path& dir,const std::string& line){
     if(line.size()>256)throw std::runtime_error("command too long");
@@ -28,11 +46,17 @@ int main(int argc,char** argv){
     if (argc<2||argc>6) {
         std::cerr<<"Usage: diagnose DATA_DIR [command [limit]]\n"
                  <<"       diagnose DATA_DIR snapshot-json [limit]\n"
-                 <<"       diagnose DATA_DIR window-json FROM_UTC_MS TO_UTC_MS [limit]\n";
+                 <<"       diagnose DATA_DIR window-json FROM_UTC_MS TO_UTC_MS [limit]\n"
+                 <<"       diagnose DATA_DIR rollup-json FROM_UTC_MS TO_UTC_MS BUCKET_MS\n";
         return 2;
     }
     try {
         const auto dir=std::filesystem::u8path(argv[1]);
+        if (argc>=3 && std::string_view(argv[2])=="rollup-json") {
+            if (argc!=6) throw std::runtime_error("rollup-json requires FROM_UTC_MS TO_UTC_MS BUCKET_MS");
+            rollup(dir,{utc_ms(argv[3]),utc_ms(argv[4])},sim::number(argv[5],1000,3600000));
+            return 0;
+        }
         if (argc>=3 && std::string_view(argv[2])=="window-json") {
             if (argc<5) throw std::runtime_error("window-json requires FROM_UTC_MS TO_UTC_MS [limit]");
             const sim::TimeWindow window{utc_ms(argv[3]),utc_ms(argv[4])};

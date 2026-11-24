@@ -335,3 +335,33 @@ Qt 9/9、核心 7/7，均含 `pi_cpp_bridge`；原 Node 49/49 含五工具 legac
 ```
 
 另通过现有锁定的 Pi 1.5.2 SDK 隔离会话加载实际扩展，读取到 `{"active_tools":["read_simulation_snapshot"],"scope":"stn.140","seq":"16","coverage":"unknown"}`。未向模型提供方发请求。Qt 业务界面无变更。本轮未移除旧 Node 工程，未迁完整聚合、JSONL 轮转恢复、独立看门狗或 OPC UA，未实现 MCP。Windows 与现场均未执行。[迁移门槛与下一步](../docs/cpp-migration.md)。
+
+## 事件时间、日志恢复、Linux 监督与 OPC UA 环回
+
+基线 `d26d0da6b1dfeb0675e893a41a3c9fb6fb91d26f`。Linux GCC 14.2、CMake 3.31.6、SQLite 3.46.1、Qt 6.8.2、Python 3.13.5、Node 24.22.3。将环境中可用的开发包解压到独立前缀，Qt CTest 使用 offscreen，配置提示缺少 XKB 开发文件，Qt 测试仍全部通过。Release Qt 与默认核心构建均从空目录运行。以下命令可在依赖已安装的环境复跑。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-qt -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/logistics-qt -j5
+ctest --test-dir /tmp/logistics-qt -j4 --output-on-failure
+
+cmake -S cpp-runtime -B /tmp/logistics-core -DCMAKE_BUILD_TYPE=Release -DBUILD_HMI=OFF
+cmake --build /tmp/logistics-core -j4
+ctest --test-dir /tmp/logistics-core -j4 --output-on-failure
+npm test --prefix runtime
+
+cmake -S cpp-runtime -B /tmp/logistics-loopback -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_HMI=OFF -DBUILD_OPCUA_LOOPBACK_FIXTURE=ON
+cmake --build /tmp/logistics-loopback -j6
+ctest --test-dir /tmp/logistics-loopback -j4 --output-on-failure
+ctest --test-dir /tmp/logistics-loopback -R '^opcua_loopback$' -V
+git diff --check
+```
+
+- Qt 10/10、默认核心 8/8、旧 Node 49/49。启用环回 fixture 的核心 9/9。
+- `native_migration` 注入顺序错位、整桶边界、坏质量和时间戳回退，验证三种刻度和越界拒绝。诊断集成验证 SQL 扫描预算耗尽返回错误。另实跑 16 帧，得到 13 good、3 bad，事件统计覆盖为 unknown。
+- `logs` 验证旧 schema 升级、v3 日志保留、最新 300 条及淘汰计数。插入/淘汰事务故障注入后，日志与计数一并回滚，重新启动继续淘汰；该结果覆盖 SQLite 事务恢复。旧 JSONL 归档、副本和完整时间覆盖仍由 legacy 承担。
+- Linux 监督回归用暂停模拟失去心跳，检查子进程回收、启动标识与 SQLite 序号推进，再通过进程退出耗尽重启预算。手动待步超过监督超时长度仍保持原序号及同一采集进程，父进程退出会回收子进程。
+- open62541 使用 Debian trixie 的 `libopen62541-1.4`、`libopen62541-1.4-dev`、`libopen62541-1.4-tools` 版本 `1.4.11.1-1`，对应 CMake 1.4.11，上游许可 MPL-2.0。依赖来自 2026-11-17 的 Debian 快照，未纳入仓库。测试日志确认仅在 `127.0.0.1` 的临时端口建监听，实读匿名合成值 42、值类型、正常质量、源与服务端时间，以及缺失节点 BadNodeIdUnknown、无值。Debian 包含 mbedTLS 后端，本测试使用 SecurityPolicy None，未行使加密及认证能力。
+
+Windows、生产服务、现场安全策略、实际设备、MCP stdio/内网接入均未实测。仍保留未迁的旧后端，阶段门与内网后续验收见 [迁移表](../docs/cpp-migration.md) 和 [MCP 运维 ADR](../docs/adr/0002-logistics-mcp-operations-proposal.md)。

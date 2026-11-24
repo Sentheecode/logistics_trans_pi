@@ -2,11 +2,11 @@
 
 本仓库仅用于工业物流上位机与中间层。C++ 实验分支提供 Qt 单屏模拟工作台，采集、界面和诊断独立运行。
 
-当前已有接口/数据模型草案、业务点表基线、T3 mock闭环、T4软件加固与T5独立OPC UA只读驱动。C++ 模拟界面和旧版 Node 运行路径均有本地验证。现场接入与生产部署待独立验收。
+当前已有接口/数据模型草案、业务点表基线、T3 mock闭环、T4软件加固与T5独立OPC UA只读驱动。C++ 模拟界面和旧版 Node 运行路径均有本地验证。C++ 已提供事件时间帧聚合、SQLite 日志淘汰记录、Linux 采集监督和可选 OPC UA 环回验收。旧版未迁能力仍由 legacy 路径提供，现场接入与生产部署待独立验收。
 
 - C++ 入口：[架构](ARCHITECTURE.md)、[运行说明](cpp-runtime/README.md)、[验证记录](cpp-runtime/VALIDATION.md)、[协作规则](AGENTS.md)。
 - [C++ 迁移阶段与兼容验收](docs/cpp-migration.md)；[本机诊断入口](agent/README.md)。
-- [工作台架构决策](docs/adr/0001-logistics-workbench.md)；[MCP 运维提案（未实现）](docs/adr/0002-logistics-mcp-operations-proposal.md)。
+- [工作台架构决策](docs/adr/0001-logistics-workbench.md)；[MCP 本机与内网运维提案（未实现）](docs/adr/0002-logistics-mcp-operations-proposal.md)。
 - T0：pi 1.5.2 已锁定和实测；LLM 连通性/工具调用延迟经用户暂缓，Windows/完整离线部署尚未验收。
 - [T1 接口契约](docs/T1-process-and-api.md)
 - [T2 数据模型与容量](docs/T2-data-model.md)

@@ -107,19 +107,21 @@ try {
     assert.equal(stale.logs[0].frame_seq, null);
     assert.equal(stale.frames[0].seq, '16');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM frames').get().n, 16);
-    db.exec('DROP TABLE sim_logs; PRAGMA user_version=2');
+    db.exec('DROP TABLE sim_logs; DROP TABLE sim_log_retention; PRAGMA user_version=2');
   } finally {
     db.close();
   }
   const older = await read({ limit: 1 });
   assert.equal(older.log_availability, 'unsupported_schema');
   assert.equal(older.log_has_more, null);
+  assert.equal(older.log_retention, null);
   assert.deepEqual(older.logs, []);
   assert.equal(older.coverage, 'unknown');
   await run(collector, [directory, '1', '20']);
   const migrated = await read();
   assert.equal(migrated.limit, 5);
   assert.equal(migrated.log_availability, 'available');
+  assert.deepEqual(migrated.log_retention, { row_cap: 300, evicted_since_v4: '0', evicted_through_id: null });
   assert.equal(migrated.frames[0].seq, '17');
   assert.equal(migrated.runtime.boot, migrated.frames[0].boot);
   assert.equal(migrated.frame_freshness, 'recent');
@@ -135,6 +137,7 @@ try {
   } finally {
     large.close();
   }
+  await assert.rejects(run(diagnose, [directory, 'rollup-json', '0', '1000', '1000']), /interrupted/);
   await assert.rejects(windowRead(20,25), /interrupted/); // Budget exhaustion is not an empty result.
   console.log(JSON.stringify({
     schema: migrated.schema, station: migrated.scope.station_id, frame: migrated.frames[0].seq,

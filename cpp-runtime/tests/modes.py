@@ -100,7 +100,7 @@ with tempfile.TemporaryDirectory(prefix='cpp-modes-') as tmp:
     # Synthetic v1 fixture: same historical schema, no runtime_state table.
     before=snapshot(d)[1]
     with closing(sqlite3.connect(d/'simulation.sqlite')) as db:
-        db.execute('drop table runtime_state');db.execute('pragma user_version=1');db.commit()
+        db.execute('drop table runtime_state');db.execute('drop table sim_log_retention');db.execute('pragma user_version=1');db.commit()
     run(collector,str(d),'1','20')
     assert snapshot(d)[1][0]==before[0]+1
     assert snapshot(d)[0][0]=='automatic'
