@@ -9,12 +9,12 @@
 class QCheckBox;
 class QComboBox;
 class QFrame;
-class QDialog;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QStackedWidget;
 class QTableWidget;
-class QTabWidget;
+class QTabBar;
 class SchematicView;
 
 class Workbench final : public QMainWindow {
@@ -63,8 +63,8 @@ private:
     QLabel *stationMeta_=nullptr, *interfaceLine_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
-    QTabWidget* moduleTabs_=nullptr;
-    QDialog* diagnostics_=nullptr;
+    QTabBar* moduleTabs_=nullptr;
+    QStackedWidget* moduleStack_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
     QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QLabel *logEmpty_=nullptr, *logDetail_=nullptr, *collectOwner_=nullptr, *collectLive_=nullptr;

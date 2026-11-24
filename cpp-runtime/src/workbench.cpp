@@ -7,29 +7,29 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDateTime>
-#include <QDialog>
 #include <QEvent>
+#include <QFile>
 #include <QFontDatabase>
+#include <QFontInfo>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListView>
 #include <QListWidget>
 #include <QMap>
 #include <QPainter>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QDialog>
-#include <QMenu>
-#include <QDialogButtonBox>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
-#include <QTabWidget>
+#include <QTabBar>
 #include <QToolButton>
 #include <QTableWidget>
 #include <QTimeZone>
@@ -115,15 +115,46 @@ QString beijingTime(qint64 epochMs, const QString& pattern) {
     return utc.toTimeZone(zone).toString(pattern);
 }
 QFont figureFont() {
-    QFont font("Noto Sans Mono CJK SC");
+    QFont font=QApplication::font();
     font.setStyleStrategy(QFont::NoFontMerging);
     font.setPixelSize(13);
     return font;
+}
+void prepareComboPopup(QComboBox* box) {
+    auto* view=new QListView(box);
+    view->setObjectName("comboPopup");
+    view->setFrameShape(QFrame::NoFrame);
+    view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->setAutoFillBackground(true);
+    QPalette palette=view->palette();
+    const QColor ink("#1f2933");
+    const QColor paper("#ffffff");
+    const QColor selected("#deeeee");
+    const QColor selectedInk("#123d42");
+    palette.setColor(QPalette::Base, paper);
+    palette.setColor(QPalette::Text, ink);
+    palette.setColor(QPalette::Window, paper);
+    palette.setColor(QPalette::WindowText, ink);
+    palette.setColor(QPalette::Highlight, selected);
+    palette.setColor(QPalette::HighlightedText, selectedInk);
+    view->setPalette(palette);
+    view->setStyleSheet(
+        "QListView { background:#ffffff; color:#1f2933; border:none; outline:none; }"
+        "QListView::item { background:#ffffff; color:#1f2933; min-height:22px; padding:4px 8px; }"
+        "QListView::item:hover { background:#e7f3f3; color:#123d42; }"
+        "QListView::item:selected { background:#deeeee; color:#123d42; }");
+    box->setView(view);
 }
 void setFigure(QTableWidgetItem* item) {
     item->setFont(figureFont());
 }
 class RunStack : public QStackedWidget {
+public:
+    using QStackedWidget::QStackedWidget;
+    QSize sizeHint() const override { return currentWidget() ? currentWidget()->sizeHint() : QStackedWidget::sizeHint(); }
+    QSize minimumSizeHint() const override { return currentWidget() ? currentWidget()->minimumSizeHint() : QStackedWidget::minimumSizeHint(); }
+};
+class PageStack : public QStackedWidget {
 public:
     using QStackedWidget::QStackedWidget;
     QSize sizeHint() const override { return currentWidget() ? currentWidget()->sizeHint() : QStackedWidget::sizeHint(); }
@@ -170,6 +201,7 @@ void pinText(QWidget* root) {
             label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     }
 }
+QString loadedUiFamily;
 // 视觉 token 集中在此。父审选定风格后只改这些值，不改模块结构。
 // 参考：Carbon Tabs（页签状态与同页切换）、Ant Design Layout（顶栏上下文 + 内容区）、Ant Design Tabs（功能页而非进度条）。
 struct Tone {
@@ -187,19 +219,19 @@ const Tone tone;
 QString consoleStyle() {
     const auto t=tone;
     return QString(R"(
-        QWidget { font-family: "Noto Sans CJK SC"; font-size: 13px; }
+        QWidget { font-family: "@@FONT@@"; font-size: 13px; }
         QMainWindow, QWidget#centralRoot { background:%1; color:%3; }
         QWidget#identityBar, QWidget#catalogPane { background:%2; }
         QWidget#identityBar { background:#123d42; border-bottom:1px solid #0d3034; }
         QWidget#identityBar QLabel { color:#f2faf9; }
-        QWidget#commandPane { background:#f5f8f8; border-top:1px solid #b8cccc; }
+        QWidget#pageTabRow { background:%1; }
+        QWidget#commandPane { background:#f5f8f8; border:1px solid #b8cccc; border-radius:10px; }
         QLabel#simOrder { background:#ffffff; color:#214c50; border:1px solid #d9e2ec; padding:6px 8px; }
         QLabel#scopeBanner[state="warn"] { background:#fff2d9; color:#744509; padding:4px; }
         QTableWidget#stageTable::item:selected { background:#d1e9e7; color:#123d42; }
         QLabel#currentStation, QLabel#runtimeState { background:#23565b; border:1px solid #478084; padding:3px 10px; font-weight:700; }
         QLabel#runtimeState[mode="manual"] { background:#d6eeeb; color:#123d42; }
-        QPushButton#diagnosticButton { background:#f1f7f7; color:#123d42; min-height:20px; }
-        QWidget#surface { background:%2; border:1px solid %4; border-radius:3px; }
+        QWidget#surface { background:%2; border:1px solid %4; border-radius:10px; }
         QLabel#title { font-size:16px; font-weight:600; color:#ffffff; }
         QLabel#pageTitle, QLabel#emptyTitle { font-size:18px; font-weight:600; color:%3; }
         QLabel#emptySource, QLabel#emptyAction { color:%5; font-size:13px; }
@@ -209,47 +241,57 @@ QString consoleStyle() {
         QLabel#collectQuality[state="warn"], QLabel#collectLink[state="warn"] { color:%8; font-weight:600; }
         QLabel#collectQuality[state="unknown"], QLabel#collectLink[state="unknown"], QLabel#collectPlc[state="unknown"] { color:%5; }
         QLabel#muted, QLabel#controlReason, QLabel#controlFeedback { color:%5; font-size:12px; }
-        QLabel#simBadge { background:%6; color:#ffffff; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600; }
-        QLabel#statusChip { background:%1; color:%5; padding:1px 6px; font-size:12px; font-weight:600; }
+        QLabel#simBadge { background:%6; color:#ffffff; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:600; }
+        QLabel#statusChip { background:%1; color:%5; padding:1px 6px; border-radius:8px; font-size:12px; font-weight:600; }
         QLabel#statusChip[state="sim"] { background:%7; color:%6; }
         QLabel#statusChip[state="wait"] { background:%9; color:%8; }
-        QComboBox { background:%2; border:1px solid %4; border-radius:3px; padding:2px 8px; min-height:26px; }
+        QComboBox { background:%2; color:%3; border:1px solid %4; border-radius:8px; padding:2px 22px 2px 10px; min-height:26px; }
         QComboBox:hover, QComboBox:focus { border:1px solid %6; }
-        QPushButton { background:%2; border:1px solid %4; border-radius:3px; padding:4px 12px; min-height:28px; color:%3; }
+        QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: center right; width:22px; border:none; background:transparent; }
+        QComboBox::down-arrow { image: url(:/icons/chevron.png); width:14px; height:8px; }
+        QComboBox QAbstractItemView { background:%2; color:%3; border:1px solid %4; border-radius:8px; selection-background-color:%7; selection-color:#123d42; outline:0; padding:4px; }
+        QComboBox QAbstractItemView::item { color:%3; background:%2; min-height:22px; padding:4px 8px; border-radius:6px; }
+        QComboBox QAbstractItemView::item:hover { background:%7; color:#123d42; }
+        QComboBox QAbstractItemView::item:selected { background:%7; color:#123d42; }
+        QComboBoxPrivateContainer { background:%2; color:%3; border:1px solid %4; border-radius:8px; }
+        QMenu { background:%2; color:%3; border:1px solid %4; border-radius:8px; padding:4px; }
+        QMenu::item { color:%3; background:transparent; padding:6px 12px; border-radius:6px; }
+        QMenu::item:selected { background:%7; color:#123d42; }
+        QPushButton { background:%2; border:1px solid %4; border-radius:8px; padding:4px 12px; min-height:28px; color:%3; }
         QPushButton:hover { background:%7; }
         QPushButton:focus { border:1px solid %6; }
         QPushButton#primary, QPushButton#modeButton[emphasis="yes"] { background:%6; color:#ffffff; border:none; }
-        QPushButton#textLink { background:transparent; border:none; color:%6; font-weight:600; min-height:24px; padding:2px 6px; }
+        QPushButton#textLink { background:transparent; border:none; border-radius:8px; color:%6; font-weight:600; min-height:24px; padding:2px 6px; }
         QPushButton#textLink:hover { background:%7; }
         QPushButton:disabled, QPushButton#primary:disabled, QPushButton#modeButton:disabled { background:%1; color:#8b96a6; border:none; }
         QPushButton#stationCard { min-width:52px; }
         QPushButton#stationCard:checked { background:%6; color:#ffffff; border:1px solid %6; }
-        QTableWidget { background:%2; alternate-background-color:#f7f8fa; gridline-color:transparent; border:1px solid %4; border-radius:3px; font-size:13px; selection-background-color:%7; selection-color:%3; outline:none; }
+        QTableWidget { background:%2; alternate-background-color:#f7f8fa; gridline-color:transparent; border:1px solid %4; border-radius:8px; font-size:13px; selection-background-color:%7; selection-color:%3; outline:none; }
         QTableWidget:focus { border:1px solid %6; }
         QTableWidget::item { padding:4px 8px; border:none; }
         QTableWidget::item:hover { background:#eef1f4; }
         QTableWidget::item:selected { background:%7; color:%3; }
         QTableWidget::item:selected:hover { background:#d9e6f2; }
         QHeaderView::section { background:#eef3f4; color:%5; font-weight:600; border:none; border-bottom:1px solid %4; padding:8px; font-size:12px; }
-        QListWidget { background:%2; border:1px solid %4; border-radius:3px; outline:none; font-size:13px; }
+        QListWidget { background:%2; border:1px solid %4; border-radius:8px; outline:none; font-size:13px; }
         QListWidget:focus { border:1px solid %6; }
         QListWidget::item { padding:8px 12px; border:none; }
         QListWidget::item:hover { background:#eef1f4; }
         QListWidget::item:selected { background:%7; color:%3; }
-        QLineEdit { background:%2; border:1px solid %4; border-radius:3px; padding:2px 8px; min-height:26px; color:%3; }
+        QLineEdit { background:%2; border:1px solid %4; border-radius:8px; padding:2px 8px; min-height:26px; color:%3; }
         QLineEdit:focus { border:1px solid %6; }
         QCheckBox { color:%3; spacing:6px; }
-        QToolButton { background:transparent; color:%6; border:none; font-weight:600; padding:2px 4px; }
+        QToolButton { background:transparent; color:%6; border:none; border-radius:8px; font-weight:600; padding:2px 4px; }
         QToolButton:hover { background:%7; }
         QToolButton:focus { border:2px solid %6; }
-        QTabWidget::pane { border:none; background:%1; }
-        QTabBar::tab { background:transparent; color:%5; padding:8px 14px; min-height:22px; border:none; border-bottom:2px solid transparent; font-size:13px; }
-        QTabBar::tab:hover { color:%3; background:%7; }
-        QTabBar::tab:selected { color:%6; font-weight:600; background:%2; border-bottom:2px solid %6; }
-        QTabBar::tab:focus { border-bottom:2px solid %6; }
+        QTabBar#moduleTabs::tab { background:transparent; color:%5; padding:4px 12px; min-height:22px; border:none; border-top-left-radius:8px; border-top-right-radius:8px; margin-right:2px; font-size:13px; }
+        QTabBar#moduleTabs::tab:hover { color:%3; background:%7; }
+        QTabBar#moduleTabs::tab:selected { color:%6; font-weight:600; background:%2; }
+        QTabBar#moduleTabs::tab:focus { border-bottom:2px solid %6; }
         QStatusBar { background:%2; color:%5; border-top:1px solid %4; }
         QScrollArea { border:none; background:%1; }
-    )").arg(t.canvas, t.surface, t.ink, t.line, t.muted, t.accent, t.accentSoft, t.warn, t.warnSoft);
+    )").replace("@@FONT@@", loadedUiFamily.isEmpty() ? QString("Noto Sans CJK SC") : loadedUiFamily)
+      .arg(t.canvas, t.surface, t.ink, t.line, t.muted, t.accent, t.accentSoft, t.warn, t.warnSoft);
 }
 QString doubtSummary(const QString& codes) {
     if (codes.isEmpty()) return "无疑点";
@@ -282,15 +324,39 @@ QString doubtSummary(const QString& codes) {
     }
     return parts.join("；");
 }
+int addFontFile(const QString& path) {
+    if (!path.startsWith(QLatin1String(":/")) && !QFile::exists(path)) return -1;
+    return QFontDatabase::addApplicationFont(path);
+}
 void installUiFont() {
-    QFontDatabase::addApplicationFont("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
-    QFontDatabase::addApplicationFont("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc");
+    const QString beside=QCoreApplication::applicationDirPath()+"/fonts";
+    const QStringList files={
+        ":/fonts/NotoSansCJKsc-Regular.otf",
+        ":/fonts/NotoSansCJKsc-Bold.otf",
+        beside+"/NotoSansCJKsc-Regular.otf",
+        beside+"/NotoSansCJKsc-Bold.otf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    };
+    QString family;
+    for (const auto& file : files) {
+        const int id=addFontFile(file);
+        if (id<0) continue;
+        const auto names=QFontDatabase::applicationFontFamilies(id);
+        if (family.isEmpty()) family=names.contains("Noto Sans CJK SC") ? QString("Noto Sans CJK SC") : (names.isEmpty() ? QString() : names.front());
+    }
     QFont font;
-    font.setFamily("Noto Sans CJK SC");
     font.setStyleHint(QFont::SansSerif, QFont::PreferAntialias);
-    font.setStyleStrategy(QFont::NoFontMerging);
     font.setPixelSize(13);
+    if (!family.isEmpty()) {
+        font.setFamily(family);
+        font.setStyleStrategy(QFont::NoFontMerging);
+        if (!QFontMetrics(font).inFont(QChar(0x6a21))) font.setStyleStrategy(QFont::PreferAntialias);
+    } else {
+        font.setFamilies({"Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans SC"});
+    }
     QApplication::setFont(font);
+    loadedUiFamily=family.isEmpty() ? QFontInfo(font).family() : family;
 }
 QString readableObject(const std::string& object) {
     if(object=="sim.three-cart.v1") return "外装 · 工位 140";
@@ -335,6 +401,7 @@ Workbench::Workbench(std::filesystem::path directory)
     : directory_(std::move(directory)), catalog_(catalog::Directory::qiantang()) {
     const auto error=catalog::Directory::validate(catalog_);
     if (!error.empty()) throw std::runtime_error("catalog fixture: "+error);
+    Q_INIT_RESOURCE(fonts);
     QApplication::setStyle("Fusion");
     installUiFont();
     setFont(QApplication::font());
@@ -372,12 +439,6 @@ Workbench::Workbench(std::filesystem::path directory)
     identityLayout->addStretch(1);
     identityLayout->addWidget(processLabel_);
     identityLayout->addWidget(heartbeatLabel_);
-    auto* diagnosticButton=new QPushButton("诊断");
-    diagnosticButton->setObjectName("diagnosticButton");
-    auto* diagnosticMenu=new QMenu(diagnosticButton);
-    diagnosticMenu->setObjectName("diagnosticMenu");
-    diagnosticButton->setMenu(diagnosticMenu);
-    identityLayout->addWidget(diagnosticButton);
 
     auto* context=new QWidget;
     context->setObjectName("catalogPane");
@@ -389,6 +450,7 @@ Workbench::Workbench(std::filesystem::path directory)
         auto* label=fieldLabel(name, context);
         *slot=new QComboBox(context);
         (*slot)->setObjectName(objectName);
+        prepareComboPopup(*slot);
         (*slot)->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         (*slot)->setMaximumWidth(168);
         (*slot)->setFocusPolicy(Qt::StrongFocus);
@@ -772,6 +834,7 @@ Workbench::Workbench(std::filesystem::path directory)
     historyFilter_->addItem("正常", "good");
     historyFilter_->addItem("不可用", "bad");
     historyFilter_->setFocusPolicy(Qt::StrongFocus);
+    prepareComboPopup(historyFilter_);
     auto* historyPage=new QWidget;
     auto* historyLayout=new QVBoxLayout(historyPage);
     historyLayout->setContentsMargins(16, 12, 16, 16);
@@ -819,6 +882,8 @@ Workbench::Workbench(std::filesystem::path directory)
     logLevel_->addItem("信息", "info");
     logLevel_->addItem("警告", "warn");
     logLevel_->setMaximumWidth(120);
+    prepareComboPopup(logCategory_);
+    prepareComboPopup(logLevel_);
     auto* clearLogs=new QPushButton("清空筛选");
     clearLogs->setObjectName("textLink");
     logEmpty_=new QLabel("还没有日志。");
@@ -913,29 +978,33 @@ Workbench::Workbench(std::filesystem::path directory)
     collectLayout->addWidget(collectUnbound);
     collectLayout->addWidget(collectChanges_, 1);
 
-    diagnostics_=new QDialog(this);
-    diagnostics_->setObjectName("diagnosticsDialog");
-    diagnostics_->setWindowTitle("诊断");
-    auto* diagnosticLayout=new QVBoxLayout(diagnostics_);
-    moduleTabs_=new QTabWidget(diagnostics_);
+    moduleTabs_=new QTabBar;
     moduleTabs_->setObjectName("moduleTabs");
-    moduleTabs_->tabBar()->hide();
-    moduleTabs_->addTab(scrollPage(stationPage), "工位");
-    moduleTabs_->addTab(historyPage, "事件");
-    moduleTabs_->addTab(pointPage, "点表");
-    moduleTabs_->addTab(scrollPage(boundaryPage), "接口");
-    moduleTabs_->addTab(logPage, "日志");
-    moduleTabs_->addTab(collectPage, "采集");
-    diagnosticLayout->addWidget(moduleTabs_);
-    auto* closeDiagnostics=new QDialogButtonBox(diagnostics_);
-    closeDiagnostics->addButton("关闭",QDialogButtonBox::RejectRole);
-    connect(closeDiagnostics,&QDialogButtonBox::rejected,diagnostics_,&QDialog::reject);
-    diagnosticLayout->addWidget(closeDiagnostics);
-    for (int index=0; index<moduleTabs_->count(); ++index) {
-        const auto title=moduleTabs_->tabText(index);
-        auto* action=diagnosticMenu->addAction(title);
-        connect(action,&QAction::triggered,this,[this,title]{openDiagnostic(title);});
-    }
+    moduleTabs_->setDrawBase(false);
+    moduleTabs_->setExpanding(false);
+    moduleTabs_->setDocumentMode(true);
+    moduleTabs_->setFocusPolicy(Qt::StrongFocus);
+    moduleTabs_->setElideMode(Qt::ElideNone);
+    auto* tabRow=new QWidget;
+    tabRow->setObjectName("pageTabRow");
+    tabRow->setFixedHeight(36);
+    auto* tabLayout=new QHBoxLayout(tabRow);
+    tabLayout->setContentsMargins(12, 4, 12, 0);
+    tabLayout->setSpacing(0);
+    tabLayout->addWidget(moduleTabs_);
+    tabLayout->addStretch(1);
+    moduleStack_=new PageStack;
+    moduleStack_->setObjectName("moduleStack");
+    moduleStack_->addWidget(run);
+    moduleStack_->addWidget(scrollPage(stationPage));
+    moduleStack_->addWidget(historyPage);
+    moduleStack_->addWidget(pointPage);
+    moduleStack_->addWidget(scrollPage(boundaryPage));
+    moduleStack_->addWidget(logPage);
+    moduleStack_->addWidget(collectPage);
+    for (const auto& title : {QString("运行"), QString("工位"), QString("事件"), QString("点表"), QString("接口"), QString("日志"), QString("采集")})
+        moduleTabs_->addTab(title);
+    connect(moduleTabs_, &QTabBar::currentChanged, moduleStack_, &QStackedWidget::setCurrentIndex);
 
     auto* central=new QWidget;
     central->setObjectName("centralRoot");
@@ -943,8 +1012,9 @@ Workbench::Workbench(std::filesystem::path directory)
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
     root->addWidget(identity);
+    root->addWidget(tabRow);
     root->addWidget(context);
-    root->addWidget(run, 1);
+    root->addWidget(moduleStack_, 1);
     setCentralWidget(central);
     auto* closure=new QLabel("关窗不停止采集");
     fit(closure);
@@ -969,12 +1039,12 @@ Workbench::Workbench(std::filesystem::path directory)
         applyLogFilter();
     });
     connect(logTable_, &QTableWidget::itemSelectionChanged, this, [this]{ showLogDetail(); });
+    setTabOrder(moduleTabs_, factoryCombo_);
     setTabOrder(factoryCombo_, areaCombo_);
     setTabOrder(areaCombo_, lineCombo_);
     setTabOrder(lineCombo_, stationCombo_);
     setTabOrder(stationCombo_, plcCombo_);
-    setTabOrder(plcCombo_, diagnosticButton);
-    setTabOrder(diagnosticButton, modeButton_);
+    setTabOrder(plcCombo_, modeButton_);
     setTabOrder(modeButton_, step_);
     setTabOrder(step_, disconnect_);
     connect(factoryCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -1031,14 +1101,10 @@ Workbench::Workbench(std::filesystem::path directory)
 }
 
 void Workbench::openDiagnostic(const QString& title) {
-    if (title=="运行") { diagnostics_->close(); return; }
+    if (!moduleTabs_) return;
     for (int index=0; index<moduleTabs_->count(); ++index) {
         if (moduleTabs_->tabText(index)!=title) continue;
         moduleTabs_->setCurrentIndex(index);
-        diagnostics_->setWindowTitle("诊断 · "+title+" · 跟随主屏工位");
-        diagnostics_->resize(std::max(760,width()-120), std::max(530,height()-85));
-        diagnostics_->show();
-        diagnostics_->raise();
         return;
     }
 }
@@ -1667,7 +1733,7 @@ void Workbench::unavailable(const QString& reason) {
 bool Workbench::captureReady(const QString& kind) const {
     if (observations_<2) return false;
     const auto onTab=[&](const char* title) {
-        return diagnostics_->isVisible() && moduleTabs_->tabText(moduleTabs_->currentIndex())==QString::fromUtf8(title);
+        return moduleTabs_ && moduleTabs_->tabText(moduleTabs_->currentIndex())==QString::fromUtf8(title);
     };
     if (kind=="demo-north") return selection_.station_id=="stn.demo-n1" && !liveScope();
     if (kind=="stations") return onTab("工位") && liveScope();

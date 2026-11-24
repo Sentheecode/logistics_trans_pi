@@ -1,0 +1,7 @@
+Noto Sans CJK SC Regular and Bold
+Subset of Noto CJK Sans 2.004 Simplified Chinese OTF for this workbench.
+Source: https://github.com/notofonts/noto-cjk/tree/Sans2.004/Sans/OTF/SimplifiedChinese
+Copyright 2014-2021 Adobe (http://www.adobe.com/).
+Noto is a trademark of Google Inc.
+Licensed under the SIL Open Font License, Version 1.1. See OFL.txt.
+These faces are embedded in hmi.exe.

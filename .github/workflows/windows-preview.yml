@@ -2,7 +2,7 @@ name: Windows portable preview
 
 on:
   push:
-    branches: [experiment/cpp-runtime]
+    branches: [experiment/cpp-runtime, cursor/windows-ui-preview-063d]
     paths:
       - '.github/workflows/windows-preview.yml'
       - 'cpp-runtime/**'
@@ -87,3 +87,76 @@ jobs:
           path: preview-artifact/
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    needs: clean-smoke
+    if: github.ref == 'refs/heads/cursor/windows-ui-preview-063d'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-preview-verified
+          path: preview-artifact
+      - name: Publish the Windows prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import zipfile
+          root = pathlib.Path("preview-artifact")
+          zip_path = root / "Logistics-Preview-Windows-x64.zip"
+          exe = root / "hmi.exe"
+          with zipfile.ZipFile(zip_path) as archive:
+              exe.write_bytes(archive.read("hmi.exe"))
+              info = archive.read("BUILD-INFO.txt").decode("utf-8", "replace")
+              names = [name for name in archive.namelist() if name.lower().endswith(".dll")]
+          digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+          (root / "hmi.exe.sha256").write_text(f"{digest}  hmi.exe\n", encoding="ascii")
+          excerpt = "\n".join(info.splitlines()[:6])
+          notes = "\n".join([
+              "这是模拟工作台的 Windows x64 预发布包，不是现场版本。不连接 S7、LWMS、库卡、华睿或 AGV。",
+              "",
+              "## 修复",
+              "- 中文不再显示成方框。原因是界面指定 Noto Sans CJK SC 并关闭缺字回退，而旧便携包没有这个字体。现在字体嵌在 `hmi.exe` 里。",
+              "- 下拉弹出层使用深色文字和浅色底。",
+              "- 按钮、输入框、下拉和卡片使用圆角。",
+              "- 诊断页改成工厂选择器上方的页签，不再从右上角下拉打开。",
+              "",
+              "## 下载",
+              "- 第一次使用：下载 `Logistics-Preview-Windows-x64.zip`，完整解压后双击 `START.cmd`。包内含 Qt、MinGW、SQLite DLL、`plugins/platforms/qwindows.dll`、`START.cmd` 和 `licenses/noto`。不要只拿一个 exe 当完整安装包。",
+              "- 已经解压过上一版预览，且目录里的 Qt/GCC 版本与下面的 BUILD-INFO 一致：可以只替换 `hmi.exe`。字体在 exe 内。exe 必须留在原来的便携目录里，不能单独启动。",
+              f"- 若 Qt 或 GCC 版本不同，请改用完整 ZIP。本次 DLL 共 {len(names)} 个。",
+              "",
+              "## 本次构建",
+              "```",
+              excerpt,
+              "```",
+              "",
+              f"源码提交：{os.environ['SOURCE_SHA']}",
+              "Linux 上用仅含 DejaVu 的 Fontconfig 看过中文、打开的下拉和圆角。Windows runner 只核对打包后的 `cjk_glyph=yes`。没有在实机上验收 DPI 或现场设备。",
+              "",
+          ])
+          (root / "RELEASE.md").write_text(notes, encoding="utf-8")
+          print(excerpt)
+          print("hmi.exe", digest, exe.stat().st_size)
+          PY
+          tag=preview-windows-20261124-ui
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Windows preview: Chinese UI, dropdowns, rounded controls" \
+            --notes-file preview-artifact/RELEASE.md \
+            preview-artifact/Logistics-Preview-Windows-x64.zip \
+            preview-artifact/Logistics-Preview-Windows-x64.zip.sha256 \
+            preview-artifact/hmi.exe \
+            preview-artifact/hmi.exe.sha256

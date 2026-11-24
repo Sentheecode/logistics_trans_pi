@@ -81,6 +81,8 @@ def main(package):
                     "Workbench did not capture a native Qt window")
             require(b"rendered_observations=" in display and b"link=up" in display
                     and b"quality=bad" in display, f"Missing live Qt data: {display!r}")
+            require(b"ui_font=Noto Sans CJK SC" in display and b"cjk_glyph=yes" in display,
+                    f"Packaged workbench font has no Chinese glyph: {display!r}")
             require(collector.poll() is None, "Closing Qt stopped the collector")
             snapshot = json.loads(run("diagnose.exe", data, "snapshot-json", 5))
             require(snapshot["simulation_only"] and snapshot["scope"]["station_id"] == "stn.140"

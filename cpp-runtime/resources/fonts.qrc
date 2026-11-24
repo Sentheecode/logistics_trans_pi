@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/fonts">
+        <file alias="NotoSansCJKsc-Regular.otf">fonts/NotoSansCJKsc-Regular.otf</file>
+        <file alias="NotoSansCJKsc-Bold.otf">fonts/NotoSansCJKsc-Bold.otf</file>
+    </qresource>
+    <qresource prefix="/icons">
+        <file alias="chevron.png">icons/chevron.png</file>
+    </qresource>
+</RCC>

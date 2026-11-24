@@ -1,10 +1,28 @@
 # 当前验证记录
 
-基线 [89fae7b](https://github.com/Sentheecode/logistics_trans_pi/tree/89fae7b32595dc734f6bf173a393670cc2b1b086)。测试使用新的空目录、合成 SQLite 数据和临时环回证书。当前 Qt 布局未改。旧版截图和阶段验证留在上述历史提交，不作为本轮验收证据。
+本轮改了工作台字体、下拉弹出层、圆角和诊断页签。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。
 
-## 复验
+## 本轮实测
 
-Linux 实测 GCC 14.2、CMake 3.31.6、SQLite 3.46.1、Qt 6.8.2、Python 3.13.5、nlohmann/json 3.11.3、libmicrohttpd 1.0.1、OpenSSL 3 和 nginx 1.26.3。Qt 测试使用 offscreen。头文件和库来自独立 Debian 安装前缀，未纳入仓库。Qt 配置提示缺少 XKB 开发文件；隔离运行有两个位置的 OpenSSL 库，配置提示搜索顺序。实测使用的独立前缀及包版本见下文。
+Linux 上使用 GCC 13.3.0、CMake 3.28.3、SQLite 3.45.1、Qt 6.4.2、Python 3.12.3、nlohmann/json 3.11.3。Qt 配置提示缺少 XKB 开发文件。测试使用 offscreen；截图使用 xvfb，并把 Fontconfig 限制为 DejaVu，系统里的文泉驿和 Droid Sans Fallback 不可见。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-qt -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+cmake --build /tmp/logistics-qt -j$(nproc)
+ctest --test-dir /tmp/logistics-qt --output-on-failure
+```
+
+结果：**11/11** 通过（domain、catalog、point_audit、mcp_stdio、modes、acceptance、native_migration、archive、logs、widgets_controls、hmi_refresh）。`widgets_controls` 检查内嵌 Noto Sans CJK SC 在 `NoFontMerging` 下仍包含「模」，页签位于工厂选择器上方，诊断下拉和弹窗不存在，下拉弹出层文字与底色对比足够，以及 1100×650 和 1280×800。
+
+同一 Fontconfig 下，不加载该字体时中文显示为方框；加载内嵌字体后，`hmi` 打印 `ui_font=Noto Sans CJK SC`、`cjk_glyph=yes`，xvfb 截图里的中文、打开的业务模式下拉和圆角控件可辨认。这不是 Windows 实机，也不是 DPI 或现场验收。
+
+Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。冒烟要求打包后的 `hmi.exe` 同样打印上述两行。本机没有执行该 Windows 构建。
+
+## 此前记录
+
+基线 [89fae7b](https://github.com/Sentheecode/logistics_trans_pi/tree/89fae7b32595dc734f6bf173a393670cc2b1b086)。下列环境与 11/11、8/8、13/13 是该次记录，不是本轮命令的结果。
+
+Linux 记录为 GCC 14.2、CMake 3.31.6、SQLite 3.46.1、Qt 6.8.2、Python 3.13.5、nlohmann/json 3.11.3、libmicrohttpd 1.0.1、OpenSSL 3 和 nginx 1.26.3。Qt 测试使用 offscreen。头文件和库来自独立 Debian 安装前缀，未纳入仓库。Qt 配置提示缺少 XKB 开发文件；隔离运行有两个位置的 OpenSSL 库，配置提示搜索顺序。
 
 ```bash
 cmake -S cpp-runtime -B /tmp/logistics-qt -DCMAKE_BUILD_TYPE=Release
@@ -37,6 +55,6 @@ git diff --check
 - `logs` 验证日志容量、事务故障后的恢复。独立 `archive` 进程测试从运行中的采集备份，恢复到新目录，核对日志与淘汰计数、清除旧心跳、重启续写及拒绝覆盖、旧格式和超限。旧库、旧 JSONL 和生产数据均未改动。
 - 核心回归覆盖模拟采集、手自动、历史迁移、范围、日志、监督回收与有限重启。Qt 验证真实控件、大小、隔离和刷新。新增数值分桶验证半开边界、时间戳回退、有效零、坏质量 null 与 CLI/MCP 输出一致。
 
-Windows EXE 构建、运行、文件锁和 SQLite 恢复，真实厂区、正式证书、单机到双机再到八台的内网验收均未执行。能力差异见 [迁移记录](../docs/cpp-migration.md)；远程接入与回退见 [部署说明](deploy/README.md)。
+Windows 文件锁和 SQLite 恢复、真实厂区、正式证书、单机到双机再到八台的内网验收均未在本轮执行。能力差异见 [迁移记录](../docs/cpp-migration.md)；远程接入与回退见 [部署说明](deploy/README.md)。
 
-Windows 便携包的单独验收入口见 [Windows 预览构建](deploy/windows/README.md)。Windows 结果以该提交的独立构建与解压验证为准。
+Windows 便携包的入口见 [Windows 预览构建](deploy/windows/README.md)。打包后的字形检查以该次 Actions 冒烟输出为准，不能代替目标机上的 DPI 或现场验收。

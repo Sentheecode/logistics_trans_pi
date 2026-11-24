@@ -13,3 +13,4 @@ MCP 客户端使用 stdio。命令填写 logistics-mcp.exe 的绝对路径，参
 
 BUILD-INFO.txt 记录源码 SHA 与依赖版本。FILES.txt 列出包内容。
 第三方库动态链接，可替换兼容版本。MSYS2 对应包及源码与第三方许可证见 BUILD-INFO.txt 和 licenses。
+中文界面字体嵌在 hmi.exe 内（Noto Sans CJK SC 子集，许可证见 licenses/noto）。更换工作台时替换 hmi.exe，并保持它与 Qt、MinGW、SQLite DLL 及 platforms 插件在同一目录。

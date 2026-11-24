@@ -27,6 +27,9 @@ cp -- "$platform_plugin" "$stage/plugins/platforms/"
 printf '[Paths]\nPrefix=.\nPlugins=plugins\n' > "$stage/qt.conf"
 cp -- "$source_dir/START.cmd" "$stage/"
 cp -- "$source_dir/README.txt" "$stage/"
+mkdir -p -- "$stage/licenses/noto"
+cp -- "$source_dir/../../resources/fonts/OFL.txt" "$stage/licenses/noto/OFL.txt"
+cp -- "$source_dir/../../resources/fonts/NOTICE.txt" "$stage/licenses/noto/NOTICE.txt"
 
 # Scan PE imports, including the platform plugin. Copy only dependencies of the
 # selected executables from their own MINGW64 distribution.
