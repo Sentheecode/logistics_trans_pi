@@ -158,16 +158,16 @@ class SnapTable : public QTableWidget {
 public:
     using QTableWidget::QTableWidget;
     void snap() {
+        if (snapping_) return;
+        snapping_=true;
         const int sample=rowCount()>0 ? std::max(1, rowHeight(0)) : std::max(1, verticalHeader()->defaultSectionSize());
         const int header=horizontalHeader()->isHidden() ? 0 : horizontalHeader()->height();
         const int avail=height()-header-frameWidth()*2;
-        if (avail<=sample) return;
-        const int extra=avail%sample;
+        const int extra=avail>sample ? avail%sample : 0;
         const int gutter=verticalScrollBar()->isVisible() ? verticalScrollBar()->sizeHint().width() : 0;
-        if (extra==bottom_ && gutter==gutter_) return;
-        bottom_=extra;
-        gutter_=gutter;
-        setViewportMargins(0, 0, gutter, extra);
+        const auto margins=viewportMargins();
+        if (margins.bottom()!=extra || margins.right()!=gutter) setViewportMargins(0, 0, gutter, extra);
+        snapping_=false;
     }
 protected:
     void resizeEvent(QResizeEvent* event) override {
@@ -179,8 +179,7 @@ protected:
         snap();
     }
 private:
-    int bottom_=-1;
-    int gutter_=-1;
+    bool snapping_=false;
 };
 void fitRows(QTableWidget* table, int rowHeight) {
     if (!table) return;
@@ -198,12 +197,9 @@ public:
         QStyleOptionViewItem opt(option);
         initStyleOption(&opt, index);
         const bool current=index.data(Qt::UserRole+2).toBool();
-        const bool hover=opt.state & QStyle::State_MouseOver;
-        const bool selected=opt.state & QStyle::State_Selected;
-        QColor background("#ffffff");
-        if (selected) background=QColor("#eef1fb");
-        else if (hover) background=QColor("#f5f6f8");
-        painter->fillRect(opt.rect, background);
+        painter->fillRect(opt.rect, QColor("#ffffff"));
+        painter->setPen(QColor("#e6e8eb"));
+        painter->drawLine(opt.rect.bottomLeft(), opt.rect.bottomRight());
         if (index.column()==3) return;
         QColor ink("#1b1f23");
         QFont font=opt.font;
@@ -367,7 +363,10 @@ QString consoleStyle() {
         QPushButton:disabled, QPushButton#primary:disabled, QPushButton#modeButton:disabled { background:%1; color:#8b96a6; border:none; }
         QPushButton#stationCard { min-width:52px; }
         QPushButton#stationCard:checked { background:%6; color:#ffffff; border:1px solid %6; }
-        QTableWidget { background:%2; alternate-background-color:%2; gridline-color:transparent; border:none; border-radius:0; font-size:13px; selection-background-color:%7; selection-color:%3; outline:none; }
+        QTableWidget { background:%2; alternate-background-color:%2; gridline-color:%4; border:none; border-radius:0; font-size:14px; selection-background-color:%7; selection-color:%3; outline:none; }
+        QTableWidget#stationBoard { background:%2; alternate-background-color:%2; }
+        QTableWidget#stationBoard::item { background:%2; }
+        QWidget#sourceCell, QWidget#liveFace { background:%2; border-bottom:1px solid %4; }
         QTableWidget:focus { border:none; }
         QTableWidget::item { padding:4px 8px; border:none; }
         QTableWidget::item:hover { background:#f5f6f8; }
@@ -386,8 +385,9 @@ QString consoleStyle() {
         QToolButton { background:transparent; color:%6; border:none; border-radius:8px; font-weight:600; padding:2px 4px; }
         QToolButton:hover { background:%7; }
         QToolButton:focus { border:2px solid %6; }
-        QTabBar#moduleTabs::tab { background:transparent; color:%5; padding:4px 12px; min-height:22px; border:none; border-bottom:2px solid transparent; margin-right:4px; font-size:13px; }
-        QTabBar#moduleTabs::tab:hover { color:%3; background:transparent; }
+        QTabBar#moduleTabs { background:transparent; }
+        QTabBar#moduleTabs::tab { background:transparent; color:%5; padding:8px 14px 6px 14px; min-height:24px; border:none; border-bottom:2px solid transparent; margin-right:2px; font-size:14px; }
+        QTabBar#moduleTabs::tab:hover { color:%3; background:transparent; border-bottom:2px solid %4; }
         QTabBar#moduleTabs::tab:selected { color:%6; font-weight:600; background:transparent; border-bottom:2px solid %6; }
         QTabBar#moduleTabs::tab:focus { border-bottom:2px solid %6; }
         QStatusBar { background:%2; color:%5; border-top:1px solid %4; }
@@ -797,10 +797,7 @@ Workbench::Workbench(std::filesystem::path directory)
     rangeRow->addWidget(range);
     rangeRow->addStretch(1);
     rangeRow->addWidget(openCollect);
-    footLayout->addWidget(scopeBanner_);
     footLayout->addLayout(rangeRow);
-    commandPane->setParent(foot);
-    footLayout->addWidget(commandPane);
     workspaceLayout->addWidget(foot);
     workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     connect(openAccess, &QPushButton::clicked, this, [this]{ openDiagnostic("接口"); });
@@ -820,19 +817,17 @@ Workbench::Workbench(std::filesystem::path directory)
     stageTable_->setObjectName("stageTable");
     prepareTable(stageTable_, {"小车", "读码", "分拣", "本工位完成", "本轮"});
     stageTable_->setSelectionMode(QAbstractItemView::NoSelection);
-    stageTable_->horizontalHeader()->setStretchLastSection(false);
-    stageTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    stageTable_->verticalHeader()->setDefaultSectionSize(26);
-    stageTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    stageTable_->setColumnWidth(0, 64);
-    stageTable_->setColumnWidth(1, 72);
-    stageTable_->setColumnWidth(2, 72);
-    stageTable_->setColumnWidth(3, 112);
-    stageTable_->setColumnWidth(4, 120);
-    stageTable_->setFixedWidth(64+72+72+112+120+8);
-    stageTable_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    stageTable_->horizontalHeader()->setStretchLastSection(true);
+    stageTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
+    stageTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    stageTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    stageTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    stageTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    stageTable_->verticalHeader()->setDefaultSectionSize(28);
+    stageTable_->setColumnWidth(0, 72);
+    stageTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     stageTable_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    stageTable_->setFixedHeight(96);
+    stageTable_->setFixedHeight(120);
     stageGuide_=new QLabel(this);
     stageGuide_->setObjectName("stageGuide");
     stageGuide_->hide();
@@ -844,6 +839,7 @@ Workbench::Workbench(std::filesystem::path directory)
     faceLayout->setContentsMargins(28, 8, 16, 12);
     faceLayout->setSpacing(16);
     auto* doc=new QWidget(liveFace_);
+    doc->setMaximumWidth(240);
     auto* docLayout=new QVBoxLayout(doc);
     docLayout->setContentsMargins(0, 0, 0, 0);
     docLayout->setSpacing(6);
@@ -866,6 +862,7 @@ Workbench::Workbench(std::filesystem::path directory)
     rule->setFrameShape(QFrame::VLine);
     rule->setFixedWidth(1);
     auto* track=new QWidget(liveFace_);
+    track->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto* trackLayout=new QVBoxLayout(track);
     trackLayout->setContentsMargins(0, 0, 0, 0);
     trackLayout->setSpacing(4);
@@ -882,6 +879,11 @@ Workbench::Workbench(std::filesystem::path directory)
     faceLayout->addWidget(track, 1);
     liveFace_->hide();
     connect(stageTable_,&QTableWidget::currentCellChanged,this,[this]{showStageResult();});
+    connect(stationBoard_->horizontalHeader(), &QHeaderView::sectionResized, this, [this](int, int, int){
+        if (!liveFace_ || !stationBoard_) return;
+        const int span=stationBoard_->horizontalHeader()->sectionPosition(3)-stationBoard_->horizontalHeader()->sectionPosition(0);
+        if (span>240 && liveFace_->maximumWidth()!=span-8) liveFace_->setFixedWidth(span-8);
+    });
     connect(openLogs, &QPushButton::clicked, this, [this]{ openDiagnostic("日志"); });
     stationEmpty_=new QLabel("这个 PLC 还没有工位。不借用其他 PLC 的布置，也不能控制。");
     stationEmpty_->setWordWrap(true);
@@ -1169,7 +1171,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* collectPage=new QWidget;
     collectPage->setObjectName("collectPage");
     auto* collectLayout=new QVBoxLayout(collectPage);
-    collectLayout->setContentsMargins(16, 12, 16, 16);
+    collectLayout->setContentsMargins(16, 12, 16, 8);
     collectLayout->setSpacing(8);
     auto* collectHeading=new QLabel("采集", collectPage);
     collectHeading->setObjectName("pageTitle");
@@ -1203,7 +1205,7 @@ Workbench::Workbench(std::filesystem::path directory)
         auto* name=new QLabel(key, box);
         name->setObjectName("fieldLabel");
         *value=new QLabel("—", box);
-        if (large) (*value)->setStyleSheet("font-size:28px; font-weight:600;");
+        if (large) (*value)->setStyleSheet("font-size:20px; font-weight:600;");
         layout->addWidget(name);
         layout->addWidget(*value);
         metricRow->addWidget(box, 1);
@@ -1275,10 +1277,14 @@ Workbench::Workbench(std::filesystem::path directory)
     bindLayout->addWidget(rosterTitle);
     bindLayout->addWidget(collectRoster);
     bindLayout->addLayout(plcRow);
-    collectRow->addWidget(collectBox, 3);
-    collectRow->addWidget(bindBox, 2);
+    collectBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    bindBox->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    collectRow->setAlignment(Qt::AlignTop);
+    collectRow->addWidget(collectBox, 3, Qt::AlignTop);
+    collectRow->addWidget(bindBox, 2, Qt::AlignTop);
     collectChanges_=new SnapTable;
     collectChanges_->setObjectName("collectChanges");
+    collectChanges_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     collectChanges_->verticalHeader()->setDefaultSectionSize(32);
     prepareTable(collectChanges_, {"时间", "变化"});
     collectChanges_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -1289,8 +1295,21 @@ Workbench::Workbench(std::filesystem::path directory)
     collectUnbound->hide();
     auto* changeLabel=new QLabel("最近采集变化", collectPage);
     changeLabel->setObjectName("collectChangeLabel");
+    auto* collectControls=new QWidget(collectPage);
+    collectControls->setObjectName("collectControls");
+    auto* controlLayout=new QVBoxLayout(collectControls);
+    controlLayout->setContentsMargins(12, 8, 12, 8);
+    controlLayout->setSpacing(4);
+    scopeBanner_->setParent(collectControls);
+    scopeBanner_->setVisible(true);
+    commandPane->setParent(collectControls);
+    commandPane->setVisible(true);
+    controlLayout->addWidget(scopeBanner_);
+    controlLayout->addWidget(commandPane);
+    collectControls->setStyleSheet("QWidget#collectControls { background:#ffffff; border:1px solid #e6e8eb; border-radius:10px; }");
     collectLayout->addWidget(collectHeading);
     collectLayout->addLayout(collectRow);
+    collectLayout->addWidget(collectControls);
     collectLayout->addWidget(changeLabel);
     collectLayout->addWidget(collectUnbound);
     collectLayout->addWidget(collectChanges_, 1);
@@ -1304,7 +1323,7 @@ Workbench::Workbench(std::filesystem::path directory)
     moduleTabs_->setElideMode(Qt::ElideNone);
     auto* tabRow=new QWidget;
     tabRow->setObjectName("pageTabRow");
-    tabRow->setFixedHeight(34);
+    tabRow->setFixedHeight(44);
     auto* tabLayout=new QHBoxLayout(tabRow);
     tabLayout->setContentsMargins(12, 4, 12, 0);
     tabLayout->setSpacing(0);
@@ -1806,7 +1825,7 @@ void Workbench::buttons() {
     modeButton_->setToolTip(reason);
     step_->setToolTip(reason);
     disconnect_->setToolTip(reason);
-    if (auto* pane=modeButton_->parentWidget()) pane->setVisible(live);
+    if (auto* pane=findChild<QWidget*>("collectControls")) pane->setVisible(live);
 }
 
 void Workbench::command(const std::string& name) {
@@ -1898,6 +1917,7 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
         faceLayout->setContentsMargins(20, 2, 12, 4);
         faceLayout->setSpacing(16);
         auto* doc=new QWidget(liveFace_);
+        doc->setMaximumWidth(240);
         auto* docLayout=new QVBoxLayout(doc);
         docLayout->setContentsMargins(0, 0, 0, 0);
         docLayout->setSpacing(6);
@@ -1921,6 +1941,7 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
         rule->setFrameShape(QFrame::VLine);
         rule->setFixedWidth(1);
         auto* track=new QWidget(liveFace_);
+        track->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         auto* trackLayout=new QVBoxLayout(track);
         trackLayout->setContentsMargins(0, 0, 0, 0);
         trackLayout->setSpacing(4);
@@ -1953,6 +1974,8 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
             auto* link=new QPushButton(opened ? "详情" : "详情 +");
             link->setObjectName("textLink");
             auto* cell=new QWidget;
+            cell->setObjectName("sourceCell");
+            cell->setAutoFillBackground(true);
             auto* layout=new QHBoxLayout(cell);
             layout->setContentsMargins(8, 0, 8, 0);
             layout->setSpacing(8);
@@ -1969,7 +1992,10 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
             ++row;
             if (!opened) continue;
             stationBoard_->insertRow(row);
-            stationBoard_->setSpan(row, 0, 1, 4);
+            stationBoard_->setSpan(row, 0, 1, 3);
+            auto* pad=new QTableWidgetItem;
+            pad->setFlags(Qt::ItemIsEnabled);
+            stationBoard_->setItem(row, 3, pad);
             if (own && liveFace_) {
                 stationBoard_->setCellWidget(row, 0, liveFace_);
                 liveFace_->show();
@@ -2244,7 +2270,7 @@ void Workbench::render() {
         }
     }
     if (stageTable_->currentRow()<0) stageTable_->setCurrentCell(std::max(0,selectedStage),0);
-    fitRows(stageTable_, 26);
+    fitRows(stageTable_, 28);
     if (liveFace_ && stationBoard_) {
         liveFace_->updateGeometry();
         for (int row=0; row<stationBoard_->rowCount(); ++row) {
@@ -2256,6 +2282,8 @@ void Workbench::render() {
         for (int row=0; row<stationBoard_->rowCount(); ++row) height+=stationBoard_->rowHeight(row);
         stationBoard_->setFixedHeight(height+2);
         stationBoard_->setMinimumHeight(height+2);
+        const int span=stationBoard_->horizontalHeader()->sectionPosition(3)-stationBoard_->horizontalHeader()->sectionPosition(0);
+        if (span>240) liveFace_->setFixedWidth(span-8);
     }
     showLiveDetail(true);
     showStageResult();

@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","scopeBanner","simOrder","commandPane","modeButton","primary","disconnectButton"})
+            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","simOrder"})
                 assert_inside(window,name);
             assert_tabs_above_factory(window);
             auto bounds=[&](const char* name){
@@ -270,12 +270,13 @@ int main(int argc, char** argv) {
                 return QRect(widget->mapTo(&window, QPoint(0, 0)), widget->size());
             };
             const QRect boardBox=bounds("stationBoard");
-            const QRect actions=bounds("commandPane");
             const QRect stageBox=bounds("stageTable");
-            const QRect banner=bounds("scopeBanner");
-            if (boardBox.intersects(actions) || boardBox.intersects(banner) || !boardBox.contains(stageBox.center()))
+            auto* actions=window.findChild<QWidget*>("commandPane");
+            if (!boardBox.contains(stageBox) || (actions && actions->isVisible()))
                 throw std::runtime_error("run page sections overlap");
-            if (actions.bottom()>window.height()) throw std::runtime_error("actions fall outside the window");
+            const int sourceLeft=board->mapTo(&window, QPoint(board->horizontalHeader()->sectionViewportPosition(3), 0)).x();
+            if (sourceLeft-stageBox.right()>64)
+                throw std::runtime_error(("stage table does not use the station detail width source "+std::to_string(sourceLeft)+" stageRight "+std::to_string(stageBox.right())+" stageW "+std::to_string(stageBox.width())+" boardW "+std::to_string(boardBox.width())).c_str());
             for (int column=0; column<std::min(3, board->columnCount()); ++column) {
                 auto* item=board->item(0, column);
                 auto* header=board->horizontalHeader();
@@ -602,13 +603,17 @@ int main(int argc, char** argv) {
         doubts->setChecked(false);
         if (snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
             throw std::runtime_error("point filter changed collector ownership");
+        show_page(window, "采集");
         for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
             window.resize(size);
             pump(250);
             if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
             check_labels(window);
-            for (auto name : {"factoryCombo", "stationBoard", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "plcCombo", "modeButton", "primary", "disconnectButton", "commandPane", "scopeBanner", "controlReason"}) assert_inside(window, name);
+            auto* reason=window.findChild<QLabel*>("controlReason");
+            if (!reason || reason->text().isEmpty()) throw std::runtime_error("automatic mode hid the control reason");
         }
+        show_page(window, "运行");
         choose(area, catalog::kAreaSeq);
         window.resize(1100, 650);
         pump(200);
