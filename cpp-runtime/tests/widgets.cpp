@@ -15,6 +15,7 @@
 #include <QFont>
 #include <QFontInfo>
 #include <QFontMetrics>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -263,8 +264,45 @@ int main(int argc, char** argv) {
             for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
                 assert_inside(window,name);
             assert_tabs_above_factory(window);
+            auto bounds=[&](const char* name){
+                auto* widget=window.findChild<QWidget*>(name);
+                if (!widget || !widget->isVisible()) throw std::runtime_error(std::string("missing visible control ")+name);
+                return QRect(widget->mapTo(&window, QPoint(0, 0)), widget->size());
+            };
+            const QRect resultBox=bounds("runResultTable");
+            const QRect recentHeading=bounds("recentLabel");
+            const QRect recentBox=bounds("recentTable");
+            const QRect actions=bounds("commandPane");
+            const QRect stageBox=bounds("stageTable");
+            const QRect guideBox=bounds("stageGuide");
+            if (resultBox.intersects(recentHeading) || recentHeading.intersects(recentBox) || recentBox.intersects(actions) || stageBox.intersects(guideBox))
+                throw std::runtime_error("run page sections overlap");
+            if (guideBox.top()+4<stageBox.bottom()) throw std::runtime_error("current step note is not under the stage table");
+            if (recentHeading.top()+4<resultBox.bottom()) throw std::runtime_error("recent records cover the result table");
+            for (int column=0; column<board->columnCount(); ++column) {
+                auto* item=board->item(0, column);
+                auto* header=board->horizontalHeader();
+                if (!item || !header || std::abs(board->visualItemRect(item).x()-header->sectionViewportPosition(column))>3)
+                    throw std::runtime_error("station column header is not aligned with its cells");
+            }
         }
         show_page(window,"日志");
+        for (auto size : {QSize(1100,650), QSize(1280,800)}) {
+            window.resize(size);
+            pump(160);
+            auto* logs=window.findChild<QTableWidget*>("logTable");
+            auto* levels=logs ? logs->itemDelegateForColumn(1) : nullptr;
+            if (!logs || logs->rowCount()<1 || !levels || levels->objectName()!="levelDelegate")
+                throw std::runtime_error("log levels are not distinctly painted");
+            int partial=0;
+            for (int row=0; row<logs->rowCount(); ++row) {
+                if (logs->isRowHidden(row) || !logs->item(row, 0)) continue;
+                const QRect rect=logs->visualItemRect(logs->item(row, 0));
+                if (rect.bottom()<0 || rect.top()>=logs->viewport()->height()) continue;
+                if (rect.top()<0 || rect.bottom()>logs->viewport()->height()-1) ++partial;
+            }
+            if (partial) throw std::runtime_error("log row is cut by the viewport");
+        }
         auto* module=window.findChild<QTabBar*>("moduleTabs");
         if (module->tabText(module->currentIndex())!="日志" || stages->isVisible())
             throw std::runtime_error("log tab did not replace the run view");
@@ -624,8 +662,19 @@ int main(int argc, char** argv) {
             throw std::runtime_error("sorting plc banner still names station 140");
         auto* owner=window.findChild<QLabel*>("acquisitionOwner");
         auto* hint=window.findChild<QLabel*>("previewHint");
-        if (!owner || owner->text()!="采集归属 外装" || !hint || hint->text().contains("140"))
+        if (!owner || owner->text()!="采集 · 外装" || !hint || !hint->isVisible() || hint->text()!="预览 · 排序区三" || hint->text().contains("140"))
             throw std::runtime_error("preview changed the acquisition owner");
+        window.resize(1100, 650);
+        pump(80);
+        auto* note=window.findChild<QLabel*>("readinessNote");
+        if (!note || !note->isVisible() || !board) throw std::runtime_error("sorting readiness missing");
+        const int boardBottom=board->mapTo(&window, QPoint(0, board->height())).y();
+        const int noteTop=note->mapTo(&window, QPoint(0, 0)).y();
+        if (noteTop<boardBottom-1) throw std::runtime_error("readiness note covers the station table");
+        if (std::abs(note->mapTo(&window, QPoint(0, 0)).x()-board->mapTo(&window, QPoint(0, 0)).x())>12)
+            throw std::runtime_error("readiness note is not left aligned with the station table");
+        if (board_row(window, "220", 2).isEmpty() || board_row(window, "220", 3).isEmpty() || board_row(window, "220", 4).isEmpty())
+            throw std::runtime_error("station 220 row is incomplete");
         for (int row=0; row<detail->rowCount(); ++row)
             if (detail->item(row, 0) && detail->item(row, 0)->text()=="线体")
                 throw std::runtime_error("line is still a visible configuration field");
@@ -647,6 +696,11 @@ int main(int argc, char** argv) {
             if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcSeq3) || !board_has(window, "210") || !board_has(window, "220") || board_has(window, "140"))
                 throw std::runtime_error("module switch changed the PLC scope");
             if (history->rowCount()!=0 || points->rowCount()!=0) throw std::runtime_error("module switch copied station 140 records");
+            if (QString::fromUtf8(title)=="采集") {
+                auto* source=window.findChild<QLabel*>("collectLive");
+                if (!source || source->text().contains("140") || source->text().contains("sim.three-cart"))
+                    throw std::runtime_error("sorting collect page borrowed station 140");
+            }
         }
         const auto after_tabs=snap(directory);
         if (after_tabs.mode!=before_tabs.mode || after_tabs.revision!=before_tabs.revision || after_tabs.boot!=before_tabs.boot)

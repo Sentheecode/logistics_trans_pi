@@ -15,7 +15,7 @@ int hmi_main(int argc,char** argv){
     try{
         int smoke=argc>=3?sim::number(argv[2],500,60000):0;
         QString capture=argc>=4?QString::fromUtf8(argv[3]):QString(),kind=argc>=5?argv[4]:"normal";
-        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="peers"&&kind!="south"&&kind!="demo-north"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="eventbad"&&kind!="points"&&kind!="pointfind"&&kind!="boundary"&&kind!="logs"&&kind!="collect"&&kind!="collectdown"&&kind!="empty"&&kind!="emptystations"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
+        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="peers"&&kind!="south"&&kind!="demo-north"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="eventbad"&&kind!="points"&&kind!="pointfind"&&kind!="boundary"&&kind!="logs"&&kind!="collect"&&kind!="collect-sort"&&kind!="collectdown"&&kind!="empty"&&kind!="emptystations"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
         Workbench window(std::filesystem::u8path(argv[1]));if(argc==6){if(std::string(argv[5])!="compact")throw std::runtime_error("invalid size");window.resize(1100,650);}
         const QFontInfo info(app.font());
         const bool cjk=QFontMetrics(app.font()).inFont(QChar(0x6a21));
