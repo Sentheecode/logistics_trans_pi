@@ -17,7 +17,9 @@ int main() {
         CHECK(directory.areas_of(catalog::kFactory).size()==2);
         CHECK(directory.line_links.size()==directory.stations.size());
         CHECK(directory.stations_on_line("line.demo-empty").empty());
-        CHECK(directory.line_of_station(catalog::kStation140)->id!=directory.line_of_station(catalog::kStation160)->id);
+        CHECK(directory.line_of_station(catalog::kStation140)->id==directory.line_of_station(catalog::kStation160)->id);
+        CHECK(directory.line_of_station(catalog::kStation140)->name=="外装");
+        CHECK(directory.line_of_station(catalog::kStation20)->id!=directory.line_of_station(catalog::kStation140)->id);
         CHECK(directory.plc_of_station(catalog::kStation140)==directory.plc_of_station(catalog::kStation160));
         auto invalidLine=directory;
         invalidLine.line_links.push_back({"line.demo-south",catalog::kStation140});

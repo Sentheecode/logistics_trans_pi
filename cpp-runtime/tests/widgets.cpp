@@ -286,7 +286,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("font merging is disabled");
         if (!QFontMetrics(QApplication::font()).inFont(QChar(0x6a21)))
             throw std::runtime_error("Chinese glyph is missing from the active font");
-        if (!window.styleSheet().contains("border-radius:8px") || !window.styleSheet().contains("border-radius:10px"))
+        if (!window.styleSheet().contains("border-radius:8px") || window.styleSheet().contains("qlineargradient") || window.styleSheet().contains("box-shadow"))
             throw std::runtime_error("controls are not rounded");
         for (auto* box : {factory, area, plc, line}) assert_combo_contrast(box);
         if (factory->count()!=3 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
@@ -317,7 +317,8 @@ int main(int argc, char** argv) {
             return false;
         });
         const auto before_scope=snap(directory);
-        choose(line, "line.demo-b");
+        choose(line, "line.pack");
+        if (line->currentText().contains("示例")) throw std::runtime_error("pick line still uses a demo label");
         if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcPack) || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("line change hid the other stations of the PLC");
         if (board_row(window, "150", 3)!="无" || board_row(window, "140", 3)!=QString::fromUtf8(catalog::kStream))
@@ -390,7 +391,7 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcSeq1);
         pump(120);
         auto* reason=window.findChild<QLabel*>("controlReason");
-        if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("another PLC looked controllable");
+        if (step->isEnabled() || !reason || reason->text().contains("140") || !reason->text().contains("不能推进")) throw std::runtime_error("another PLC looked controllable");
         if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->isVisible() || !order->text().isEmpty() || board_has(window, "140"))
             throw std::runtime_error("another PLC borrowed station 140");
         const auto frozen=snap(directory);
@@ -606,8 +607,12 @@ int main(int argc, char** argv) {
         assert_no_live_leak(window);
         if (!board_has(window, "210") || !board_has(window, "220") || board_row(window, "210", 1)!="前悬架右前下摆臂总成")
             throw std::runtime_error("sequence plc 3 did not show both named stations");
-        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
+        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || window.findChild<QLabel*>("controlReason")->text().contains("140") || !window.findChild<QLabel*>("controlReason")->text().contains("不能推进"))
             throw std::runtime_error("sorting plc looked controllable");
+        if (window.findChild<QLabel*>("recentLabel") && window.findChild<QLabel*>("recentLabel")->isVisible())
+            throw std::runtime_error("sorting plc still shows the live recent-record heading");
+        if (window.findChild<QLabel*>("scopeBanner") && window.findChild<QLabel*>("scopeBanner")->text().contains("140"))
+            throw std::runtime_error("sorting plc banner still names station 140");
         auto* modules=window.findChild<QTabBar*>("moduleTabs");
         if (!modules || modules->count()!=7 || modules->tabText(0)!="运行") throw std::runtime_error("module tabs missing");
         const auto before_tabs=snap(directory);

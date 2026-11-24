@@ -1,6 +1,6 @@
 # 当前验证记录
 
-本轮改了工作台字体、下拉弹出层、圆角和诊断页签。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。
+本轮改了浅色工作台、PLC 范围文案，以及分拣／排序区的可见名称。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。
 
 ## 本轮实测
 
@@ -12,7 +12,7 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过。`widgets_controls` 检查页签、下拉对比度、圆角、1100×650 与 1280×800。同一 PLC 的工位同时出现，没有工位下拉或互斥工位按钮；外装同时显示 140/150/160，且只有 140 行有模拟；排序区 PLC 不泄漏 140。切页不改变采集。字体从 exe 旁的 `fonts` 目录加载，缺字回退保持打开。同一 Fontconfig 下若没有这份字体文件，中文会显示为方框。这不是 Windows 实机，也不是最终视觉验收。
+结果：**11/11** 通过。随后只改了工位表当前行的绘制，并重跑 `catalog` 与 `widgets_controls`，2/2 通过。`widgets_controls` 检查页签、下拉对比度、圆角、1100×650 与 1280×800。同一 PLC 的工位同时出现，没有工位下拉或互斥工位按钮；外装同时显示 140/150/160，且只有 140 行有模拟；排序区三显示 210、220 的名称，标题和底部说明不再写成工位 140。业务模式显示为分拣或排序区，钱塘二厂线体不再叫示例线。切页不改变采集。字体从 exe 旁的 `fonts` 目录加载，缺字回退保持打开。截图在 xvfb 下生成，Fontconfig 只有 DejaVu，界面仍报告 `cjk_glyph=yes`。这不是 Windows 实机，也不是最终视觉验收。
 
 Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。包内只有 `Logistics.exe`。冒烟要求 `cjk_glyph=yes`。本段写下时，这次 Windows 构建尚未在本机执行。
 

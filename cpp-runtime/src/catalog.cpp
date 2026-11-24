@@ -21,11 +21,11 @@ Directory Directory::qiantang() {
     directory.factories = {{kFactory, "QT2", "钱塘二厂"},
         {"fac.demo-north", "DEMO-N", "北岸示例厂"}, {"fac.demo-south", "DEMO-S", "南湾示例厂"}};
     directory.areas = {
-        {kAreaPick, kFactory, "pick", "SPS（立库）"},
+        {kAreaPick, kFactory, "pick", "分拣"},
         {kAreaSeq, kFactory, "seq", "排序区"},
-        {"area.demo-north.sps", "fac.demo-north", "pick", "SPS（立库）"},
+        {"area.demo-north.sps", "fac.demo-north", "pick", "分拣"},
         {"area.demo-north.sort", "fac.demo-north", "seq", "排序区"},
-        {"area.demo-south.sps", "fac.demo-south", "pick", "SPS（立库）"},
+        {"area.demo-south.sps", "fac.demo-south", "pick", "分拣"},
         {"area.demo-south.sort", "fac.demo-south", "seq", "排序区"},
     };
     directory.plcs = {
@@ -65,8 +65,9 @@ Directory Directory::qiantang() {
         {"stn.demo-s1", "plc.cfg.demo-south", "S1", "示例工位 S1", ""},
     };
     directory.lines = {
-        {"line.demo-a", kAreaPick, "示例线 A", "示例立库 A", "示例库区 A"},
-        {"line.demo-b", kAreaPick, "示例线 B", "示例立库 B", "示例库区 B"},
+        {"line.pack", kAreaPick, "外装", "待补映射", "分拣"},
+        {"line.meter1", kAreaPick, "仪表一", "待补映射", "分拣"},
+        {"line.meter2", kAreaPick, "仪表二", "待补映射", "分拣"},
         {"line.seq1", kAreaSeq, "排序区一", "不适用", "排序区"},
         {"line.seq2", kAreaSeq, "排序区二", "不适用", "排序区"},
         {"line.seq3", kAreaSeq, "排序区三", "不适用", "排序区"},
@@ -76,9 +77,9 @@ Directory Directory::qiantang() {
         {"line.demo-south", "area.demo-south.sort", "南湾示例线", "不适用", "示例排序区 S"},
     };
     directory.line_links = {
-        {"line.demo-a", kStation140}, {"line.demo-a", kStation150}, {"line.demo-b", kStation160},
-        {"line.demo-a", kStation20}, {"line.demo-a", kStation30}, {"line.demo-a", kStation90},
-        {"line.demo-b", kStation40}, {"line.demo-b", kStation10}, {"line.demo-b", kStation70}, {"line.demo-b", kStation80},
+        {"line.pack", kStation140}, {"line.pack", kStation150}, {"line.pack", kStation160},
+        {"line.meter1", kStation20}, {"line.meter1", kStation30}, {"line.meter1", kStation90},
+        {"line.meter2", kStation40}, {"line.meter2", kStation10}, {"line.meter2", kStation70}, {"line.meter2", kStation80},
         {"line.seq1", kStation170}, {"line.seq1", kStation180},
         {"line.seq2", kStation190}, {"line.seq2", kStation200},
         {"line.seq3", kStation210}, {"line.seq3", kStation220},

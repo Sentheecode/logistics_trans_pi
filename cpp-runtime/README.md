@@ -2,7 +2,7 @@
 
 这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。[快速开始](../README.md) 提供当前构建命令；[迁移表](../docs/cpp-migration.md) 记录旧工具的保留与退役。
 
-工作台入口独立运行：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航按工厂 → 业务模式 → 线体 → 工位联动，PLC 按配置关联。当前模拟帧只挂在一个 SPS 工位。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
+工作台入口独立运行：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航按工厂 → 业务模式 → 线体 → PLC 联动。一台 HMI 同时列出该 PLC 的全部工位，没有工位选择器。业务模式显示为分拣或排序区。钱塘二厂的线体按 PLC 命名，不再使用“示例线”。当前模拟帧只挂在分拣外装的工位 140。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
 
 ## 已实现的演示
 
