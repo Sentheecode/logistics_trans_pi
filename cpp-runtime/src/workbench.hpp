@@ -59,7 +59,7 @@ private:
     std::int64_t command_revision_=0, last_seq_=0;
     std::string last_mode_, cards_plc_;
     int observations_=0;
-    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr;
+    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
     QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr, *collectionStatus_=nullptr;
     QLabel *stationTitle_=nullptr, *stationMeta_=nullptr, *configLine_=nullptr, *lineState_=nullptr, *peerLine_=nullptr, *interfaceLine_=nullptr, *plcAuto_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
@@ -75,9 +75,10 @@ private:
     QTableWidget* logTable_=nullptr;
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
-    QWidget *cartStrip_=nullptr, *cardRow_=nullptr;
-    QFrame *cartFrame_[3]{};
-    QLabel *cartPhase_[3]{}, *cartNote_[3]{};
+    QWidget *cardRow_=nullptr;
+    QLabel *stageGuide_=nullptr;
+    QTableWidget *resultTable_=nullptr;
+    void showStageResult();
     SchematicView* schematic_=nullptr;
     QSplitter *mainSplit_=nullptr, *contentSplit_=nullptr;
 };

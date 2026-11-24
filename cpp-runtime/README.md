@@ -108,3 +108,6 @@ npm test --prefix runtime
 [VALIDATION.md](VALIDATION.md) 记录本次实际命令、版本及测试结果。Qt 测试用 offscreen 平台运行真实 Widgets 和事件循环，读取真实模拟 SQLite；不是窗口管理器、显卡或 Windows 部署验收。
 
 后续适配器入口为 `SampleSource`、`HistorySink`；只读诊断边界为 `sim::read`，领域纯函数为 `domain::advance`。真实 PLC NodeId、生产握手触发/复位、两家 AGV 签版 API、外部任务协议均未就绪，不定义假端点。没有新增 open62541 适配器或实测；已有 Node 本地协议测试不构成新 C++ OPC UA 测试。[open62541 1.5.8 加密后端说明](https://open62541.org/doc/v1.5.8/security/backends.html)已参考，后续若增加适配器，须单独锁定版本、UA_ENABLE_ENCRYPTION 后端与依赖，并只先连接隔离本地模拟服务器。
+
+
+顶部按工厂 → 业务模式 → 线体 → 工位选择。关联 PLC 可辅助浏览其所有工位，在拓扑点选工位会同步到对应线体。北岸及南湾均为虚构工厂，库区和仓库是示例配置。实时数据及手动控制仍只属于原模拟流工位。空线或未绑定工位显示空态。

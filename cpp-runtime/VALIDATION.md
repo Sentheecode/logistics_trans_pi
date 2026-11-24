@@ -272,3 +272,11 @@ normal 选择新鲜、good、cleared 的真实观测；alarm 选择新鲜的 act
 成功操作与日志现在同事务提交，单步和模拟断链的成功日志关联该操作产生的帧。测试通过合成库中的故障注入验证审计插入失败会回滚模式和修订号。v1/v2 迁移后的首个采样记录日志基线，后续继续只记录变化。界面按日志 ID 保留选中项，同一 PLC 下未接入工位的空态按工位描述。
 
 Linux GCC 14.2、Qt 6.8.2、SQLite 3.46.1。分别从空目录运行 Release 配置，核心额外指定 `-DBUILD_HMI=OFF`。使用 `cmake --build <目录> -j6` 和 `ctest --test-dir <目录> -j4 --output-on-failure`。最终 Qt 8/8、核心 6/6，`npm test --prefix runtime` 49/49。用 Qt offscreen 实际查看日志页和排序区。内置目录含沿用的厂站及系统标识，截图未分享。Windows 尚无本轮构建、字体、DPI、文件锁或部署结果。
+
+### 联动目录与运行工作台
+
+以 `e848ef9` 为基线。Linux GCC 14.2、Qt 6.8.2、SQLite 3.46.1。复用上一轮 Release 构建目录，分别运行 `cmake --build <目录> -j6` 和 `ctest --test-dir <目录> -j4 --output-on-failure`。Qt 8/8、核心 6/6，`npm test --prefix runtime` 49/49。
+
+目录测试覆盖跨业务范围关系拒绝、同 PLC 跨线与空线。Qt 测试覆盖多工厂级联、仓库随范围更新、上下游空态、拓扑反向同步、非采集工位的控制／日志／数据隔离。阶段选择在刷新后保留，执行结果与选中行联动。紧凑尺寸下底部操作带位于窗口内，当前步骤与采集结果无需滚动。旧库迁移、审计失败回滚、自动／手动、同 PLC 工位切换和采集进程独立性继续通过。
+
+使用全新临时目录运行 `collector`。设置 `QT_QPA_PLATFORM=offscreen` 后运行 `hmi <目录> 1800 <PNG> normal`，或以 `sort compact` 截取排序区的 1100×650 窗口。已人工查看 1280×800 和 1100×650 的 SPS 画面及紧凑排序区。仅合成数据，截图单独交付。Windows 构建、字体、DPI、文件锁和部署未验证。

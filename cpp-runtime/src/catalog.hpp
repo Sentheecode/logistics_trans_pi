@@ -33,13 +33,13 @@ struct Factory { std::string id, code, name; };
 struct Area { std::string id, factory_id, code, name; };
 struct Plc { std::string id, area_id, code, name; };
 struct Station { std::string id, plc_id, code, name, stream; };
-// Line membership is independent of PLC. This fixture intentionally has none.
-struct LineLink { std::string id, station_id, note; };
+struct Line { std::string id, area_id, name, storage, zone; };
+struct LineLink { std::string line_id, station_id; };
 
 struct Selection {
-    std::string factory_id, area_id, plc_id, station_id;
+    std::string factory_id, area_id, plc_id, station_id, line_id{};
     bool operator==(const Selection& other) const {
-        return factory_id==other.factory_id && area_id==other.area_id && plc_id==other.plc_id && station_id==other.station_id;
+        return factory_id==other.factory_id && area_id==other.area_id && plc_id==other.plc_id && station_id==other.station_id && line_id==other.line_id;
     }
 };
 
@@ -50,6 +50,7 @@ public:
     std::vector<Area> areas;
     std::vector<Plc> plcs;
     std::vector<Station> stations;
+    std::vector<Line> lines;
     std::vector<LineLink> line_links;
 
     static Directory qiantang();
@@ -62,6 +63,10 @@ public:
     std::string live_station_id() const;
     std::string empty_plc_id() const;
 
+    const Line* find_line(const std::string& id) const;
+    const Line* line_of_station(const std::string& station_id) const;
+    std::vector<const Line*> lines_of(const std::string& area_id) const;
+    std::vector<const Station*> stations_on_line(const std::string& line_id) const;
     const Factory* find_factory(const std::string& id) const;
     const Area* find_area(const std::string& id) const;
     const Plc* find_plc(const std::string& id) const;

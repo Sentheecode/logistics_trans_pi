@@ -18,10 +18,15 @@ bool id_ok(const std::string& id) {
 
 Directory Directory::qiantang() {
     Directory directory;
-    directory.factories = {{kFactory, "QT2", "钱塘二厂"}};
+    directory.factories = {{kFactory, "QT2", "钱塘二厂"},
+        {"fac.demo-north", "DEMO-N", "北岸示例厂"}, {"fac.demo-south", "DEMO-S", "南湾示例厂"}};
     directory.areas = {
-        {kAreaPick, kFactory, "pick", "分拣区"},
+        {kAreaPick, kFactory, "pick", "SPS（立库）"},
         {kAreaSeq, kFactory, "seq", "排序区"},
+        {"area.demo-north.sps", "fac.demo-north", "pick", "SPS（立库）"},
+        {"area.demo-north.sort", "fac.demo-north", "seq", "排序区"},
+        {"area.demo-south.sps", "fac.demo-south", "pick", "SPS（立库）"},
+        {"area.demo-south.sort", "fac.demo-south", "seq", "排序区"},
     };
     directory.plcs = {
         {kPlcPack, kAreaPick, "pack", "外装"},
@@ -31,6 +36,8 @@ Directory Directory::qiantang() {
         {kPlcSeq2, kAreaSeq, "seq2", "排序二"},
         {kPlcSeq3, kAreaSeq, "seq3", "排序三"},
         {kPlcSeq4, kAreaSeq, "seq4", "排序四"},
+        {"plc.cfg.demo-north", "area.demo-north.sps", "demo-n", "示例 PLC N"},
+        {"plc.cfg.demo-south", "area.demo-south.sort", "demo-s", "示例 PLC S"},
     };
     // Station numbers are the given membership, in the source order. Names are those numbers.
     directory.stations = {
@@ -46,6 +53,25 @@ Directory Directory::qiantang() {
         {kStation80, kPlcMeter2, "80", "80", ""},
         {kStation210, kPlcSeq1, "210", "210", ""},
         {kStation220, kPlcSeq1, "220", "220", ""},
+        {"stn.demo-n1", "plc.cfg.demo-north", "N1", "示例工位 N1", ""},
+        {"stn.demo-n2", "plc.cfg.demo-north", "N2", "示例工位 N2", ""},
+        {"stn.demo-s1", "plc.cfg.demo-south", "S1", "示例工位 S1", ""},
+    };
+    directory.lines = {
+        {"line.demo-a", kAreaPick, "示例线 A", "示例立库 A", "示例库区 A"},
+        {"line.demo-b", kAreaPick, "示例线 B", "示例立库 B", "示例库区 B"},
+        {"line.demo-sort", kAreaSeq, "示例排序线", "不适用", "示例排序区"},
+        {"line.demo-north", "area.demo-north.sps", "北岸示例线", "示例立库 N", "示例库区 N"},
+        {"line.demo-empty", "area.demo-north.sort", "预留空线", "不适用", "未配置"},
+        {"line.demo-south", "area.demo-south.sort", "南湾示例线", "不适用", "示例排序区 S"},
+    };
+    directory.line_links = {
+        {"line.demo-a", kStation140}, {"line.demo-a", kStation150}, {"line.demo-b", kStation160},
+        {"line.demo-a", kStation20}, {"line.demo-a", kStation30}, {"line.demo-a", kStation90},
+        {"line.demo-b", kStation40}, {"line.demo-b", kStation10}, {"line.demo-b", kStation70}, {"line.demo-b", kStation80},
+        {"line.demo-sort", kStation210}, {"line.demo-sort", kStation220},
+        {"line.demo-north", "stn.demo-n1"}, {"line.demo-north", "stn.demo-n2"},
+        {"line.demo-south", "stn.demo-s1"},
     };
     return directory;
 }
@@ -89,9 +115,18 @@ std::string Directory::validate(const Directory& directory) {
         }
     }
     if (live>1) return "multiple-live";
-    for (auto& link : directory.line_links) {
-        if (auto error=take_id(link.id); !error.empty()) return error;
-        if (!by_id(directory.stations, link.station_id)) return "dangling-ref";
+    for (const auto& line : directory.lines) {
+        if (auto error=take_id(line.id); !error.empty()) return error;
+        if (!directory.find_area(line.area_id)) return "dangling-ref";
+        if (line.name.empty() || line.storage.empty() || line.zone.empty()) return "empty-name";
+    }
+    std::vector<std::string> linked;
+    for (const auto& link : directory.line_links) {
+        const auto* line=directory.find_line(link.line_id);
+        const auto* area=directory.area_of_station(link.station_id);
+        if (!line || !area || line->area_id!=area->id) return "line-scope";
+        if (std::find(linked.begin(), linked.end(), link.station_id)!=linked.end()) return "multiple-lines";
+        linked.push_back(link.station_id);
     }
     return {};
 }
@@ -115,6 +150,23 @@ Selection Directory::reconcile(Selection proposed) const {
     for (auto* item : area_rows) if (item->id==proposed.area_id) area=item;
     if (!area) area=area_rows.front();
     resolved.area_id=area->id;
+    if (const auto* line=find_line(proposed.line_id); line && line->area_id==resolved.area_id) {
+        resolved.line_id=line->id;
+        const auto rows=stations_on_line(line->id);
+        if (rows.empty()) return resolved;
+        const auto it=std::find_if(rows.begin(), rows.end(), [&](auto* row){ return row->id==proposed.station_id; });
+        const auto* station=it!=rows.end() ? *it : rows.front();
+        resolved.station_id=station->id;
+        resolved.plc_id=station->plc_id;
+        return resolved;
+    }
+    if (!find_plc(proposed.plc_id) || find_plc(proposed.plc_id)->area_id!=resolved.area_id) {
+        const auto choices=lines_of(resolved.area_id);
+        if (!choices.empty()) {
+            resolved.line_id=choices.front()->id;
+            return reconcile(resolved);
+        }
+    }
     auto plc_rows=plcs_of(resolved.area_id);
     if (plc_rows.empty()) return resolved;
     const Plc* plc=nullptr;
@@ -127,6 +179,7 @@ Selection Directory::reconcile(Selection proposed) const {
     for (auto* item : station_rows) if (item->id==proposed.station_id) station=item;
     if (!station) station=station_rows.front();
     resolved.station_id=station->id;
+    if (const auto* line=line_of_station(station->id)) resolved.line_id=line->id;
     return resolved;
 }
 
@@ -136,7 +189,8 @@ std::optional<Selection> Directory::selection_for_station(const std::string& sta
     auto* area=plc?find_area(plc->area_id):nullptr;
     auto* factory=area?find_factory(area->factory_id):nullptr;
     if (!factory) return std::nullopt;
-    return Selection{factory->id, area->id, plc->id, station->id};
+    const auto* line=line_of_station(station->id);
+    return Selection{factory->id, area->id, plc->id, station->id, line ? line->id : ""};
 }
 
 std::optional<Selection> Directory::selection_for_plc(const std::string& plc_id) const {
@@ -156,6 +210,23 @@ std::string Directory::live_station_id() const {
 std::string Directory::empty_plc_id() const {
     for (auto& plc : plcs) if (stations_of(plc.id).empty()) return plc.id;
     return {};
+}
+
+const Line* Directory::find_line(const std::string& id) const { return by_id(lines, id); }
+const Line* Directory::line_of_station(const std::string& station_id) const {
+    for (const auto& link : line_links) if (link.station_id==station_id) return find_line(link.line_id);
+    return nullptr;
+}
+std::vector<const Line*> Directory::lines_of(const std::string& area_id) const {
+    std::vector<const Line*> rows;
+    for (const auto& line : lines) if (line.area_id==area_id) rows.push_back(&line);
+    return rows;
+}
+std::vector<const Station*> Directory::stations_on_line(const std::string& line_id) const {
+    std::vector<const Station*> rows;
+    for (const auto& link : line_links) if (link.line_id==line_id)
+        if (const auto* station=find_station(link.station_id)) rows.push_back(station);
+    return rows;
 }
 
 const Factory* Directory::find_factory(const std::string& id) const { return by_id(factories, id); }

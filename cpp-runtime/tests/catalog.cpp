@@ -12,17 +12,23 @@ int main() {
     try {
         const auto directory=catalog::Directory::qiantang();
         CHECK(catalog::Directory::validate(directory).empty());
-        CHECK(directory.factories.size()==1);
+        CHECK(directory.factories.size()==3);
         CHECK(directory.find_factory(catalog::kFactory)->name=="钱塘二厂");
         CHECK(directory.areas_of(catalog::kFactory).size()==2);
-        CHECK(directory.line_links.empty());
+        CHECK(directory.line_links.size()==directory.stations.size());
+        CHECK(directory.stations_on_line("line.demo-empty").empty());
+        CHECK(directory.line_of_station(catalog::kStation140)->id!=directory.line_of_station(catalog::kStation160)->id);
+        CHECK(directory.plc_of_station(catalog::kStation140)==directory.plc_of_station(catalog::kStation160));
+        auto invalidLine=directory;
+        invalidLine.line_links.push_back({"line.demo-south",catalog::kStation140});
+        expect(catalog::Directory::validate(invalidLine), "line-scope");
         CHECK(directory.plcs_of(catalog::kAreaPick).size()==3);
         CHECK(directory.plcs_of(catalog::kAreaSeq).size()==4);
         CHECK(directory.stations_of(catalog::kPlcSeq2).empty());
         CHECK(directory.stations_of(catalog::kPlcSeq3).empty());
         CHECK(directory.stations_of(catalog::kPlcSeq4).empty());
         CHECK(directory.empty_plc_id()==catalog::kPlcSeq2);
-        CHECK(directory.stations.size()==12);
+        CHECK(directory.stations.size()==15);
         int live=0;
         for (auto& station : directory.stations) if (directory.is_live(station.id)) ++live;
         CHECK(live==1);
@@ -79,7 +85,7 @@ int main() {
         auto invented=directory;
         invented.plcs.push_back({"plc.s7.192.168.0.1", catalog::kAreaPick, "ip", "捏造"});
         expect(catalog::Directory::validate(invented), "plc-id-scope");
-        std::cout<<"PASS catalog: Qiantang factory, pick/sequence PLCs, one live station, no invented lines or addresses\n";
+        std::cout<<"PASS catalog: Qiantang factory, pick/sequence PLCs, one live station, synthetic line membership and no endpoints\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr<<error.what()<<'\n';
