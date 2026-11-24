@@ -9,6 +9,12 @@ fi
 build=$1
 stage=$2
 source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+source_sha=$(git rev-parse HEAD | tr -d '\r')
+if [[ ! $source_sha =~ ^[0-9a-f]{40}$ || ${GITHUB_SHA:-$source_sha} != "$source_sha" ]]; then
+    echo 'Could not establish the checked-out source SHA' >&2
+    exit 1
+fi
+
 mkdir -- "$stage"
 mkdir -p -- "$stage/plugins/platforms" "$stage/licenses"
 
@@ -60,7 +66,7 @@ for ((i=0; i<${#pending[@]}; i++)); do
 done
 
 {
-    printf 'source %s\n' "$(git rev-parse HEAD)"
+    printf 'source %s\n' "$source_sha"
     printf 'environment %s / %s\n' "$MSYSTEM" "$(gcc -dumpmachine)"
     gcc -dumpfullversion
     cmake --version

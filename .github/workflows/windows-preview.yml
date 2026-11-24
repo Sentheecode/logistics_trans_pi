@@ -24,6 +24,7 @@ jobs:
           update: true
           cache: false
           install: >-
+            git
             mingw-w64-x86_64-binutils
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
@@ -76,6 +77,8 @@ jobs:
           if (-not ((Get-Content "$clean/BUILD-INFO.txt") -contains "source $env:GITHUB_SHA")) {
             throw 'Package source SHA mismatch'
           }
+          Get-Content "$clean/BUILD-INFO.txt", "$clean/FILES.txt"
+          Write-Output "ZIP SHA-256 $actual"
           python cpp-runtime/deploy/windows/smoke.py "$clean"
           if ($LASTEXITCODE -ne 0) { throw "Preview smoke failed ($LASTEXITCODE)" }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

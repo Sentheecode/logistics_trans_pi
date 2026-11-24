@@ -9,7 +9,7 @@
 本机复验可在非管理员 MSYS2 MINGW64 终端执行。暂存目录必须是新目录。
 
 ```bash
-pacman -S --needed mingw-w64-x86_64-{binutils,gcc,cmake,make,qt6-base,sqlite,nlohmann-json}
+pacman -S --needed git mingw-w64-x86_64-{binutils,gcc,cmake,make,qt6-base,sqlite,nlohmann-json}
 cmake -S cpp-runtime -B build-preview -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MCP_HTTP=OFF -DBUILD_OPCUA_LOOPBACK_FIXTURE=OFF
 cmake --build build-preview --parallel 4
 bash cpp-runtime/deploy/windows/stage.sh build-preview preview-stage
