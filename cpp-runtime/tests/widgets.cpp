@@ -112,7 +112,7 @@ void assert_combo_contrast(const QComboBox* box) {
     const auto selectedText=view->palette().color(QPalette::HighlightedText);
     if (text.lightness()>80 || base.lightness()<220) throw std::runtime_error("combo popup text and background do not contrast");
     if (selectedText.lightness()>120 || selected.lightness()<160) throw std::runtime_error("combo selection text and background do not contrast");
-    if (!view->styleSheet().contains("color:#1f2933") || !view->styleSheet().contains("background:#ffffff"))
+    if (!view->styleSheet().contains("color:#1b1f23") || !view->styleSheet().contains("background:#ffffff"))
         throw std::runtime_error("combo popup stylesheet lost explicit colors");
 }
 void assert_point_detail_reachable(QWidget& window) {
@@ -294,7 +294,9 @@ int main(int argc, char** argv) {
         if (!window.styleSheet().contains("border-radius:8px") || window.styleSheet().contains("qlineargradient") || window.styleSheet().contains("box-shadow"))
             throw std::runtime_error("controls are not rounded");
         for (auto* box : {factory, area, plc}) assert_combo_contrast(box);
-        if (factory->count()!=3 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
+        if (area->isVisible()) throw std::runtime_error("business mode dropdown is still visible");
+        if (factory->count()!=3 || area->count()!=2 || plc->count()!=9) throw std::runtime_error("catalog dropdowns incomplete");
+        if (plc->findText("分拣")<0 || plc->findText("排序区")<0) throw std::runtime_error("plc menu has no area groups");
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
         if (cell(detail, "业务模式")==cell(detail, "运行模式") || !cell(detail, "实时范围").contains(QString::fromUtf8(catalog::kStream))) throw std::runtime_error("area and runtime modes not independent");
@@ -560,7 +562,7 @@ int main(int argc, char** argv) {
             pump(250);
             if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
             check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "stationBoard", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "stationBoard", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
         choose(area, catalog::kAreaSeq);
         window.resize(1100, 650);
@@ -585,7 +587,7 @@ int main(int argc, char** argv) {
             window.resize(size);
             pump(200);
             check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "stationBoard", "plcCombo"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "stationBoard", "plcCombo"}) assert_inside(window, name);
             if (window.findChild<QWidget*>("commandPane") && window.findChild<QWidget*>("commandPane")->isVisible())
                 throw std::runtime_error("unbound plc still showed the control bar");
         }
@@ -628,9 +630,13 @@ int main(int argc, char** argv) {
             if (detail->item(row, 0) && detail->item(row, 0)->text()=="线体")
                 throw std::runtime_error("line is still a visible configuration field");
         auto* modules=window.findChild<QTabBar*>("moduleTabs");
-        if (!modules || modules->count()!=7 || modules->tabText(0)!="运行") throw std::runtime_error("module tabs missing");
+        if (!modules || modules->count()!=5 || modules->tabText(0)!="运行" || modules->tabText(1)!="日志") throw std::runtime_error("module tabs missing");
+        for (int index=0; index<modules->count(); ++index) {
+            const auto text=modules->tabText(index);
+            if (text=="工位" || text=="事件" || text=="业务模式") throw std::runtime_error("retired tab is still visible");
+        }
         const auto before_tabs=snap(directory);
-        for (auto title : {"工位", "事件", "点表", "接口", "日志", "采集"}) {
+        for (auto title : {"日志", "采集", "点表", "接口"}) {
             show_page(window,QString::fromUtf8(title));
             pump(80);
             check_labels(window);
