@@ -90,7 +90,7 @@ jobs:
 
   publish:
     needs: clean-smoke
-    if: github.ref == 'refs/heads/cursor/windows-ui-preview-063d'
+    if: github.ref == 'refs/heads/cursor/windows-ui-preview-063d' && !contains(github.event.head_commit.message, '[hold-release]')
     runs-on: ubuntu-latest
     permissions:
       contents: write

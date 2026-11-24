@@ -20,6 +20,9 @@ int main() {
         CHECK(directory.line_of_station(catalog::kStation140)->id==directory.line_of_station(catalog::kStation160)->id);
         CHECK(directory.line_of_station(catalog::kStation140)->name=="外装");
         CHECK(directory.line_of_station(catalog::kStation20)->id!=directory.line_of_station(catalog::kStation140)->id);
+        auto spanned=directory;
+        for (auto& link : spanned.line_links) if (link.station_id==catalog::kStation20) link.line_id="line.pack";
+        expect(catalog::Directory::validate(spanned), "line-spans-plcs");
         CHECK(directory.plc_of_station(catalog::kStation140)==directory.plc_of_station(catalog::kStation160));
         auto invalidLine=directory;
         invalidLine.line_links.push_back({"line.demo-south",catalog::kStation140});

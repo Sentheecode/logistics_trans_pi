@@ -261,7 +261,7 @@ QString consoleStyle() {
         QLabel#collectQuality[state="warn"], QLabel#collectLink[state="warn"] { color:%8; font-weight:600; }
         QLabel#collectQuality[state="unknown"], QLabel#collectLink[state="unknown"], QLabel#collectPlc[state="unknown"] { color:%5; }
         QLabel#muted, QLabel#controlReason, QLabel#controlFeedback { color:%5; font-size:12px; }
-        QLabel#simBadge { background:%6; color:#ffffff; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:600; }
+        QLabel#simBadge { background:#0c3f3a; color:#ffffff; border:1px solid #082e2b; padding:2px 8px; border-radius:8px; font-size:12px; font-weight:600; }
         QLabel#statusChip { background:%1; color:%5; padding:1px 6px; border-radius:8px; font-size:12px; font-weight:600; }
         QLabel#statusChip[state="sim"] { background:%7; color:%6; }
         QLabel#statusChip[state="wait"] { background:%9; color:%8; }
@@ -475,9 +475,14 @@ Workbench::Workbench(std::filesystem::path directory)
     };
     addCombo("工厂", &factoryCombo_, "factoryCombo");
     addCombo("业务模式", &areaCombo_, "areaCombo");
-    addCombo("线体", &lineCombo_, "lineCombo");
-    addCombo("关联 PLC", &plcCombo_, "plcCombo");
+    addCombo("PLC", &plcCombo_, "plcCombo");
     factoryCombo_->setMaximumWidth(132);
+    acquisitionOwner_=new QLabel(context);
+    acquisitionOwner_->setObjectName("acquisitionOwner");
+    previewHint_=new QLabel(context);
+    previewHint_->setObjectName("previewHint");
+    contextLayout->addWidget(acquisitionOwner_);
+    contextLayout->addWidget(previewHint_);
     contextLayout->addStretch(1);
 
     auto* commandPane=new QWidget;
@@ -511,10 +516,8 @@ Workbench::Workbench(std::filesystem::path directory)
         commandLayout->addWidget(button);
     }
 
-    schematic_=new SchematicView;
-    schematic_->setMinimumHeight(88);
-    schematic_->setMaximumHeight(104);
-    schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    schematic_=new SchematicView(this);
+    schematic_->hide();
     stationBoard_=new QTableWidget;
     stationBoard_->setItemDelegate(new BoardDelegate(stationBoard_));
     stationBoard_->setObjectName("stationBoard");
@@ -522,15 +525,15 @@ Workbench::Workbench(std::filesystem::path directory)
     stationBoard_->setSelectionMode(QAbstractItemView::NoSelection);
     stationBoard_->setFocusPolicy(Qt::NoFocus);
     stationBoard_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    stationBoard_->verticalHeader()->setDefaultSectionSize(26);
+    stationBoard_->verticalHeader()->setDefaultSectionSize(36);
     stationBoard_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     stationBoard_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     stationBoard_->setColumnWidth(0, 72);
     stationBoard_->setColumnWidth(2, 128);
     stationBoard_->setColumnWidth(3, 148);
     stationBoard_->setColumnWidth(4, 220);
-    auto* workHeading=new QLabel("当前作业");
-    workHeading->setObjectName("section");
+    auto* workHeading=new QLabel("模拟作业");
+    workHeading->setObjectName("workHeading");
     stationMeta_=new QLabel;
     stationMeta_->setObjectName("muted");
     stationMeta_->setWordWrap(true);
@@ -589,18 +592,12 @@ Workbench::Workbench(std::filesystem::path directory)
     factsLayout->addWidget(stationMeta_);
     factsLayout->addWidget(interfaceLine_);
     factsLayout->addWidget(scopeBanner_);
-    auto* overview=new QWidget(runBody);
-    overview->setObjectName("surface");
-    overview->setMinimumWidth(295);
-    auto* overviewLayout=new QVBoxLayout(overview);
-    overviewLayout->setContentsMargins(8, 4, 8, 4);
-    overviewLayout->setSpacing(4);
-    auto* overviewLabel=new QLabel("工位与料车拓扑", overview);
-    overviewLabel->setObjectName("section");
-    overviewLayout->addWidget(overviewLabel);
-    overviewLayout->addWidget(schematic_);
+    readinessNote_=new QLabel(facts);
+    readinessNote_->setObjectName("readinessNote");
+    readinessNote_->setWordWrap(true);
+    readinessNote_->hide();
+    factsLayout->addWidget(readinessNote_);
     facts->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    overview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     auto* left=new QWidget(runBody);
     auto* leftLayout=new QVBoxLayout(left);
     leftLayout->setContentsMargins(0,0,0,0);
@@ -658,7 +655,6 @@ Workbench::Workbench(std::filesystem::path directory)
     peerTable_->setMaximumHeight(168);
     auto* stagesTitle=new QLabel("作业阶段",left);
     stagesTitle->setObjectName("stageTitle");
-    leftLayout->addWidget(overview);
     leftLayout->addWidget(stagesTitle);
     stageTable_=new QTableWidget(left);
     stageTable_->setObjectName("stageTable");
@@ -927,11 +923,15 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* logHint=new QLabel("时间列是北京时间（UTC+8），库内仍是 UTC 毫秒。链路和质量变化是模拟证据，不是现场设备离线，也没有 S7 重连。", logPage);
     logHint->setWordWrap(true);
     logHint->setObjectName("muted");
+    logFollowButton_=new QPushButton("暂停跟随");
+    logFollowButton_->setObjectName("logFollow");
+    logFollowButton_->setFocusPolicy(Qt::StrongFocus);
     auto* logTools=new QHBoxLayout;
     logTools->addWidget(logSearch_);
     logTools->addWidget(logCategory_);
     logTools->addWidget(logLevel_);
     logTools->addWidget(clearLogs);
+    logTools->addWidget(logFollowButton_);
     logTools->addStretch(1);
     auto* logDetailBox=new QWidget;
     logDetailBox->setObjectName("surface");
@@ -963,22 +963,28 @@ Workbench::Workbench(std::filesystem::path directory)
     collectGrid->setContentsMargins(12, 12, 12, 12);
     collectGrid->setHorizontalSpacing(16);
     collectGrid->setVerticalSpacing(8);
-    auto addFact=[&](int row, const QString& key, QLabel** value){
+    auto addFact=[&](int row, int column, const QString& key, QLabel** value){
         auto* name=new QLabel(key, collectBox);
         name->setObjectName("fieldLabel");
         *value=new QLabel("—", collectBox);
-        collectGrid->addWidget(name, row, 0);
-        collectGrid->addWidget(*value, row, 1);
+        collectGrid->addWidget(name, row, column*2);
+        collectGrid->addWidget(*value, row, column*2+1);
     };
-    addFact(0, "采集所有者", &collectOwner_);
-    addFact(1, "模拟源", &collectLive_);
+    auto* processTitle=new QLabel("采集进程", collectBox);
+    processTitle->setObjectName("section");
+    auto* plcTitle=new QLabel("当前 PLC", collectBox);
+    plcTitle->setObjectName("section");
+    collectGrid->addWidget(processTitle, 0, 0, 1, 2);
+    collectGrid->addWidget(plcTitle, 0, 2, 1, 2);
+    addFact(1, 0, "进程状态", &collectOwner_);
     QLabel* collectSeen=nullptr; QLabel* collectFrame=nullptr; QLabel* collectQuality=nullptr; QLabel* collectLink=nullptr; QLabel* collectMode=nullptr; QLabel* collectPlc=nullptr;
-    addFact(2, "最近采集", &collectSeen);
-    addFact(3, "帧序号", &collectFrame);
-    addFact(4, "质量", &collectQuality);
-    addFact(5, "链路", &collectLink);
-    addFact(6, "模式", &collectMode);
-    addFact(7, "设备连接", &collectPlc);
+    addFact(2, 0, "最近采集", &collectSeen);
+    addFact(3, 0, "运行模式", &collectMode);
+    addFact(1, 1, "模拟源", &collectLive_);
+    addFact(2, 1, "帧序号", &collectFrame);
+    addFact(3, 1, "帧质量", &collectQuality);
+    addFact(4, 1, "模拟链路", &collectLink);
+    addFact(5, 1, "设备连接", &collectPlc);
     collectSeen->setObjectName("collectSeen");
     collectFrame->setObjectName("collectFrame");
     collectQuality->setObjectName("collectQuality");
@@ -990,7 +996,7 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(collectChanges_, {"时间", "变化"});
     collectChanges_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     collectChanges_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    auto* collectUnbound=new QLabel("当前 PLC 未绑定模拟源。顶栏心跳是采集进程，不是这个 PLC 的数据。", collectPage);
+    auto* collectUnbound=new QLabel("当前 PLC 未绑定模拟源。进程心跳不是这个 PLC 在线，也不是通行授权。", collectPage);
     collectUnbound->setObjectName("collectUnbound");
     collectUnbound->setWordWrap(true);
     collectUnbound->hide();
@@ -1063,10 +1069,24 @@ Workbench::Workbench(std::filesystem::path directory)
         applyLogFilter();
     });
     connect(logTable_, &QTableWidget::itemSelectionChanged, this, [this]{ showLogDetail(); });
+    connect(logTable_, &QTableWidget::itemClicked, this, [this]{
+        logFollow_=false;
+        if (logFollowButton_) logFollowButton_->setText("恢复跟随");
+        showLogDetail();
+    });
+    connect(logFollowButton_, &QPushButton::clicked, this, [this]{
+        logFollow_=!logFollow_;
+        if (logFollowButton_) logFollowButton_->setText(logFollow_ ? "暂停跟随" : "恢复跟随");
+        if (logFollow_ && logTable_ && logTable_->rowCount()>0) {
+            applyingLogSelection_=true;
+            logTable_->setCurrentCell(0, 0);
+            applyingLogSelection_=false;
+            showLogDetail();
+        }
+    });
     setTabOrder(moduleTabs_, factoryCombo_);
     setTabOrder(factoryCombo_, areaCombo_);
-    setTabOrder(areaCombo_, lineCombo_);
-    setTabOrder(lineCombo_, plcCombo_);
+    setTabOrder(areaCombo_, plcCombo_);
     setTabOrder(plcCombo_, modeButton_);
     setTabOrder(modeButton_, step_);
     setTabOrder(step_, disconnect_);
@@ -1085,12 +1105,6 @@ Workbench::Workbench(std::filesystem::path directory)
         next.area_id=comboId(areaCombo_).toStdString();
         next.line_id.clear();
         next.plc_id.clear();
-        setSelection(next);
-    });
-    connect(lineCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
-        if (updating_) return;
-        auto next=selection_;
-        next.line_id=comboId(lineCombo_).toStdString();
         setSelection(next);
     });
     connect(plcCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -1181,7 +1195,7 @@ void Workbench::applyPointFilter() {
     }
     if (pointEmpty_) {
         pointEmpty_->setVisible(pointTable_->rowCount()==0 || visible==0);
-        if (pointTable_->rowCount()==0) pointEmpty_->setText("此工位没有点表，不套用 140。");
+        if (pointTable_->rowCount()==0) pointEmpty_->setText("当前 PLC 没有点表。");
         else if (visible==0) pointEmpty_->setText("没有符合筛选的点。源表没有删除。");
     }
     showPointDetail();
@@ -1238,6 +1252,7 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
     const auto* selected=logTable_->item(logTable_->currentRow(),0);
     const auto selectedId=selected ? selected->data(Qt::UserRole+4).toLongLong() : -1;
     int selectedRow=-1;
+    applyingLogSelection_=true;
     logTable_->setRowCount(count);
     for(int i=0;i<count;++i){
         const auto& row=logs[static_cast<std::size_t>(i)];
@@ -1265,7 +1280,11 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
             logTable_->setItem(i, column, item);
         }
     }
-    logTable_->setCurrentCell(selectedRow, selectedRow>=0 ? 0 : -1);
+    if (logFollow_ && count>0) logTable_->setCurrentCell(0, 0);
+    else if (selectedRow>=0) logTable_->setCurrentCell(selectedRow, 0);
+    else logTable_->setCurrentCell(-1, -1);
+    applyingLogSelection_=false;
+    if (logFollowButton_) logFollowButton_->setText(logFollow_ ? "暂停跟随" : "恢复跟随");
     applyLogFilter();
 }
 void Workbench::applyLogFilter() {
@@ -1315,12 +1334,7 @@ void Workbench::syncModuleChrome() {
     const bool has=!catalog_.stations_of(selection_.plc_id).empty();
     if (stationEmpty_) stationEmpty_->setVisible(!has);
     if (peerTable_) peerTable_->setVisible(has);
-    if (has && peerTable_) {
-        for (int row=0; row<peerTable_->rowCount(); ++row) {
-            auto* item=peerTable_->item(row, 0);
-            if (item && item->text().toStdString()==selection_.station_id) peerTable_->selectRow(row);
-        }
-    }
+    if (peerTable_) peerTable_->clearSelection();
     applyHistoryFilter();
     applyPointFilter();
     if (recentTable_) {
@@ -1329,9 +1343,9 @@ void Workbench::syncModuleChrome() {
         if (auto* note=findChild<QLabel*>("recentScope")) note->setVisible(!live);
     }
     auto setFact=[&](const char* name, const QString& text){ if(auto* label=findChild<QLabel*>(name)) label->setText(text); };
-    if(collectOwner_) collectOwner_->setText(view_.runtime.liveness=="recent" ? "独立采集进程 · 心跳正常" : "独立采集进程 · 心跳不可用");
+    if(collectOwner_) collectOwner_->setText(view_.runtime.liveness=="recent" ? "心跳正常 · 不是 PLC 在线" : "心跳不可用 · 不是 PLC 在线");
     const bool bound=liveScope();
-    if(collectLive_) collectLive_->setText(bound ? "工位 140 · sim.three-cart.v1" : "当前 PLC 未绑定");
+    if(collectLive_) collectLive_->setText(bound ? "工位 140 · sim.three-cart.v1" : "未绑定");
     const bool frame=bound && !view_.rows.empty();
     const auto age=view_.runtime.heartbeat_ms>0 ? QString::number(std::max<qint64>(0, (QDateTime::currentMSecsSinceEpoch()-view_.runtime.heartbeat_ms)/1000))+" 秒" : QString("无");
     setFact("collectSeen", view_.runtime.heartbeat_ms>0 ? beijingTime(view_.runtime.heartbeat_ms,"HH:mm:ss")+" · 年龄 "+age+" · 采集进程" : "无");
@@ -1352,13 +1366,10 @@ void Workbench::syncModuleChrome() {
 }
 
 void Workbench::refill() {
-    std::vector<std::pair<QString, QString>> factories, areas, plcs, lines, stations;
+    std::vector<std::pair<QString, QString>> factories, areas, plcs;
     for (auto& row : catalog_.factories) factories.emplace_back(QString::fromStdString(row.id), QString::fromStdString(row.name));
     for (auto* row : catalog_.areas_of(selection_.factory_id)) areas.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.plcs_of(selection_.area_id)) plcs.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
-    for (auto* row : catalog_.lines_of(selection_.area_id)) lines.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
-    for (auto* row : catalog_.stations_on_line(selection_.line_id)) stations.emplace_back(QString::fromStdString(row->id), QString::fromStdString(catalog::station_label(*row)));
-    fillCombo(lineCombo_, lines, QString::fromStdString(selection_.line_id));
     fillCombo(factoryCombo_, factories, QString::fromStdString(selection_.factory_id));
     fillCombo(areaCombo_, areas, QString::fromStdString(selection_.area_id));
     fillCombo(plcCombo_, plcs, QString::fromStdString(selection_.plc_id));
@@ -1439,6 +1450,7 @@ void Workbench::buttons() {
     modeButton_->setToolTip(reason);
     step_->setToolTip(reason);
     disconnect_->setToolTip(reason);
+    if (auto* pane=modeButton_->parentWidget()) pane->setVisible(live);
 }
 
 void Workbench::command(const std::string& name) {
@@ -1523,14 +1535,25 @@ void Workbench::render() {
         sim_quality=view_.rows.empty() || !available_ ? "未知" : good ? "正常" : "不可用";
     }
     const auto* line=catalog_.find_line(selection_.line_id);
-    const QString lineName=line ? QString::fromStdString(line->name) : "未配置";
     const QString storage=line ? QString::fromStdString(line->storage) : "未配置";
     const QString zone=line ? QString::fromStdString(line->zone) : "未配置";
-    stationMeta_->setText(lineName+" · "+storage+" · "+zone);
+    stationMeta_->setText("仓库 "+storage+" · 库区 "+zone);
+    if (acquisitionOwner_) {
+        const auto* owned=catalog_.plc_of_station(catalog_.live_station_id());
+        acquisitionOwner_->setText(owned ? "采集归属 "+QString::fromStdString(owned->name) : "采集归属 未绑定");
+        fit(acquisitionOwner_);
+    }
+    if (previewHint_) {
+        previewHint_->setText(peer_rows.empty() ? "未配置" : live ? "与采集归属一致" : "预览，不改采集归属");
+        fit(previewHint_);
+    }
+    if (readinessNote_) {
+        readinessNote_->setVisible(!live && !peer_rows.empty());
+        readinessNote_->setText("已知：工位已登记，未绑定模拟源。采集归属不随这个预览改变。现场设备未连接。");
+    }
     stationMeta_->setToolTip(plc ? QString::fromStdString(plc->name)+" · PLC 自动未读取" : "PLC 未配置");
-    interfaceLine_->setText(selection_.factory_id!=catalog::kFactory ? "关联系统 · 未配置" : area && area->code=="seq"
-        ? "华睿：未连接 · 汇总/严控与完成协议未定 · 不填假数量"
-        : "库卡：未授权通行 · LWMS：未连接 · 库位映射待补");
+    interfaceLine_->setVisible(live);
+    interfaceLine_->setText(live ? "已明确未实现：库卡通行未授权，LWMS 未连接，库位映射待补。" : "");
     // One projection of the selected station's current frame feeds the order and the shared lane.
     CartLane lane;
     lane.visible=false;
@@ -1553,8 +1576,6 @@ void Workbench::render() {
         glyphs.push_back({item->id,QString::fromStdString(item->code)});
         stationCodes.push_back(QString::fromStdString(item->code));
     }
-    schematic_->setMinimumHeight(88);
-    schematic_->setMaximumHeight(104);
     schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), glyphs, "", lane);
     if (stationBoard_) {
         stationBoard_->setRowCount(static_cast<int>(peer_rows.size()));
@@ -1565,12 +1586,12 @@ void Workbench::render() {
         }();
         for (int i=0; i<static_cast<int>(peer_rows.size()); ++i) {
             const bool own=catalog_.is_live(peer_rows[i]->id);
-            const QString name=peer_rows[i]->name==peer_rows[i]->code ? QString() : QString::fromStdString(peer_rows[i]->name);
+            const QString name=peer_rows[i]->name==peer_rows[i]->code ? "名称未登记" : QString::fromStdString(peer_rows[i]->name);
             QStringList columns={
                 QString::fromStdString(peer_rows[i]->code),
                 name,
                 own ? (good ? "模拟进行中" : "模拟值未知") : "未绑定模拟源",
-                own ? QString::fromStdString(catalog::kStream) : "无",
+                own ? "模拟" : "未绑定",
                 own ? liveRecord : "没有模拟记录",
             };
             for (int column=0; column<columns.size(); ++column) {
@@ -1596,7 +1617,6 @@ void Workbench::render() {
         {"库存", "未知"},
         {"控制器", plc ? QString::fromStdString(plc->id+" "+plc->name) : "未配置"},
         {"关联工位", peers},
-        {"线体", lineName},
         {"仓库", storage},
         {"库区", zone},
         {"库位", "待补映射"},
@@ -1606,7 +1626,7 @@ void Workbench::render() {
     peerTable_->setSelectionMode(QAbstractItemView::NoSelection);
     for (int i=0; i<static_cast<int>(peer_rows.size()); ++i) {
         const bool own=catalog_.is_live(peer_rows[i]->id);
-        const QString name=peer_rows[i]->name==peer_rows[i]->code ? QString() : QString::fromStdString(peer_rows[i]->name);
+        const QString name=peer_rows[i]->name==peer_rows[i]->code ? "名称未登记" : QString::fromStdString(peer_rows[i]->name);
         QStringList columns={QString::fromStdString(peer_rows[i]->code), name, own ? "模拟源" : "无模拟源"};
         for (int column=0; column<columns.size(); ++column) {
             auto* item=new QTableWidgetItem(columns[column]);
@@ -1663,6 +1683,7 @@ void Workbench::render() {
     }
 
     auto showLiveDetail=[&](bool on) {
+        if (auto* title=findChild<QLabel*>("workHeading")) title->setVisible(on);
         if (auto* title=findChild<QLabel*>("stageTitle")) title->setVisible(on);
         if (auto* title=findChild<QLabel*>("recentLabel")) title->setVisible(on);
         if (auto* note=findChild<QLabel*>("recentScope")) note->setVisible(false);

@@ -142,6 +142,17 @@ std::string Directory::validate(const Directory& directory) {
         if (std::find(linked.begin(), linked.end(), link.station_id)!=linked.end()) return "multiple-lines";
         linked.push_back(link.station_id);
     }
+    std::vector<std::pair<std::string, std::string>> line_plc, plc_line;
+    for (const auto& link : directory.line_links) {
+        const auto* station=directory.find_station(link.station_id);
+        if (!station) return "dangling-ref";
+        const auto known_plc=std::find_if(line_plc.begin(), line_plc.end(), [&](const auto& row){ return row.first==link.line_id; });
+        if (known_plc!=line_plc.end() && known_plc->second!=station->plc_id) return "line-spans-plcs";
+        if (known_plc==line_plc.end()) line_plc.emplace_back(link.line_id, station->plc_id);
+        const auto known_line=std::find_if(plc_line.begin(), plc_line.end(), [&](const auto& row){ return row.first==station->plc_id; });
+        if (known_line!=plc_line.end() && known_line->second!=link.line_id) return "plc-split-across-lines";
+        if (known_line==plc_line.end()) plc_line.emplace_back(station->plc_id, link.line_id);
+    }
     return {};
 }
 
@@ -164,22 +175,13 @@ Selection Directory::reconcile(Selection proposed) const {
     for (auto* item : area_rows) if (item->id==proposed.area_id) area=item;
     if (!area) area=area_rows.front();
     resolved.area_id=area->id;
-    if (const auto* line=find_line(proposed.line_id); line && line->area_id==resolved.area_id) {
-        resolved.line_id=line->id;
-        const auto rows=stations_on_line(line->id);
-        if (rows.empty()) return resolved;
-        const auto it=std::find_if(rows.begin(), rows.end(), [&](auto* row){ return row->id==proposed.station_id; });
-        const auto* station=it!=rows.end() ? *it : rows.front();
-        resolved.station_id=station->id;
-        resolved.plc_id=station->plc_id;
-        return resolved;
-    }
     if (!find_plc(proposed.plc_id) || find_plc(proposed.plc_id)->area_id!=resolved.area_id) {
-        const auto choices=lines_of(resolved.area_id);
-        if (!choices.empty()) {
-            resolved.line_id=choices.front()->id;
-            return reconcile(resolved);
-        }
+        const auto choices=plcs_of(resolved.area_id);
+        if (choices.empty()) return resolved;
+        resolved.plc_id=choices.front()->id;
+        resolved.station_id.clear();
+        resolved.line_id.clear();
+        return reconcile(resolved);
     }
     auto plc_rows=plcs_of(resolved.area_id);
     if (plc_rows.empty()) return resolved;
