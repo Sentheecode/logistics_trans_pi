@@ -12,7 +12,7 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过。`widgets_controls` 检查页签、下拉对比度、圆角、1100×650 与 1280×800，以及排序区四个 PLC 只显示各自工位且不泄漏工位 140。字体从 exe 旁的 `fonts` 目录加载，缺字回退保持打开。同一 Fontconfig 下若没有这份字体文件，中文会显示为方框。这不是 Windows 实机，也不是 DPI 或现场验收。
+结果：**11/11** 通过。`widgets_controls` 检查页签、下拉对比度、圆角、1100×650 与 1280×800。同一 PLC 的工位同时出现，没有工位下拉或互斥工位按钮；外装同时显示 140/150/160，且只有 140 行有模拟；排序区 PLC 不泄漏 140。切页不改变采集。字体从 exe 旁的 `fonts` 目录加载，缺字回退保持打开。同一 Fontconfig 下若没有这份字体文件，中文会显示为方框。这不是 Windows 实机，也不是最终视觉验收。
 
 Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。包内只有 `Logistics.exe`。冒烟要求 `cjk_glyph=yes`。本段写下时，这次 Windows 构建尚未在本机执行。
 

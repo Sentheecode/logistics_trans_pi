@@ -169,9 +169,28 @@ void check_bad_svg() {
     SchematicView blank;
     if (blank.loaded() || !blank.stationAt(QPointF(1, 1)).isEmpty()) throw std::runtime_error("empty layout reported a station");
 }
+bool board_has(QWidget& window, const QString& text) {
+    auto* table=window.findChild<QTableWidget*>("stationBoard");
+    if (!table) return false;
+    for (int row=0; row<table->rowCount(); ++row) for (int column=0; column<table->columnCount(); ++column) {
+        auto* item=table->item(row, column);
+        if (item && item->text().contains(text)) return true;
+    }
+    return false;
+}
+QString board_row(QWidget& window, const QString& code, int column) {
+    auto* table=window.findChild<QTableWidget*>("stationBoard");
+    if (!table) throw std::runtime_error("missing station board");
+    for (int row=0; row<table->rowCount(); ++row) {
+        auto* key=table->item(row, 0);
+        auto* value=table->item(row, column);
+        if (key && value && key->text()==code) return value->text();
+    }
+    throw std::runtime_error(("missing station row "+code).toStdString());
+}
 void click_station(SchematicView* schematic, const char* id) {
     const auto rect=schematic->stationRect(QString::fromUtf8(id));
-    if (rect.width()<5 || rect.height()<5) throw std::runtime_error("schematic layout empty");
+    if (rect.width()<5 || rect.height()<5) throw std::runtime_error("schematic layout empty "+std::to_string(schematic->width())+"x"+std::to_string(schematic->height()));
     const auto center=rect.center();
     if (schematic->stationAt(center)!=QString::fromUtf8(id)) throw std::runtime_error("svg hit target does not match id");
     QMouseEvent press(QEvent::MouseButtonPress, center, QPointF(schematic->mapToGlobal(center.toPoint())), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
@@ -210,8 +229,11 @@ int main(int argc, char** argv) {
         auto* schematic=window.findChild<SchematicView*>("schematicView");
         if (!factory || !area || !plc || !detail || !history || !points || !schematic) throw std::runtime_error("missing native chrome");
         auto* line=window.findChild<QComboBox*>("lineCombo");
-        auto* station=window.findChild<QComboBox*>("stationCombo");
-        if (!line || !station) throw std::runtime_error("missing line or station selection");
+        if (!line) throw std::runtime_error("missing line selection");
+        if (window.findChild<QComboBox*>("stationCombo") || window.findChild<QLabel*>("currentStation") || window.findChild<QPushButton*>("stationCard"))
+            throw std::runtime_error("global station selector still exists");
+        auto* board=window.findChild<QTableWidget*>("stationBoard");
+        if (!board || board->selectionMode()!=QAbstractItemView::NoSelection) throw std::runtime_error("station board is missing or selectable");
         if (!window.findChild<QWidget*>("catalogPane") || !window.findChild<QWidget*>("commandPane"))
             throw std::runtime_error("missing context or operations");
         if (window.findChild<QWidget*>("sideNav")) throw std::runtime_error("sidebar still exists");
@@ -233,7 +255,7 @@ int main(int argc, char** argv) {
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"moduleTabs","pageTabRow","currentStation","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
+            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
                 assert_inside(window,name);
             assert_tabs_above_factory(window);
         }
@@ -266,14 +288,15 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Chinese glyph is missing from the active font");
         if (!window.styleSheet().contains("border-radius:8px") || !window.styleSheet().contains("border-radius:10px"))
             throw std::runtime_error("controls are not rounded");
-        for (auto* box : {factory, area, plc, line, station}) assert_combo_contrast(box);
+        for (auto* box : {factory, area, plc, line}) assert_combo_contrast(box);
         if (factory->count()!=3 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
         if (cell(detail, "业务模式")==cell(detail, "运行模式") || !cell(detail, "实时范围").contains(QString::fromUtf8(catalog::kStream))) throw std::runtime_error("area and runtime modes not independent");
         if (points->rowCount()<10) throw std::runtime_error("station 140 audit missing");
-        if (window.controllerPeerIds().size()!=3 || schematic->markerColor(QString::fromUtf8(catalog::kStation140))==schematic->markerColor(QString::fromUtf8(catalog::kStation150)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation150)).isValid() || schematic->markerColor(QString::fromUtf8(catalog::kStation210)).isValid())
-            throw std::runtime_error("plc highlight incorrect");
+        const QColor focusBlue(29, 78, 137);
+        if (window.controllerPeerIds().size()!=3 || schematic->markerColor(QString::fromUtf8(catalog::kStation140))==focusBlue || !schematic->markerColor(QString::fromUtf8(catalog::kStation140)).isValid() || !schematic->markerColor(QString::fromUtf8(catalog::kStation150)).isValid() || schematic->markerColor(QString::fromUtf8(catalog::kStation210)).isValid())
+            throw std::runtime_error("plc overview highlighted a single station or hid a sibling");
         mode->click();
         wait([&]{ return window.confirmedMode()=="manual" && step->isEnabled(); });
         auto before=snap(directory);
@@ -295,30 +318,32 @@ int main(int argc, char** argv) {
         });
         const auto before_scope=snap(directory);
         choose(line, "line.demo-b");
-        if (window.selectedStationId()!=catalog::kStation160 || schematic->selectedId()!=catalog::kStation160)
-            throw std::runtime_error("line did not update station and topology");
-        assert_no_live_leak(window);
-        if (cell(result,"采集质量")!="未绑定模拟源" || logs->rowCount()!=0 || step->isEnabled())
-            throw std::runtime_error("line selection leaked collector projection");
+        if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcPack) || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
+            throw std::runtime_error("line change hid the other stations of the PLC");
+        if (board_row(window, "150", 3)!="无" || board_row(window, "140", 3)!=QString::fromUtf8(catalog::kStream))
+            throw std::runtime_error("station source column is wrong");
+        if (board_row(window, "150", 2)!="未绑定模拟源" || board_row(window, "160", 4)!="没有模拟记录")
+            throw std::runtime_error("sibling station reused station 140 records");
+        const auto plc_before=plc->currentData().toString();
         click_station(schematic,catalog::kStation150);
-        if (line->currentData().toString()!="line.demo-a" || station->currentData().toString()!=catalog::kStation150)
-            throw std::runtime_error("topology did not update line and station");
+        if (plc->currentData().toString()!=plc_before || !board_has(window, "140"))
+            throw std::runtime_error("schematic click changed the PLC or hid a station");
         choose(factory,"fac.demo-north");
-        if (station->currentData().toString()!="stn.demo-n1" || cell(detail,"仓库")!="示例立库 N")
-            throw std::runtime_error("factory did not update station and warehouse");
+        if (!board_has(window, "N1") || !board_has(window, "N2") || cell(detail,"仓库")!="示例立库 N")
+            throw std::runtime_error("factory did not show both demo stations");
         assert_no_live_leak(window);
         choose(area,"area.demo-north.sort");
-        if (line->currentData().toString()!="line.demo-empty" || !window.selectedStationId().isEmpty())
+        if (line->currentData().toString()!="line.demo-empty" || board_has(window, "N1"))
             throw std::runtime_error("empty line retained another scope");
         assert_no_live_leak(window);
         choose(factory,"fac.demo-south");
-        if (!window.selectedStationId().isEmpty()) throw std::runtime_error("empty business mode retained a station");
+        if (board_has(window, "140")) throw std::runtime_error("empty business mode retained station 140");
         choose(area,"area.demo-south.sort");
-        if (station->currentData().toString()!="stn.demo-s1") throw std::runtime_error("south station missing");
+        if (!board_has(window, "S1")) throw std::runtime_error("south station missing");
         assert_no_live_leak(window);
         choose(factory,catalog::kFactory);
-        choose(station,catalog::kStation140);
-        wait([&]{return logs->rowCount()>0;});
+        choose(plc,catalog::kPlcPack);
+        wait([&]{return logs->rowCount()>0 && board_has(window, "140") && board_has(window, "150");});
         const auto after_scope=snap(directory);
         if (after_scope.mode!=before_scope.mode || after_scope.seq!=before_scope.seq || after_scope.revision!=before_scope.revision)
             throw std::runtime_error("catalog navigation altered collector");
@@ -341,18 +366,15 @@ int main(int argc, char** argv) {
         if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
         logs->setCurrentCell(0,0);
         const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
-        if (!schematic->showsCarts() || !order->text().contains("模拟 LWMS 分拣单"))
-            throw std::runtime_error("live order or separate cart lane missing");
-        const int target=schematic->targetCart();
-        if (target>=0 && !order->text().contains(QString("料车 %1").arg(target+1)))
-            throw std::runtime_error("order target and diagram diverged");
+        if (schematic->showsCarts() || !order->text().contains("模拟 LWMS 分拣单") || !stages->isVisible())
+            throw std::runtime_error("live order should stay on station 140, not a shared lane");
         const auto before_break=snap(directory);
         link->click();
         wait([&]{ return link->isEnabled() && snap(directory).seq==before_break.seq+1; });
         if (!selectedLog.isValid() || logs->currentRow()<=0 ||
             logs->item(logs->currentRow(),0)->data(Qt::UserRole+4)!=selectedLog)
             throw std::runtime_error("new logs changed the selected record");
-        if (schematic->targetCart()!=-1 || !order->text().contains("进度未知") || !order->text().contains("目标未知"))
+        if (!order->text().contains("进度未知") || !order->text().contains("目标未知"))
             throw std::runtime_error("bad frame reported an inferred target or progress");
         auto broken=snap(directory);
         if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
@@ -364,30 +386,34 @@ int main(int argc, char** argv) {
         }
         if (banner->text().contains("模拟链路断开") || snap(directory).mode!="manual" || snap(directory).boot!=before_break.boot)
             throw std::runtime_error("step after disconnect did not resume the same manual collector");
-        click_station(schematic, catalog::kStation150);
+        choose(area, catalog::kAreaSeq);
+        choose(plc, catalog::kPlcSeq1);
         pump(120);
         auto* reason=window.findChild<QLabel*>("controlReason");
-        if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("station 150 looked like the control target");
-        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->isVisible() || !order->text().isEmpty())
-            throw std::runtime_error("unbound station borrowed the order or carts");
+        if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("another PLC looked controllable");
+        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->isVisible() || !order->text().isEmpty() || board_has(window, "140"))
+            throw std::runtime_error("another PLC borrowed station 140");
         const auto frozen=snap(directory);
         step->click();
         pump(400);
         const auto still=snap(directory);
         if (still.seq!=frozen.seq || still.revision!=frozen.revision || still.mode!="manual" || still.boot!=frozen.boot)
-            throw std::runtime_error("disabled step on station 150 advanced station 140");
-        click_station(schematic, catalog::kStation140);
-        wait([&]{ return step->isEnabled() && window.liveScope(); });
+            throw std::runtime_error("disabled step on another PLC advanced station 140");
+        choose(area, catalog::kAreaPick);
+        choose(plc, catalog::kPlcPack);
+        wait([&]{ return step->isEnabled() && window.liveScope() && board_has(window, "140"); });
         const auto held=snap(directory);
         choose(area, catalog::kAreaSeq);
         choose(plc, catalog::kPlcSeq1);
-        click_station(schematic, catalog::kStation180);
-        if (window.selectedStationId()!=catalog::kStation180 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq1)
-            throw std::runtime_error("svg click did not sync dropdowns");
-        if (schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=2)
+        if (area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq1)
+            throw std::runtime_error("sequence plc did not stay selected");
+        if (!board_has(window, "170") || !board_has(window, "180") || board_has(window, "140") || schematic->shapeIds().size()!=2)
             throw std::runtime_error("sequence layout still showed another PLC");
-        if (!station->itemText(station->currentIndex()).contains("右后门手柄机械臂排序区"))
+        if (board_row(window, "180", 1)!="右后门手柄机械臂排序区")
             throw std::runtime_error("sequence station name missing");
+        const auto seq_plc=plc->currentData().toString();
+        click_station(schematic, catalog::kStation180);
+        if (plc->currentData().toString()!=seq_plc) throw std::runtime_error("schematic click changed the PLC");
         if (window.confirmedMode()!="manual" || step->isEnabled() || mode->isEnabled()) throw std::runtime_error("non-live station enabled control");
         if (cell(detail, "业务模式")!="排序区" || cell(detail, "运行模式")!="手动") throw std::runtime_error("sequence selection changed runtime mode");
         if (points->rowCount()!=0) throw std::runtime_error("140 point sheet applied outside station 140");
@@ -404,19 +430,17 @@ int main(int argc, char** argv) {
         if (window.selectedStationId()!=selected) throw std::runtime_error("miss click changed selection");
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
-        click_station(schematic, catalog::kStation150);
-        if (schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
-            throw std::runtime_error("pack layout showed another PLC");
-        if (schematic->selectedId()!=catalog::kStation150 || schematic->markerColor(QString::fromUtf8(catalog::kStation150))==schematic->markerColor(QString::fromUtf8(catalog::kStation140)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation160)).isValid())
-            throw std::runtime_error("diagram click did not focus the station");
+        if (schematic->shapeIds().size()!=3 || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
+            throw std::runtime_error("pack layout did not show all three stations");
+        if (board_row(window, "150", 4)!="没有模拟记录" || board_row(window, "140", 3)!=QString::fromUtf8(catalog::kStream))
+            throw std::runtime_error("pack board leaked or hid station 140");
         const auto peers=cell(detail, "关联工位");
         if (!peers.contains(catalog::kStation140) || !peers.contains(catalog::kStation150) || !peers.contains(catalog::kStation160) || peers.contains(catalog::kStation210))
             throw std::runtime_error("plc peer list incorrect");
-        if (step->isEnabled() || history->rowCount()!=0) throw std::runtime_error("sibling station repeated the live frame");
-        assert_no_live_leak(window);
+        wait([&]{ return window.liveScope() && history->rowCount()>0; });
         choose(area, catalog::kAreaSeq);
         choose(plc, catalog::kPlcSeq2);
-        if (window.selectedStationId()!=catalog::kStation190 || schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().contains(catalog::kStation170))
+        if (!board_has(window, "190") || !board_has(window, "200") || schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().contains(catalog::kStation170))
             throw std::runtime_error("sequence plc 2 showed another machine");
         if (cell(detail, "实时范围")!="未接入" || step->isEnabled() || !window.findChild<QLabel*>("scopeBanner")->text().contains("未绑定"))
             throw std::runtime_error("named sorting station looked unconfigured or live");
@@ -445,8 +469,8 @@ int main(int argc, char** argv) {
         choose(area, catalog::kAreaPick);
         choose(plc, catalog::kPlcPack);
         for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
-        if (area->currentData().toString()!=catalog::kAreaPick || window.selectedStationId()!=catalog::kStation140)
-            throw std::runtime_error("parent switch did not select a legal child by id");
+        if (area->currentData().toString()!=catalog::kAreaPick || !board_has(window, "140") || !board_has(window, "160"))
+            throw std::runtime_error("parent switch did not show the whole PLC");
         const auto browsed=snap(directory);
         if (browsed.mode!=held.mode || browsed.revision!=held.revision || browsed.seq!=held.seq || browsed.boot!=held.boot)
             throw std::runtime_error("directory browsing changed collector state");
@@ -530,7 +554,7 @@ int main(int argc, char** argv) {
             pump(250);
             if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
             check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationBoard", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
         choose(area, catalog::kAreaSeq);
         window.resize(1100, 650);
@@ -544,22 +568,18 @@ int main(int argc, char** argv) {
         const auto meter=schematic->shapeIds();
         if (meter.size()!=4 || !meter.contains(catalog::kStation40) || !meter.contains(catalog::kStation10) || !meter.contains(catalog::kStation70) || !meter.contains(catalog::kStation80) || meter.contains(catalog::kStation140))
             throw std::runtime_error("meter2 layout was not exactly its four stations");
+        if (!board_has(window, "40") || !board_has(window, "10") || !board_has(window, "70") || !board_has(window, "80") || board_has(window, "140"))
+            throw std::runtime_error("meter2 board did not show exactly its stations");
+        const auto meter_plc=plc->currentData().toString();
         click_station(schematic, catalog::kStation80);
-        if (window.selectedStationId()!=catalog::kStation80 || schematic->selectedId()!=catalog::kStation80) throw std::runtime_error("meter2 graphic click missed station 80");
-        bool card_clicked=false;
-        for (auto* button : window.findChildren<QPushButton*>("stationCard")) {
-            if (button->property("stationId").toString()!=QString::fromUtf8(catalog::kStation10)) continue;
-            button->click();
-            card_clicked=true;
-        }
-        if (!card_clicked || window.selectedStationId()!=catalog::kStation10 || cell(detail, "工位").contains(catalog::kStation140) || points->rowCount()!=0)
-            throw std::runtime_error("meter2 number focus reused station 140");
+        if (plc->currentData().toString()!=meter_plc || cell(detail, "工位").contains("140") || points->rowCount()!=0)
+            throw std::runtime_error("meter2 reused station 140");
         assert_no_live_leak(window);
         for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
             window.resize(size);
             pump(200);
             check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationBoard", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
         const auto before_empty=snap(directory);
         const char* seq_stations[][2]={
@@ -571,7 +591,7 @@ int main(int argc, char** argv) {
         for (auto pair : seq_stations) {
             choose(area, catalog::kAreaSeq);
             choose(plc, pair[0]);
-            if (window.selectedStationId()!=pair[1] || schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || cell(detail, "实时范围")!="未接入" || step->isEnabled())
+            if (schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || !board_has(window, QString::fromUtf8(pair[1]).section('.', -1)) || cell(detail, "实时范围")!="未接入" || step->isEnabled())
                 throw std::runtime_error("sorting plc mixed another machine or simulation");
             assert_no_live_leak(window);
             check_labels(window);
@@ -579,17 +599,17 @@ int main(int argc, char** argv) {
         const auto after_empty=snap(directory);
         if (after_empty.mode!=before_empty.mode || after_empty.revision!=before_empty.revision || after_empty.boot!=before_empty.boot)
             throw std::runtime_error("empty plc switching changed collector ownership");
-        choose(area, catalog::kAreaPick);
-        choose(plc, catalog::kPlcPack);
-        click_station(schematic, catalog::kStation150);
+        choose(area, catalog::kAreaSeq);
+        choose(plc, catalog::kPlcSeq3);
         pump(150);
         check_labels(window);
         assert_no_live_leak(window);
+        if (!board_has(window, "210") || !board_has(window, "220") || board_row(window, "210", 1)!="前悬架右前下摆臂总成")
+            throw std::runtime_error("sequence plc 3 did not show both named stations");
         if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
-            throw std::runtime_error("focused sibling still looked controllable");
+            throw std::runtime_error("sorting plc looked controllable");
         auto* modules=window.findChild<QTabBar*>("moduleTabs");
         if (!modules || modules->count()!=7 || modules->tabText(0)!="运行") throw std::runtime_error("module tabs missing");
-        const auto tabbed=window.selectedStationId();
         const auto before_tabs=snap(directory);
         for (auto title : {"工位", "事件", "点表", "接口", "日志", "采集"}) {
             show_page(window,QString::fromUtf8(title));
@@ -599,7 +619,7 @@ int main(int argc, char** argv) {
             if (modules->tabText(modules->currentIndex())!=QString::fromUtf8(title))
                 throw std::runtime_error("page tab opened the wrong page");
             if (step->isEnabled()) throw std::runtime_error("diagnostic changed controls");
-            if (window.selectedStationId()!=tabbed || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
+            if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcSeq3) || !board_has(window, "210") || !board_has(window, "220") || board_has(window, "140"))
                 throw std::runtime_error("module switch changed the PLC scope");
             if (history->rowCount()!=0 || points->rowCount()!=0) throw std::runtime_error("module switch copied station 140 records");
         }

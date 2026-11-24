@@ -58,8 +58,8 @@ private:
     std::int64_t command_revision_=0, last_seq_=0;
     std::string last_mode_, cards_plc_;
     int observations_=0;
-    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
-    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr;
+    QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
     QLabel *stationMeta_=nullptr, *interfaceLine_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
@@ -75,7 +75,7 @@ private:
     QTableWidget* logTable_=nullptr;
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
-    QWidget *cardRow_=nullptr;
+    QTableWidget *stationBoard_=nullptr;
     QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
