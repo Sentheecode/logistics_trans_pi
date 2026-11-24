@@ -12,11 +12,9 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过（domain、catalog、point_audit、mcp_stdio、modes、acceptance、native_migration、archive、logs、widgets_controls、hmi_refresh）。`widgets_controls` 检查内嵌 Noto Sans CJK SC 在 `NoFontMerging` 下仍包含「模」，页签位于工厂选择器上方，诊断下拉和弹窗不存在，下拉弹出层文字与底色对比足够，以及 1100×650 和 1280×800。
+结果：**11/11** 通过。`widgets_controls` 检查页签、下拉对比度、圆角、1100×650 与 1280×800，以及排序区四个 PLC 只显示各自工位且不泄漏工位 140。字体从 exe 旁的 `fonts` 目录加载，缺字回退保持打开。同一 Fontconfig 下若没有这份字体文件，中文会显示为方框。这不是 Windows 实机，也不是 DPI 或现场验收。
 
-同一 Fontconfig 下，不加载该字体时中文显示为方框；加载内嵌字体后，`hmi` 打印 `ui_font=Noto Sans CJK SC`、`cjk_glyph=yes`，xvfb 截图里的中文、打开的业务模式下拉和圆角控件可辨认。这不是 Windows 实机，也不是 DPI 或现场验收。
-
-Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。冒烟要求打包后的 `hmi.exe` 同样打印上述两行。本机没有执行该 Windows 构建。
+Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。包内只有 `Logistics.exe`。冒烟要求 `cjk_glyph=yes`。本段写下时，这次 Windows 构建尚未在本机执行。
 
 ## 此前记录
 

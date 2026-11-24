@@ -4,4 +4,4 @@ Source: https://github.com/notofonts/noto-cjk/tree/Sans2.004/Sans/OTF/Simplified
 Copyright 2014-2021 Adobe (http://www.adobe.com/).
 Noto is a trademark of Google Inc.
 Licensed under the SIL Open Font License, Version 1.1. See OFL.txt.
-These faces are embedded in hmi.exe.
+These faces sit next to Logistics.exe in the fonts directory. They are not embedded in the executable.

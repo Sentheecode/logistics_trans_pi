@@ -26,10 +26,10 @@ def main(package):
     require(os.name == "nt", "Smoke requires a real Windows environment")
     package = package.resolve()
     require(" " in str(package), "Extract the ZIP to a path containing spaces")
-    expected_exes = {"collector.exe", "diagnose.exe", "hmi.exe",
-                     "logistics-mcp.exe", "simulation-archive.exe"}
-    require({path.name for path in package.glob("*.exe")} == expected_exes,
-            "Unexpected executable set")
+    require({path.name for path in package.glob("*.exe")} == {"Logistics.exe"},
+            "The preview package must contain exactly one executable")
+    require((package / "fonts" / "NotoSansCJKsc-Regular.otf").is_file(), "Missing side-by-side CJK font")
+    require((package / "fonts" / "NotoSansCJKsc-Bold.otf").is_file(), "Missing side-by-side bold CJK font")
     files = {path.relative_to(package).as_posix(): path for path in package.rglob("*")
              if path.is_file() and path.name != "FILES.txt"}
     manifest = (package / "FILES.txt").read_text(encoding="utf-8").splitlines()
@@ -40,7 +40,8 @@ def main(package):
             check_x64(path)
         else:
             require(name in {"README.txt", "BUILD-INFO.txt", "START.cmd", "qt.conf"}
-                    or name.startswith("licenses/"), f"Unexpected package file {name}")
+                    or name.startswith("licenses/") or name.startswith("fonts/"),
+                    f"Unexpected package file {name}")
 
     environment = {key: value for key, value in os.environ.items()
                    if not key.upper().startswith(("QT_", "QML_", "MSYS", "MINGW"))}
@@ -49,11 +50,11 @@ def main(package):
     environment["QT_QPA_PLATFORM"] = "windows"
     environment["QT_LOGGING_RULES"] = "qt.qpa.gl=false"
 
-    def run(name, *arguments, **kwargs):
-        process = subprocess.run([str(package / name), *map(str, arguments)], cwd=working,
+    def run(*arguments, **kwargs):
+        process = subprocess.run([str(package / "Logistics.exe"), *map(str, arguments)], cwd=working,
                                  env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  timeout=20, **kwargs)
-        require(process.returncode == 0, f"{name}: {process.returncode}: {process.stdout!r} {process.stderr!r}")
+        require(process.returncode == 0, f"Logistics.exe {arguments}: {process.returncode}: {process.stdout!r} {process.stderr!r}")
         return process.stdout
 
     def request(method, params, request_id=None):
@@ -66,7 +67,7 @@ def main(package):
         working = Path(scratch)
         data = working / "Simulation data"
         screenshot = working / "Windows workbench.png"
-        collector = subprocess.Popen([str(package / "collector.exe"), str(data)], cwd=working,
+        collector = subprocess.Popen([str(package / "Logistics.exe"), "collector", str(data)], cwd=working,
                                      env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             for _ in range(80):
@@ -76,15 +77,14 @@ def main(package):
                 time.sleep(0.1)
             else:
                 raise RuntimeError("Collector did not initialize")
-            display = run("hmi.exe", data, 9000, screenshot, "normal")
+            display = run(data, 9000, screenshot, "normal")
             require(screenshot.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"),
                     "Workbench did not capture a native Qt window")
             require(b"rendered_observations=" in display and b"link=up" in display
                     and b"quality=bad" in display, f"Missing live Qt data: {display!r}")
-            require(b"ui_font=Noto Sans CJK SC" in display and b"cjk_glyph=yes" in display,
-                    f"Packaged workbench font has no Chinese glyph: {display!r}")
+            require(b"cjk_glyph=yes" in display, f"Packaged workbench font has no Chinese glyph: {display!r}")
             require(collector.poll() is None, "Closing Qt stopped the collector")
-            snapshot = json.loads(run("diagnose.exe", data, "snapshot-json", 5))
+            snapshot = json.loads(run("diagnose", data, "snapshot-json", 5))
             require(snapshot["simulation_only"] and snapshot["scope"]["station_id"] == "stn.140"
                     and snapshot["frames"], "Diagnostic evidence is missing")
 
@@ -97,7 +97,7 @@ def main(package):
                 request("tools/call", {"name": "status", "arguments": {"station": "stn.999"}}, 4),
             ]
             replies = [json.loads(line) for line in run(
-                "logistics-mcp.exe", data, input=("\n".join(messages) + "\n").encode()
+                "mcp", data, input=("\n".join(messages) + "\n").encode()
             ).splitlines()]
             require([reply["id"] for reply in replies] == [1, 2, 3, 4], "Invalid MCP responses")
             require(replies[0]["result"]["protocolVersion"] == "2025-11-25", "MCP version mismatch")
@@ -112,9 +112,9 @@ def main(package):
 
             backup = working / "Archived simulation"
             restored = working / "Restored simulation"
-            run("simulation-archive.exe", "backup", data, backup)
-            run("simulation-archive.exe", "restore", backup, restored)
-            recovered = json.loads(run("diagnose.exe", restored, "snapshot-json"))
+            run("archive", "backup", data, backup)
+            run("archive", "restore", backup, restored)
+            recovered = json.loads(run("diagnose", restored, "snapshot-json"))
             require(recovered["frames"] and not recovered["current_frame_usable"],
                     "Restored archive is missing history or exposed stale heartbeat as live")
         finally:

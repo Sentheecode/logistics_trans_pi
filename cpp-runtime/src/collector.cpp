@@ -47,7 +47,7 @@ int collect(const std::filesystem::path& dir,int count,int interval,const sim::P
     return 0;
 }
 }
-int main(int argc,char** argv){
+int collector_main(int argc,char** argv){
     try {
         if(argc<2||argc>4){
             std::cerr<<"Usage: collector DATA_DIR [ticks:1..1000000] [interval_ms:20..1000]\n"

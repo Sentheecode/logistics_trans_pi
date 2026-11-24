@@ -116,7 +116,6 @@ QString beijingTime(qint64 epochMs, const QString& pattern) {
 }
 QFont figureFont() {
     QFont font=QApplication::font();
-    font.setStyleStrategy(QFont::NoFontMerging);
     font.setPixelSize(13);
     return font;
 }
@@ -219,7 +218,7 @@ const Tone tone;
 QString consoleStyle() {
     const auto t=tone;
     return QString(R"(
-        QWidget { font-family: "@@FONT@@"; font-size: 13px; }
+        QWidget { @@FONT@@font-size: 13px; }
         QMainWindow, QWidget#centralRoot { background:%1; color:%3; }
         QWidget#identityBar, QWidget#catalogPane { background:%2; }
         QWidget#identityBar { background:#123d42; border-bottom:1px solid #0d3034; }
@@ -290,7 +289,7 @@ QString consoleStyle() {
         QTabBar#moduleTabs::tab:focus { border-bottom:2px solid %6; }
         QStatusBar { background:%2; color:%5; border-top:1px solid %4; }
         QScrollArea { border:none; background:%1; }
-    )").replace("@@FONT@@", loadedUiFamily.isEmpty() ? QString("Noto Sans CJK SC") : loadedUiFamily)
+    )").replace("@@FONT@@", loadedUiFamily.isEmpty() ? QString() : QString("font-family: \"%1\"; ").arg(loadedUiFamily))
       .arg(t.canvas, t.surface, t.ink, t.line, t.muted, t.accent, t.accentSoft, t.warn, t.warnSoft);
 }
 QString doubtSummary(const QString& codes) {
@@ -329,34 +328,31 @@ int addFontFile(const QString& path) {
     return QFontDatabase::addApplicationFont(path);
 }
 void installUiFont() {
-    const QString beside=QCoreApplication::applicationDirPath()+"/fonts";
+    const QString beside=QCoreApplication::applicationDirPath();
     const QStringList files={
-        ":/fonts/NotoSansCJKsc-Regular.otf",
-        ":/fonts/NotoSansCJKsc-Bold.otf",
+        beside+"/fonts/NotoSansCJKsc-Regular.otf",
+        beside+"/fonts/NotoSansCJKsc-Bold.otf",
         beside+"/NotoSansCJKsc-Regular.otf",
         beside+"/NotoSansCJKsc-Bold.otf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     };
-    QString family;
+    QString loaded;
     for (const auto& file : files) {
         const int id=addFontFile(file);
         if (id<0) continue;
         const auto names=QFontDatabase::applicationFontFamilies(id);
-        if (family.isEmpty()) family=names.contains("Noto Sans CJK SC") ? QString("Noto Sans CJK SC") : (names.isEmpty() ? QString() : names.front());
+        if (loaded.isEmpty()) loaded=names.contains("Noto Sans CJK SC") ? QString("Noto Sans CJK SC") : (names.isEmpty() ? QString() : names.front());
     }
+    QStringList families;
+    if (!loaded.isEmpty()) families<<loaded;
+    families<<"Microsoft YaHei UI"<<"Microsoft YaHei"<<"Noto Sans CJK SC"<<"Noto Sans SC"<<"Source Han Sans SC";
     QFont font;
+    font.setFamilies(families);
     font.setStyleHint(QFont::SansSerif, QFont::PreferAntialias);
     font.setPixelSize(13);
-    if (!family.isEmpty()) {
-        font.setFamily(family);
-        font.setStyleStrategy(QFont::NoFontMerging);
-        if (!QFontMetrics(font).inFont(QChar(0x6a21))) font.setStyleStrategy(QFont::PreferAntialias);
-    } else {
-        font.setFamilies({"Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans SC"});
-    }
     QApplication::setFont(font);
-    loadedUiFamily=family.isEmpty() ? QFontInfo(font).family() : family;
+    loadedUiFamily=loaded;
 }
 QString readableObject(const std::string& object) {
     if(object=="sim.three-cart.v1") return "外装 · 工位 140";
@@ -627,7 +623,7 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(detailTable_, {"字段", "值"});
     peerTable_=new QTableWidget;
     peerTable_->setObjectName("peerTable");
-    prepareTable(peerTable_, {"工位 ID", "工位号", "标记"});
+    prepareTable(peerTable_, {"工位号", "工位名称", "标记"});
     peerTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     peerTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     peerTable_->setFocusPolicy(Qt::StrongFocus);
@@ -1337,7 +1333,7 @@ void Workbench::refill() {
     for (auto* row : catalog_.areas_of(selection_.factory_id)) areas.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.plcs_of(selection_.area_id)) plcs.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.lines_of(selection_.area_id)) lines.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
-    for (auto* row : catalog_.stations_on_line(selection_.line_id)) stations.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
+    for (auto* row : catalog_.stations_on_line(selection_.line_id)) stations.emplace_back(QString::fromStdString(row->id), QString::fromStdString(catalog::station_label(*row)));
     fillCombo(lineCombo_, lines, QString::fromStdString(selection_.line_id));
     fillCombo(stationCombo_, stations, QString::fromStdString(selection_.station_id));
     fillCombo(factoryCombo_, factories, QString::fromStdString(selection_.factory_id));
@@ -1350,7 +1346,8 @@ void Workbench::rebuildCards() {
     if (!layout) return;
     while (QLayoutItem* item=layout->takeAt(0)) { delete item->widget(); delete item; }
     for (auto* station : catalog_.stations_of(selection_.plc_id)) {
-        auto* button=new QPushButton(QString::fromStdString(station->name), cardRow_);
+        auto* button=new QPushButton(QString::fromStdString(station->code), cardRow_);
+        button->setToolTip(QString::fromStdString(catalog::station_label(*station)));
         button->setCheckable(true);
         button->setProperty("stationId", QString::fromStdString(station->id));
         button->setObjectName("stationCard");
@@ -1520,7 +1517,8 @@ void Workbench::render() {
         scope="模拟流 "+QString::fromStdString(catalog::kStream);
         sim_quality=view_.rows.empty() || !available_ ? "未知" : good ? "正常" : "不可用";
     }
-    stationBadge_->setText("当前工位  "+(station ? QString::fromStdString(station->name) : QString("未配置")));
+    stationBadge_->setText("当前工位  "+(station ? QString::fromStdString(station->code) : QString("未配置")));
+    stationBadge_->setToolTip(station ? QString::fromStdString(catalog::station_label(*station)) : QString("未配置"));
     stationBadge_->setMinimumWidth(stationBadge_->fontMetrics().horizontalAdvance(stationBadge_->text())+26);
     const auto* line=catalog_.find_line(selection_.line_id);
     const QString lineName=line ? QString::fromStdString(line->name) : "未配置";
@@ -1550,13 +1548,13 @@ void Workbench::render() {
         .arg(QString::fromStdString(station->name),target,progress) : QString());
     std::vector<StationGlyph> glyphs;
     for (auto* item : catalog_.stations_of(selection_.plc_id))
-        glyphs.push_back({item->id,QString::fromStdString(item->name)});
+        glyphs.push_back({item->id,QString::fromStdString(item->code)});
     schematic_->setMinimumHeight(live ? 142 : 108);
     schematic_->setMaximumHeight(live ? 142 : 108);
     schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), glyphs, selection_.station_id,lane);
     if (cardRow_) for (auto* button : cardRow_->findChildren<QPushButton*>()) button->setChecked(button->property("stationId").toString().toStdString()==selection_.station_id);
     setRows(detailTable_, {
-        {"工位", station ? QString::fromStdString(station->id+" "+station->name) : "未配置"},
+        {"工位", station ? QString::fromStdString(catalog::station_label(*station)) : "未配置"},
         {"业务模式", area ? QString::fromStdString(area->name) : "未配置"},
         {"运行模式", runtimeValue},
         {"实时范围", scope},
@@ -1574,7 +1572,7 @@ void Workbench::render() {
     peerTable_->setRowCount(static_cast<int>(peer_rows.size()));
     for (int i=0; i<static_cast<int>(peer_rows.size()); ++i) {
         const bool current=peer_rows[i]->id==selection_.station_id;
-        QStringList columns={QString::fromStdString(peer_rows[i]->id), QString::fromStdString(peer_rows[i]->name), current ? "当前" : "关联"};
+        QStringList columns={QString::fromStdString(peer_rows[i]->code), QString::fromStdString(peer_rows[i]->name), current ? "当前" : "关联"};
         for (int column=0; column<columns.size(); ++column) {
             auto* item=new QTableWidgetItem(columns[column]);
             item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
@@ -1635,7 +1633,7 @@ void Workbench::render() {
         historyTable_->setRowCount(0);
         eventNote_->setText(station_selected ? "无实时历史" : "未配置");
         scopeBanner_->setText(station_selected
-            ? "此工位未绑定模拟流。"
+            ? "此工位未绑定模拟源。不显示工位 140 的帧、日志或颜色。"
             : "当前范围没有工位，不能控制。");
         syncModuleChrome();
         return;

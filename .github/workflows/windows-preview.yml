@@ -95,6 +95,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: windows-preview-verified
@@ -112,51 +115,46 @@ jobs:
           import zipfile
           root = pathlib.Path("preview-artifact")
           zip_path = root / "Logistics-Preview-Windows-x64.zip"
-          exe = root / "hmi.exe"
           with zipfile.ZipFile(zip_path) as archive:
-              exe.write_bytes(archive.read("hmi.exe"))
               info = archive.read("BUILD-INFO.txt").decode("utf-8", "replace")
-              names = [name for name in archive.namelist() if name.lower().endswith(".dll")]
-          digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-          (root / "hmi.exe.sha256").write_text(f"{digest}  hmi.exe\n", encoding="ascii")
-          excerpt = "\n".join(info.splitlines()[:6])
+              exes = [name for name in archive.namelist() if name.lower().endswith(".exe")]
+              fonts = [name for name in archive.namelist() if name.startswith("fonts/") and name.lower().endswith(".otf")]
+          if exes != ["Logistics.exe"]:
+              raise SystemExit(f"expected one Logistics.exe, found {exes}")
+          if len(fonts) < 2:
+              raise SystemExit(f"expected side-by-side fonts, found {fonts}")
+          digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          excerpt = "\n".join(info.splitlines()[:8])
           notes = "\n".join([
               "这是模拟工作台的 Windows x64 预发布包，不是现场版本。不连接 S7、LWMS、库卡、华睿或 AGV。",
               "",
-              "## 修复",
-              "- 中文不再显示成方框。原因是界面指定 Noto Sans CJK SC 并关闭缺字回退，而旧便携包没有这个字体。现在字体嵌在 `hmi.exe` 里。",
-              "- 下拉弹出层使用深色文字和浅色底。",
-              "- 按钮、输入框、下拉和卡片使用圆角。",
-              "- 诊断页改成工厂选择器上方的页签，不再从右上角下拉打开。",
+              "只发布这一个 ZIP。包内只有 Logistics.exe。Qt、MinGW、SQLite 仍是旁边的 DLL。中文字体在 fonts 目录，不在 exe 里；程序同时接受微软雅黑并允许缺字回退。",
               "",
-              "## 下载",
-              "- 第一次使用：下载 `Logistics-Preview-Windows-x64.zip`，完整解压后双击 `START.cmd`。包内含 Qt、MinGW、SQLite DLL、`plugins/platforms/qwindows.dll`、`START.cmd` 和 `licenses/noto`。不要只拿一个 exe 当完整安装包。",
-              "- 已经解压过上一版预览，且目录里的 Qt/GCC 版本与下面的 BUILD-INFO 一致：可以只替换 `hmi.exe`。字体在 exe 内。exe 必须留在原来的便携目录里，不能单独启动。",
-              f"- 若 Qt 或 GCC 版本不同，请改用完整 ZIP。本次 DLL 共 {len(names)} 个。",
+              "解压后双击 START.cmd。同一个 exe 会分别启动采集器和工作台。",
               "",
-              "## 本次构建",
+              "排序区是四个 PLC：排序区一 170/180，排序区二 190/200，排序区三 210/220，排序区四 230/240。这些工位有名称，没有模拟源，也不会显示工位 140 的数据。",
+              "",
+              f"ZIP SHA-256：{digest}",
+              "",
               "```",
               excerpt,
               "```",
               "",
               f"源码提交：{os.environ['SOURCE_SHA']}",
-              "Linux 上用仅含 DejaVu 的 Fontconfig 看过中文、打开的下拉和圆角。Windows runner 只核对打包后的 `cjk_glyph=yes`。没有在实机上验收 DPI 或现场设备。",
               "",
           ])
           (root / "RELEASE.md").write_text(notes, encoding="utf-8")
           print(excerpt)
-          print("hmi.exe", digest, exe.stat().st_size)
+          print("zip", digest, zip_path.stat().st_size)
           PY
           tag=preview-windows-20261124-ui
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release delete "$tag" --yes --cleanup-tag
           fi
           gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Windows preview: Chinese UI, dropdowns, rounded controls" \
+            --title "Windows preview: one executable and sorting stations" \
             --notes-file preview-artifact/RELEASE.md \
-            preview-artifact/Logistics-Preview-Windows-x64.zip \
-            preview-artifact/Logistics-Preview-Windows-x64.zip.sha256 \
-            preview-artifact/hmi.exe \
-            preview-artifact/hmi.exe.sha256
+            preview-artifact/Logistics-Preview-Windows-x64.zip

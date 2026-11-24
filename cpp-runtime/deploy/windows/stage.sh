@@ -18,9 +18,10 @@ fi
 mkdir -- "$stage"
 mkdir -p -- "$stage/plugins/platforms" "$stage/licenses"
 
-for name in collector hmi diagnose simulation-archive logistics-mcp; do
-    cp -- "$build/$name.exe" "$stage/"
-done
+cp -- "$build/Logistics.exe" "$stage/Logistics.exe"
+mkdir -p -- "$stage/fonts"
+cp -- "$source_dir/../../resources/fonts/NotoSansCJKsc-Regular.otf" "$stage/fonts/NotoSansCJKsc-Regular.otf"
+cp -- "$source_dir/../../resources/fonts/NotoSansCJKsc-Bold.otf" "$stage/fonts/NotoSansCJKsc-Bold.otf"
 plugins=$(cygpath -u "$(qmake6 -query QT_INSTALL_PLUGINS | tr -d '\r')")
 platform_plugin="$plugins/platforms/qwindows.dll"
 cp -- "$platform_plugin" "$stage/plugins/platforms/"
