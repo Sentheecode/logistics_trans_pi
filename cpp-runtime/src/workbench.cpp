@@ -27,7 +27,6 @@
 #include <QDialogButtonBox>
 #include <QSignalBlocker>
 #include <QSizePolicy>
-#include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QTabWidget>
@@ -103,16 +102,6 @@ QString joinedIds(const std::vector<const catalog::Station*>& rows) {
     for (auto* row : rows) parts.push_back(QString::fromStdString(row->id));
     return parts.isEmpty() ? "未配置" : parts.join("、");
 }
-QString joinedNumbers(const std::vector<const catalog::Station*>& rows, const std::string& current) {
-    if (rows.empty()) return "无工位";
-    QStringList parts;
-    for (auto* row : rows) {
-        auto text=QString::fromStdString(row->name);
-        if (row->id==current) text += " 当前";
-        parts.push_back(text);
-    }
-    return parts.join("  ·  ");
-}
 CartMark cartMark(const std::string& value) {
     if (value=="waiting") return CartMark::wait;
     if (value=="scanning" || value=="sorting") return CartMark::run;
@@ -121,7 +110,7 @@ CartMark cartMark(const std::string& value) {
 }
 QString beijingTime(qint64 epochMs, const QString& pattern) {
     const QTimeZone zone("Asia/Shanghai");
-    const QDateTime utc=QDateTime::fromMSecsSinceEpoch(epochMs, Qt::UTC);
+    const QDateTime utc=QDateTime::fromMSecsSinceEpoch(epochMs).toUTC();
     if (!zone.isValid()) return utc.toString(pattern)+" UTC";
     return utc.toTimeZone(zone).toString(pattern);
 }
@@ -177,7 +166,7 @@ void pinText(QWidget* root) {
     for (auto* label : root->findChildren<QLabel*>()) {
         label->setAlignment(label->wordWrap() ? Qt::AlignLeft | Qt::AlignTop : Qt::AlignLeft | Qt::AlignVCenter);
         const auto name=label->objectName();
-        if (name=="pageTitle" || name=="title" || name=="section" || name=="fieldLabel" || name=="stationTitle" || name=="navSection" || name=="phase")
+        if (name=="pageTitle" || name=="title" || name=="section" || name=="fieldLabel" || name=="stationTitle")
             label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     }
 }
@@ -203,9 +192,8 @@ QString consoleStyle() {
         QWidget#identityBar, QWidget#catalogPane { background:%2; }
         QWidget#identityBar { background:#123d42; border-bottom:1px solid #0d3034; }
         QWidget#identityBar QLabel { color:#f2faf9; }
-        QWidget#commandPane { background:#edf4f4; border-top:1px solid #b8cccc; }
-        QLabel#runHint { background:#e3eeee; color:#214c50; padding:5px 8px; }
-        QLabel#simOrder { background:#e3eeee; color:#214c50; padding:5px 8px; }
+        QWidget#commandPane { background:#f5f8f8; border-top:1px solid #b8cccc; }
+        QLabel#simOrder { background:#ffffff; color:#214c50; border:1px solid #d9e2ec; padding:6px 8px; }
         QLabel#scopeBanner[state="warn"] { background:#fff2d9; color:#744509; padding:4px; }
         QTableWidget#stageTable::item:selected { background:#d1e9e7; color:#123d42; }
         QLabel#currentStation, QLabel#runtimeState { background:#23565b; border:1px solid #478084; padding:3px 10px; font-weight:700; }
@@ -214,15 +202,13 @@ QString consoleStyle() {
         QWidget#surface { background:%2; border:1px solid %4; border-radius:3px; }
         QLabel#title { font-size:16px; font-weight:600; color:#ffffff; }
         QLabel#pageTitle, QLabel#emptyTitle { font-size:18px; font-weight:600; color:%3; }
-        QLabel#emptySource, QLabel#emptyAction, QLabel#runHint { color:%5; font-size:13px; }
+        QLabel#emptySource, QLabel#emptyAction { color:%5; font-size:13px; }
         QLabel#fieldLabel { color:%5; font-size:12px; }
         QLabel#section, QLabel#collectChangeLabel { color:%3; font-size:14px; font-weight:600; }
-        QLabel#stationTitle { font-size:18px; font-weight:600; color:%3; }
         QLabel#collectQuality[state="ok"], QLabel#collectLink[state="ok"] { color:#1f7a4d; font-weight:600; }
         QLabel#collectQuality[state="warn"], QLabel#collectLink[state="warn"] { color:%8; font-weight:600; }
         QLabel#collectQuality[state="unknown"], QLabel#collectLink[state="unknown"], QLabel#collectPlc[state="unknown"] { color:%5; }
         QLabel#muted, QLabel#controlReason, QLabel#controlFeedback { color:%5; font-size:12px; }
-        QLabel#phase { font-size:15px; font-weight:600; color:%3; }
         QLabel#simBadge { background:%6; color:#ffffff; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600; }
         QLabel#statusChip { background:%1; color:%5; padding:1px 6px; font-size:12px; font-weight:600; }
         QLabel#statusChip[state="sim"] { background:%7; color:%6; }
@@ -262,7 +248,6 @@ QString consoleStyle() {
         QTabBar::tab:selected { color:%6; font-weight:600; background:%2; border-bottom:2px solid %6; }
         QTabBar::tab:focus { border-bottom:2px solid %6; }
         QStatusBar { background:%2; color:%5; border-top:1px solid %4; }
-        QSplitter::handle { background:%4; }
         QScrollArea { border:none; background:%1; }
     )").arg(t.canvas, t.surface, t.ink, t.line, t.muted, t.accent, t.accentSoft, t.warn, t.warnSoft);
 }
@@ -418,9 +403,6 @@ Workbench::Workbench(std::filesystem::path directory)
     addCombo("关联 PLC", &plcCombo_, "plcCombo");
     factoryCombo_->setMaximumWidth(132);
     contextLayout->addStretch(1);
-    collectionStatus_=new QLabel("采集状态待确认", context);
-    collectionStatus_->setObjectName("muted");
-    contextLayout->addWidget(collectionStatus_);
 
     auto* commandPane=new QWidget;
     commandPane->setObjectName("commandPane");
@@ -461,43 +443,21 @@ Workbench::Workbench(std::filesystem::path directory)
     cardRow_->setFixedHeight(44);
     new QHBoxLayout(cardRow_);
     cardRow_->layout()->setContentsMargins(0, 4, 0, 0);
-    stationTitle_=new QLabel("未配置");
-    stationTitle_->setObjectName("stationTitle");
-    fit(stationTitle_);
+    auto* workHeading=new QLabel("当前作业");
+    workHeading->setObjectName("section");
     stationMeta_=new QLabel;
     stationMeta_->setObjectName("muted");
     stationMeta_->setWordWrap(true);
-    configLine_=new QLabel;
-    configLine_->setObjectName("muted");
-    configLine_->setWordWrap(true);
-    lineState_=new QLabel("线体：未配置，不按 PLC 推断");
-    lineState_->setWordWrap(true);
-    peerLine_=new QLabel;
-    peerLine_->setWordWrap(true);
     interfaceLine_=new QLabel;
     interfaceLine_->setWordWrap(true);
-    plcAuto_=new QLabel("PLC 自动：未读取");
-    plcAuto_->setObjectName("muted");
-    fit(plcAuto_);
     scopeBanner_=new QLabel;
     scopeBanner_->setObjectName("scopeBanner");
     scopeBanner_->setWordWrap(true);
-    configLine_->hide();
-    lineState_->hide();
-    peerLine_->hide();
-    plcAuto_->hide();
 
     auto* run=new QWidget;
     auto* runLayout=new QVBoxLayout(run);
-    runLayout->setContentsMargins(12, 8, 12, 8);
-    runLayout->setSpacing(4);
-    auto* runTitle=new QLabel("运行", run);
-    runTitle->setObjectName("pageTitle");
-    runTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    auto* runHint=new QLabel("操作只推进工位 140。概览是通用示意，层数和动线未提供。", run);
-    runHint->setWordWrap(true);
-    runHint->setObjectName("runHint");
-    runHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    runLayout->setContentsMargins(16, 12, 16, 8);
+    runLayout->setSpacing(8);
     auto* emptyRun=new QWidget(run);
     emptyRun->setObjectName("emptyRun");
     emptyRun->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -521,8 +481,6 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* workspaceLayout=new QVBoxLayout(workspace);
     workspaceLayout->setContentsMargins(0, 4, 0, 4);
     workspaceLayout->setSpacing(4);
-    runLayout->addWidget(runTitle);
-    runLayout->addWidget(runHint);
     auto* runStack=new RunStack(run);
     runStack->setObjectName("runStack");
     runStack->addWidget(emptyRun);
@@ -541,7 +499,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* factsLayout=new QVBoxLayout(facts);
     factsLayout->setContentsMargins(0, 0, 0, 0);
     factsLayout->setSpacing(4);
-    factsLayout->addWidget(stationTitle_);
+    factsLayout->addWidget(workHeading);
     factsLayout->addWidget(stationMeta_);
     factsLayout->addWidget(interfaceLine_);
     factsLayout->addWidget(scopeBanner_);
@@ -551,7 +509,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* overviewLayout=new QVBoxLayout(overview);
     overviewLayout->setContentsMargins(8, 4, 8, 4);
     overviewLayout->setSpacing(4);
-    auto* overviewLabel=new QLabel("本 PLC 概览", overview);
+    auto* overviewLabel=new QLabel("工位与料车拓扑", overview);
     overviewLabel->setObjectName("section");
     overviewLayout->addWidget(overviewLabel);
     overviewLayout->addWidget(schematic_);
@@ -561,17 +519,18 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* left=new QWidget(runBody);
     auto* leftLayout=new QVBoxLayout(left);
     leftLayout->setContentsMargins(0,0,0,0);
-    leftLayout->setSpacing(6);
+    leftLayout->setSpacing(8);
     auto* right=new QWidget(runBody);
     auto* rightLayout=new QVBoxLayout(right);
     rightLayout->setContentsMargins(0,0,0,0);
-    rightLayout->setSpacing(6);
+    rightLayout->setSpacing(8);
     runColumns->addWidget(left, 2);
     runColumns->addWidget(right, 3);
     recentTable_=new QTableWidget(workspace);
     recentTable_->setObjectName("recentTable");
     prepareTable(recentTable_, {"时间", "记录"});
     recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    recentTable_->setColumnWidth(0,88);
     recentTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     recentTable_->setMinimumHeight(76);
     recentTable_->verticalHeader()->setDefaultSectionSize(28);
@@ -593,11 +552,11 @@ Workbench::Workbench(std::filesystem::path directory)
     resultTable_->verticalHeader()->setDefaultSectionSize(24);
     resultTable_->setFixedHeight(122);
     resultTable_->horizontalHeader()->setSectionResizeMode(1,QHeaderView::Stretch);
+    resultTable_->setColumnWidth(0,104);
     rightLayout->addWidget(resultTable_);
     rightLayout->addWidget(recentLabel);
     rightLayout->addWidget(recentScope);
     rightLayout->addWidget(recentTable_, 1);
-    rightLayout->addStretch(0);
     workspaceLayout->addWidget(runBody, 1);
     workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -613,6 +572,7 @@ Workbench::Workbench(std::filesystem::path directory)
     peerTable_->setMaximumHeight(168);
     auto* stagesTitle=new QLabel("作业阶段",left);
     stagesTitle->setObjectName("section");
+    leftLayout->addWidget(overview);
     leftLayout->addWidget(stagesTitle);
     stageTable_=new QTableWidget(left);
     stageTable_->setObjectName("stageTable");
@@ -623,13 +583,14 @@ Workbench::Workbench(std::filesystem::path directory)
     stageTable_->horizontalHeader()->setStyleSheet("QHeaderView::section { padding:3px 8px; }");
     stageTable_->setFixedHeight(112);
     stageTable_->horizontalHeader()->setSectionResizeMode(2,QHeaderView::Stretch);
+    stageTable_->setColumnWidth(0,72);
+    stageTable_->setColumnWidth(1,112);
     leftLayout->addWidget(stageTable_);
     stageGuide_=new QLabel(left);
     stageGuide_->setObjectName("stageGuide");
     stageGuide_->setWordWrap(true);
     leftLayout->addWidget(stageGuide_);
     connect(stageTable_,&QTableWidget::currentCellChanged,this,[this]{showStageResult();});
-    leftLayout->addWidget(overview);
     leftLayout->addStretch(1);
     stageTable_->hide();
     stationEmpty_=new QLabel("这个 PLC 还没有工位。不借用其他 PLC 的布置，也不能控制。");
@@ -1408,7 +1369,6 @@ void Workbench::buttons() {
     modeButton_->setToolTip(reason);
     step_->setToolTip(reason);
     disconnect_->setToolTip(reason);
-    if(collectionStatus_) collectionStatus_->setText(live ? (manual ? "手动 · 只作用于 140" : "自动 · 只作用于 140") : "当前工位无模拟帧");
 }
 
 void Workbench::command(const std::string& name) {
@@ -1496,18 +1456,12 @@ void Workbench::render() {
     }
     stationBadge_->setText("当前工位  "+(station ? QString::fromStdString(station->name) : QString("未配置")));
     stationBadge_->setMinimumWidth(stationBadge_->fontMetrics().horizontalAdvance(stationBadge_->text())+26);
-    stationTitle_->setText(station ? "工位 "+QString::fromStdString(station->name) : "未配置");
-    fit(stationTitle_);
     const auto* line=catalog_.find_line(selection_.line_id);
     const QString lineName=line ? QString::fromStdString(line->name) : "未配置";
     const QString storage=line ? QString::fromStdString(line->storage) : "未配置";
     const QString zone=line ? QString::fromStdString(line->zone) : "未配置";
     stationMeta_->setText(lineName+" · "+storage+" · "+zone);
     stationMeta_->setToolTip(plc ? QString::fromStdString(plc->name)+" · PLC 自动未读取" : "PLC 未配置");
-    configLine_->hide();
-    lineState_->hide();
-    plcAuto_->hide();
-    peerLine_->setText(plc ? "同一 PLC  "+joinedNumbers(peer_rows, selection_.station_id) : "无 PLC");
     interfaceLine_->setText(selection_.factory_id!=catalog::kFactory ? "关联系统 · 未配置" : area && area->code=="seq"
         ? "华睿：未连接 · 汇总/严控与完成协议未定 · 不填假数量"
         : "库卡：未授权通行 · LWMS：未连接 · 库位映射待补");
@@ -1533,7 +1487,7 @@ void Workbench::render() {
         glyphs.push_back({item->id,QString::fromStdString(item->name)});
     schematic_->setMinimumHeight(live ? 142 : 108);
     schematic_->setMaximumHeight(live ? 142 : 108);
-    schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), area ? QString::fromStdString(area->code) : QString(), glyphs, selection_.station_id,lane);
+    schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), glyphs, selection_.station_id,lane);
     if (cardRow_) for (auto* button : cardRow_->findChildren<QPushButton*>()) button->setChecked(button->property("stationId").toString().toStdString()==selection_.station_id);
     setRows(detailTable_, {
         {"工位", station ? QString::fromStdString(station->id+" "+station->name) : "未配置"},
@@ -1592,11 +1546,6 @@ void Workbench::render() {
     if (eventSource_) eventSource_->setText(live ? "来源：工位 140 · 模拟流 sim.three-cart.v1 · 北京时间 UTC+8" : "来源：当前 PLC 未绑定模拟源。");
     const bool unconfigured=selection_.station_id.empty();
     markState(scopeBanner_, live && (!good || (!view_.rows.empty() && view_.rows.front().alarm=="active")) ? "warn" : "normal");
-    if (auto* hint=findChild<QLabel*>("runHint")) {
-        hint->setVisible(!unconfigured);
-        hint->setText(live ? "模拟采集 · 选中小车查看当前步骤 · 拓扑可切换工位"
-                           : "配置浏览 · 当前工位未绑定模拟采集，操作不可用");
-    }
     if (auto* emptySource=findChild<QLabel*>("emptySource"))
         emptySource->setText(plc ? "当前 PLC 未绑定模拟源" : "当前选择未绑定模拟源");
     if (auto* stack=findChild<QStackedWidget*>("runStack")) {
@@ -1620,7 +1569,7 @@ void Workbench::render() {
         historyTable_->setRowCount(0);
         eventNote_->setText(station_selected ? "无实时历史" : "未配置");
         scopeBanner_->setText(station_selected
-            ? "当前工位没有模拟帧。按钮只推进工位 140，不会改到这里。"
+            ? "此工位未绑定模拟流。"
             : "当前范围没有工位，不能控制。");
         syncModuleChrome();
         return;
@@ -1676,7 +1625,7 @@ void Workbench::render() {
         else scopeBanner_->setText("采集异常 · 当前帧已过期。");
     }
     else if (latest.alarm=="active") scopeBanner_->setText("模拟告警 · 小车阻塞，检查当前阶段。");
-    else scopeBanner_->setText(QString("工位 140 模拟帧 #%1，%2 秒前。不是 LWMS 回执。").arg(latest.seq).arg(age));
+    else scopeBanner_->setText(QString("模拟帧 #%1 · %2 秒前").arg(latest.seq).arg(age));
     syncModuleChrome();
 }
 

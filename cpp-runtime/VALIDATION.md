@@ -294,3 +294,23 @@ Linux 复用 Qt Release 与无 Qt 核心构建。运行 `cmake --build /tmp/cpp-
 基线 `9feb0bf`。用既有 Linux Release Qt / 核心构建目录重新构建界面并执行回归。Qt 8/8、核心 6/6、旧 Node 49/49。界面回归覆盖模拟订单和目标一致、坏帧时目标及进度未知、切换非绑定站不展示料车或订单，以及原来的主屏尺寸、手自动、诊断和生命周期测试。
 
 在全新临时模拟目录运行 collector，以 Qt offscreen 分别捕获 1280×800 SPS 正常、1100×650 阻塞告警及 1100×650 排序区。目视确认三台料车与固定工位分开，紧凑主屏和操作保持可见。图片单独交付。Windows、真实布局和生产接口未验收。[运维提案](../docs/adr/0002-logistics-mcp-operations-proposal.md)仅做文档链接和文本检查，无 MCP 实现、服务或测试结果。
+
+### Qt 单页精修与资源清理
+
+基线 `ab6f635`。按 [heydamir 的 Unslop](https://github.com/heydamir/unslop/blob/main/skills/unslop/SKILL.md) 的视觉审计方法检查原生 Qt 实跑界面。删除重复的运行标题、提示条和顶栏的采集摘要，把工位与料车拓扑放到左列首位。工位、采集心跳、模式、模拟标识和底部操作范围继续可见，正常帧显示帧号和年龄，阻塞和采集异常保留独立提示。
+
+逐项核对引用后移除四个未接入布局的隐藏标签、旧分栏成员及相关样式、未使用的拓扑参数和旧 SVG 资源。空目录配置和链接均无 Qt Svg 依赖，`readelf -d hmi` 也没有 Qt Svg 动态依赖。C++ 源码新增 26 行、删除 81 行，净减 55 行；旧 SVG 与 QRC 另删 54 行。CMake 行数持平，文档不计入源码统计。
+
+Linux GCC 14.2、CMake 3.31.6、Qt 6.8.2、SQLite 3.46.1、Node 24.22.3。使用相同的本地开发包前缀，从空目录配置 Release：
+
+```bash
+cmake -S cpp-runtime -B /tmp/unslop-qt.gvGHaM -DCMAKE_PREFIX_PATH=/workspace/deps/root/usr -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/unslop-qt.gvGHaM -j6
+ctest --test-dir /tmp/unslop-qt.gvGHaM -j4 --output-on-failure
+cmake -S cpp-runtime -B /tmp/unslop-core.Krw9W5 -DCMAKE_PREFIX_PATH=/workspace/deps/root/usr -DCMAKE_BUILD_TYPE=Release -DBUILD_HMI=OFF
+cmake --build /tmp/unslop-core.Krw9W5 -j6
+ctest --test-dir /tmp/unslop-core.Krw9W5 -j4 --output-on-failure
+npm test --prefix runtime
+```
+
+Qt **8/8**、核心 **6/6**、旧 Node **49/49** 通过。Qt 回归检查两种窗口尺寸、拓扑点选、工位隔离、无效帧、手自动、固定操作带及诊断窗口；核心验收补充过期证据与采集生命周期检查。offscreen 实跑前后截图按相同模拟阶段比较：正常自动 1280×800（帧 2）、阻塞告警 1100×650（帧 6）。另查看 1100×650 手动界面。截图单独交付，不进入 Git。XKB 可选开发组件仍有配置提示。Windows 构建、DPI、部署和真实现场均未验证，首发留待审阅决定。

@@ -11,9 +11,8 @@ SchematicView::SchematicView(QWidget* parent): QWidget(parent) {
     setMouseTracking(false);
     error_="未选择 PLC";
 }
-void SchematicView::setScene(const QString& plcName, const QString& areaCode, const std::vector<StationGlyph>& stations, const std::string& focusId, const CartLane& lane) {
+void SchematicView::setScene(const QString& plcName, const std::vector<StationGlyph>& stations, const std::string& focusId, const CartLane& lane) {
     plc_name_=plcName;
-    area_code_=areaCode;
     stations_=stations;
     focus_=focusId;
     lane_=lane;
@@ -120,7 +119,7 @@ void SchematicView::paintEvent(QPaintEvent*) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.fillRect(rect(), QColor("#eef1f4"));
-    painter.setPen(QColor("#8a5a12"));
+    painter.setPen(QColor("#48666c"));
     QFont caption=font();
     caption.setPixelSize(12);
     caption.setBold(true);

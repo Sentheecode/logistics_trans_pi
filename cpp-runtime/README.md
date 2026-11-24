@@ -41,7 +41,7 @@ git rev-parse HEAD
 # 已有上一版目录：确认没有未提交改动后用 git pull --ff-only origin experiment/cpp-runtime 更新。
 
 # 在用户可写的 D:/msys64 内安装开发包，不需要 Windows 管理员权限。
-pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-svg mingw-w64-x86_64-python
+pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
 export PATH=/mingw64/bin:$PATH
 g++ --version
 cmake --version
@@ -53,7 +53,7 @@ cmake --build /d/build/logistics-cpp -j4
 ctest --test-dir /d/build/logistics-cpp --output-on-failure
 ```
 
-若 Qt 不可用，可加 `-DBUILD_HMI=OFF` 构建核心与 CLI；这不会生成伪 HMI。测试使用 Python，纯构建可用 `-DBUILD_TESTING=OFF`。程序不依赖 Qt Charts。HMI 需要 Qt Svg 来绘制合成示意图；没有该组件时不要改用网页代替。
+若 Qt 不可用，可加 `-DBUILD_HMI=OFF` 构建核心与 CLI；这不会生成伪 HMI。测试使用 Python，纯构建可用 `-DBUILD_TESTING=OFF`。程序不依赖 Qt Charts。合成拓扑使用 Qt Widgets 的 QPainter，不需要 Qt Svg。
 
 打开三个独立 MINGW64 终端（每个设置 `export PATH=/mingw64/bin:$PATH`）：
 

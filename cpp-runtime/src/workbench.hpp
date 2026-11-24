@@ -13,7 +13,6 @@ class QDialog;
 class QLabel;
 class QLineEdit;
 class QPushButton;
-class QSplitter;
 class QTableWidget;
 class QTabWidget;
 class SchematicView;
@@ -60,8 +59,8 @@ private:
     std::string last_mode_, cards_plc_;
     int observations_=0;
     QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
-    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr, *collectionStatus_=nullptr;
-    QLabel *stationTitle_=nullptr, *stationMeta_=nullptr, *configLine_=nullptr, *lineState_=nullptr, *peerLine_=nullptr, *interfaceLine_=nullptr, *plcAuto_=nullptr;
+    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QLabel *stationMeta_=nullptr, *interfaceLine_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
     QTabWidget* moduleTabs_=nullptr;
@@ -81,5 +80,4 @@ private:
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
     SchematicView* schematic_=nullptr;
-    QSplitter *contentSplit_=nullptr;
 };

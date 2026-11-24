@@ -28,7 +28,7 @@ public:
     explicit SchematicView(QWidget* parent=nullptr);
     bool loaded() const { return scene_set_; }
     QString loadError() const { return error_; }
-    void setScene(const QString& plcName, const QString& areaCode, const std::vector<StationGlyph>& stations, const std::string& focusId, const CartLane& lane);
+    void setScene(const QString& plcName, const std::vector<StationGlyph>& stations, const std::string& focusId, const CartLane& lane);
     QString selectedId() const { return QString::fromStdString(focus_); }
     QStringList peerIds() const;
     QColor markerColor(const QString& id) const;
@@ -52,7 +52,6 @@ private:
     bool scene_set_=false;
     QString error_;
     QString plc_name_;
-    QString area_code_;
     std::vector<StationGlyph> stations_;
     std::string focus_;
 };

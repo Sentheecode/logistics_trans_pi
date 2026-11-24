@@ -13,8 +13,7 @@
 | `cpp-runtime/src/core.hpp/.cpp` | SQLite 写入适配器 `Writer`、只读查询 `read`、有界结果 `View`；不依赖 Qt |
 | `cpp-runtime/src/control.hpp/.cpp` | 同用户本地文件锁信箱，仅四个模拟命令；无网络端口 |
 | `cpp-runtime/src/catalog.hpp/.cpp` | 合成目录：工厂、业务模式、线体、工位、控制器与库区；只用稳定 ID 和关系表；仅标准库 |
-| `cpp-runtime/src/schematic.hpp/.cpp` | Qt 绘制原创 SVG；点选区域取自 SVG 中未变换的 `rect` |
-| `cpp-runtime/resources/` | `schematic.svg` 与 `device.svg`；合成示意，不是现场布局或照片 |
+| `cpp-runtime/src/schematic.hpp/.cpp` | Qt QPainter 绘制通用合成拓扑；工位绘制与点选共用矩形 |
 | `cpp-runtime/src/workbench.hpp/.cpp` | Qt 工具栏、可调分栏、详情表、历史表、状态栏；目录浏览不写库 |
 | `cpp-runtime/src/collector.cpp` | 组合模拟输入和存储适配器；独立采集进程 |
 | `cpp-runtime/src/diagnose.cpp` | 有界只读 CLI/REPL；只调用查询边界 |
@@ -34,7 +33,7 @@ flowchart LR
     R --> DB
     H --> M[有限本地模拟控制信箱]
     M --> C
-    Cat[合成目录与 SVG] --> H
+    Cat[合成目录与绘制拓扑] --> H
 ```
 
 ## 进程与故障边界
@@ -71,7 +70,7 @@ CLI/Pi 继续只读；`control_test_client` 仅在 BUILD_TESTING 构建的测试
 
 目录层级是工厂 → 业务模式（SPS／排序区）→ 线体 → 工位。业务模式与采集端运行模式（手动／自动）是两个字段。关联使用稳定 ID：一个控制器可对应多个工位，库区另行关联工位，展示名可以重复，不能当键。切换父级时，子项 ID 仍属于新父级才保留，否则选中合法项；没有子项则显示未配置。
 
-示意图和设备图都是原创 SVG，设备图标明“示意”。图中工位矩形与下拉双向同步。库存数量和设备连接保持未知／未探测，不造数。只有目录中明确标记为当前模拟流 `sim.three-cart.v1` 的工位显示实时帧、历史和原有手动／自动按钮。其他工位与排序区只显示静态示意，不复用该模拟流的阶段或历史。目录浏览不改变采集目标、不暂停自动推进、不切换手动／自动。
+设备与通道由 Qt 本地绘制，画面标明“示意”。图中工位矩形与下拉双向同步。库存数量和设备连接保持未知／未探测，不造数。只有目录中明确标记为当前模拟流 `sim.three-cart.v1` 的工位显示实时帧、历史和原有手动／自动按钮。其他工位与排序区只显示静态示意，不复用该模拟流的阶段或历史。目录浏览不改变采集目标、不暂停自动推进、不切换手动／自动。
 
 查询与控制各只有一个在途异步操作，界面线程不等 SQLite 或信箱。正常和手动两种界面以 1280×800 / 1100×650 渲染检查；中文字体优先 Noto Sans CJK SC，Windows 回退 Microsoft YaHei UI。Linux 图像不能替代 Windows 字体、DPI、文件锁或部署验收。
 
@@ -198,7 +197,7 @@ npm test --prefix runtime
 
 ### Codex 复查入口
 
-继续使用 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 。先读本段、[构建与启动](cpp-runtime/README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，再看 `cpp-runtime/src/catalog.*`、`schematic.*`、`workbench.*`、`resources/*.svg`、`tests/catalog.cpp` 与 `tests/widgets.cpp`。不要改 `main`，不要 force-push，不要为界面改领域、旧 Node/Pi 或信箱协议，不要添加设备地址或网络写入。复查时重跑上面三条命令；截图用 `hmi` 的捕获参数重新生成，不要把 PNG 提交进仓库。
+继续使用 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 。先读本段、[构建与启动](cpp-runtime/README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，再看 `cpp-runtime/src/catalog.*`、`schematic.*`、`workbench.*`、`tests/catalog.cpp` 与 `tests/widgets.cpp`。不要改 `main`，不要 force-push，不要为界面改领域、旧 Node/Pi 或信箱协议，不要添加设备地址或网络写入。复查时重跑上面三条命令；截图用 `hmi` 的捕获参数重新生成，不要把 PNG 提交进仓库。
 
 ### 模拟分拣单与共用通道
 
@@ -210,3 +209,8 @@ npm test --prefix runtime
 ### 后续维护入口
 
 本仓库仅做物流，不纳入灯光检测和无人检测。单屏和采集边界见 [ADR 0001](docs/adr/0001-logistics-workbench.md)。物流 MCP 运维只作为 [ADR 0002 提案](docs/adr/0002-logistics-mcp-operations-proposal.md) 保留，本轮未实现或部署。后续接手先读 [协作规则](AGENTS.md) 和 [验证记录](cpp-runtime/VALIDATION.md)。下一步可在只读模拟范围内补 Windows 验收，实际生产接口再另行评审。
+
+
+### 单页精修
+
+原生 Qt 主屏以工位与料车拓扑为视觉锚点，其下是阶段列表。右侧仍显示当前作业、分拣单、采集质量、告警与记录。顶部保留工位、模拟环境、运行模式和心跳，操作带继续显示控制范围。统一主要列宽和间距，琥珀色只用于异常。拓扑使用 QPainter，清理已无调用点的 SVG 资源和 Qt Svg 依赖。目录、模拟输入与诊断协议保持既有语义。
