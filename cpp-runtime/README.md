@@ -1,6 +1,6 @@
 # C++ 物流上位机首版（仅模拟）
 
-这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。旧 Node runtime、Pi 扩展和已发布契约保持原样。
+这是独立实验程序，不是生产实现。只生成匿名合成数据，不读取仓库点表，不连接 PLC、AGV、LWMS 或其他服务，不包含任何写设备入口。旧 Node runtime 和已发布契约保留。Pi 现在可选用默认 C++ 快照桥，旧 HTTP 需显式选择。
 
 交付三个独立进程：`collector` 定时模拟采集并单写 SQLite；`diagnose` 提供只读 CLI/REPL；`hmi` 用真实 Qt Widgets 中文工作台异步查询。导航是钱塘二厂 → 分拣区或排序区 → PLC 配置 → 已给定工位。一个 PLC 只挂一处采集；当前模拟帧只挂在工位 140，不复制到 150/160。HMI、诊断均不启动或停止采集进程，也不连接 PLC、LWMS 或 AGV。领域状态转换只依赖 C++ 标准库，设备/存储边界见 `src/adapters.hpp`；统一架构交接以仓库的 `ARCHITECTURE.md` 为准。
 
@@ -80,7 +80,7 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 
 ## CLI 与旧接口兼容范围
 
-命令有界：recent/history 默认 20，最大 200，超过范围报错；status/alarms 只返回最后一帧。`more` 表示还有更老的帧，不是精确匹配总数；查询仅是按序号倒序的尾部原始历史，没有时间窗口、游标或聚合。输入每行最多 256 字节，未知命令和额外参数拒绝。coverage 固定 unknown；没有记录不能证明无异常，只能说证据不足。没有 LLM、根因推断和 Pi 自动调用。
+命令有界：recent/history 默认 20，最大 200，超过范围报错；status/alarms 只返回最后一帧。`more` 表示还有更老的帧，不是精确匹配总数；交互命令只提供按序号倒序的尾部原始历史。单次执行可用 `snapshot-json [limit]` 或 `window-json FROM_UTC_MS TO_UTC_MS [limit]` 返回固定模拟范围的保留帧与日志，每类最多 40 条。后者是接收时间窗，不等同旧历史的事件时间；没有游标或聚合。输入每行最多 256 字节，未知命令和额外参数拒绝。coverage 固定 unknown；没有记录不能证明无异常，只能说证据不足。C++ CLI 不需要 LLM、Pi 或 Node，也不推断根因。
 
 | 旧契约 | 此 C++ 首版 |
 |---|---|
@@ -92,7 +92,7 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 | health / events WebSocket | 未实现 |
 | 提案、确认和设备写入 | 未实现且无入口 |
 
-旧 Pi 继续使用原 Node 只读 HTTP 服务和 token；不要把 C++ SQLite 交给旧服务。本版没有监听端口，故没有新的网络 token 服务。旧五工具测试仍独立通过，但不代表 C++ 已兼容。
+首选 C++ CLI。[Pi 可选桥和 legacy 入口](../agent/README.md)明确区分 C++ 快照和旧五工具。旧 Node HTTP 服务仍只兼容旧库；C++ 查询不监听端口。完整差异见[迁移验收表](../docs/cpp-migration.md)。
 
 ## Linux 验证与遗留
 

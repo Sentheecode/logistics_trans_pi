@@ -36,7 +36,7 @@ struct Stmt {
     void text(int i,const std::string& v){if(sqlite3_bind_text(s,i,v.c_str(),-1,SQLITE_TRANSIENT)!=SQLITE_OK)throw std::runtime_error("bind text failed");}
     void integer(int i,std::int64_t v){if(sqlite3_bind_int64(s,i,v)!=SQLITE_OK)throw std::runtime_error("bind integer failed");}
     void null(int i){if(sqlite3_bind_null(s,i)!=SQLITE_OK)throw std::runtime_error("bind null failed");}
-    std::string text(int i){auto t=sqlite3_column_text(s,i); return t?reinterpret_cast<const char*>(t):"UNKNOWN";}
+    std::string text(int i){auto t=sqlite3_column_text(s,i); return t?std::string(reinterpret_cast<const char*>(t),sqlite3_column_bytes(s,i)):"UNKNOWN";}
 };
 std::int64_t scalar(Db& d,const char* sql){Stmt s(d,sql); if(s.step()!=SQLITE_ROW)throw std::runtime_error("missing metadata");return sqlite3_column_int64(s.s,0);}
 void validate(Db& d){auto v=scalar(d,"PRAGMA user_version"); if(scalar(d,"PRAGMA application_id")!=app_id || (v!=1 && v!=2 && v!=3))throw std::runtime_error("not a cpp-runtime simulation schema v1/v2/v3; refused");}
@@ -160,14 +160,26 @@ void Writer::publish(const Observation* observation,const std::string& mode,bool
         p->info.mode=mode;p->info.revision+=command?1:0;p->info.heartbeat_ms=t;p->info.liveness="recent";
     }catch(...){p->db->exec("ROLLBACK");throw;}
 }
-View read(const std::filesystem::path& dir,const std::string& command,int limit){
+namespace {
+View read_view(const std::filesystem::path& dir,int limit,const TimeWindow* window){
+    // Keep a fixed upper bound even for old schemas without a receive-time index.
+    int query_budget=1000; // callbacks every 1000 SQLite instructions
+
     if(limit<1||limit>200)throw std::runtime_error("limit must be 1..200");
-    if(command!="status"&&command!="history"&&command!="recent"&&command!="alarms")throw std::runtime_error("unknown command; use help");
-    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);d.exec("PRAGMA query_only=ON");validate(d);d.exec("BEGIN");
-    // Indexed, bounded tail queries. alarms reports the latest condition, not a fabricated occurrence history.
-    if(command=="status"||command=="alarms")limit=1;
-    Stmt s(d,"SELECT seq,received_ms,source_ms,boot,cart1,cart2,cart3,quality,reason,link,alarm,event FROM frames ORDER BY seq DESC LIMIT ?");
-    s.integer(1,limit+1);View v;
+    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);
+    d.exec("PRAGMA query_only=ON");
+    if (window) sqlite3_progress_handler(d.db,1000,[](void* budget) {
+        return --*static_cast<int*>(budget)<=0 ? 1 : 0;
+    },&query_budget);
+    d.exec("BEGIN");
+    validate(d);
+    const char* frames=window
+        ? "SELECT seq,received_ms,source_ms,boot,cart1,cart2,cart3,quality,reason,link,alarm,event FROM frames WHERE received_ms>=?2 AND received_ms<?3 ORDER BY seq DESC LIMIT ?1"
+        : "SELECT seq,received_ms,source_ms,boot,cart1,cart2,cart3,quality,reason,link,alarm,event FROM frames ORDER BY seq DESC LIMIT ?1";
+    Stmt s(d,frames);
+    s.integer(1,limit+1);
+    if (window) { s.integer(2,window->from_ms); s.integer(3,window->to_ms); }
+    View v;
     if(scalar(d,"PRAGMA user_version")>=2){
         Stmt state(d,"SELECT mode,revision,heartbeat_ms,boot FROM runtime_state WHERE id=1");
         if(state.step()==SQLITE_ROW){v.runtime.mode=state.text(0);v.runtime.revision=sqlite3_column_int64(state.s,1);v.runtime.heartbeat_ms=sqlite3_column_int64(state.s,2);v.runtime.boot=state.text(3);auto age=now_ms()-v.runtime.heartbeat_ms;v.runtime.liveness=age<0?"clock_uncertain":age>1500?"stale":"recent";}
@@ -178,8 +190,13 @@ View read(const std::filesystem::path& dir,const std::string& command,int limit)
         for(int i=0;i<3;++i)r.carts[i]=s.text(4+i);
         r.quality=s.text(7);r.reason=s.text(8);r.link=s.text(9);r.alarm=s.text(10);r.event=s.text(11);v.rows.push_back(r);
     }
-    if(scalar(d,"PRAGMA user_version")>=3){
-        Stmt logs(d,"SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs ORDER BY id DESC LIMIT 80");
+    v.logs_available=scalar(d,"PRAGMA user_version")>=3;
+    if(v.logs_available){
+        const char* sql=window
+            ? "SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs WHERE received_ms>=?1 AND received_ms<?2 ORDER BY id DESC LIMIT 80"
+            : "SELECT id,received_ms,level,category,object,text,frame_seq FROM sim_logs ORDER BY id DESC LIMIT 80";
+        Stmt logs(d,sql);
+        if (window) { logs.integer(1,window->from_ms); logs.integer(2,window->to_ms); }
         while(logs.step()==SQLITE_ROW){
             LogRecord row; row.id=sqlite3_column_int64(logs.s,0); row.received_ms=sqlite3_column_int64(logs.s,1);
             row.level=logs.text(2); row.category=logs.text(3); row.object=logs.text(4); row.text=logs.text(5);
@@ -188,6 +205,21 @@ View read(const std::filesystem::path& dir,const std::string& command,int limit)
         }
     }
     v.freshness=v.rows.empty()?"no_evidence":fresh(v.rows.front().received_ms);return v;
+}
+}
+View read(const std::filesystem::path& dir,const std::string& command,int limit){
+    if(command!="status"&&command!="history"&&command!="recent"&&command!="alarms")
+        throw std::runtime_error("unknown command; use help");
+    if(limit<1||limit>200)throw std::runtime_error("limit must be 1..200");
+    // alarms reports the latest condition, not a fabricated occurrence history.
+    return read_view(dir,command=="status"||command=="alarms"?1:limit,nullptr);
+}
+View read_window(const std::filesystem::path& dir,TimeWindow window,int limit){
+    constexpr std::int64_t max_utc_ms=253402300799999; // UTC year 9999
+    if (window.from_ms<0 || window.to_ms>max_utc_ms || window.from_ms>=window.to_ms ||
+        window.to_ms-window.from_ms>86400000)
+        throw std::runtime_error("expected a nonempty UTC millisecond window of at most 24 hours");
+    return read_view(dir,limit,&window);
 }
 std::string render(const View& v){
     std::ostringstream out;

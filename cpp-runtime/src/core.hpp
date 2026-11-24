@@ -22,7 +22,8 @@ struct LogRecord {
     bool has_frame=false;
     std::string level, category, object, text;
 };
-struct View { std::vector<Row> rows; std::vector<LogRecord> logs; bool more{}; std::string freshness; RuntimeInfo runtime; };
+struct TimeWindow { std::int64_t from_ms, to_ms; };
+struct View { std::vector<Row> rows; std::vector<LogRecord> logs; bool more{}, logs_available{}; std::string freshness; RuntimeInfo runtime; };
 class Writer final : public HistorySink {
 public:
     explicit Writer(const std::filesystem::path& directory);
@@ -39,6 +40,7 @@ private:
     std::unique_ptr<Impl> p;
 };
 View read(const std::filesystem::path& directory, const std::string& command, int limit=20);
+View read_window(const std::filesystem::path& directory, TimeWindow window, int limit);
 std::string render(const View& view);
 std::string help();
 }

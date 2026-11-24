@@ -314,3 +314,24 @@ npm test --prefix runtime
 ```
 
 Qt **8/8**、核心 **6/6**、旧 Node **49/49** 通过。Qt 回归检查两种窗口尺寸、拓扑点选、工位隔离、无效帧、手自动、固定操作带及诊断窗口；核心验收补充过期证据与采集生命周期检查。offscreen 实跑前后截图按相同模拟阶段比较：正常自动 1280×800（帧 2）、阻塞告警 1100×650（帧 6）。另查看 1100×650 手动界面。截图单独交付，不进入 Git。XKB 可选开发组件仍有配置提示。Windows 构建、DPI、部署和真实现场均未验证，首发留待审阅决定。
+
+### 本机 C++ 诊断迁移检查点
+
+基线 `c686fca`。Linux GCC 14.2、Qt 6.8.2、SQLite 3.46.1、Node 24.22.3。复用前一轮 Release Qt 与无 HMI 核心构建目录并重新构建，执行：
+
+```bash
+cmake --build /tmp/unslop-qt.gvGHaM -j6
+ctest --test-dir /tmp/unslop-qt.gvGHaM -j4 --output-on-failure
+cmake --build /tmp/unslop-core.Krw9W5 -j6
+ctest --test-dir /tmp/unslop-core.Krw9W5 -j4 --output-on-failure
+npm test --prefix runtime
+bash -n agent/diagnose.sh
+```
+
+Qt 9/9、核心 7/7，均含 `pi_cpp_bridge`；原 Node 49/49 含五工具 legacy HTTP 对照。新集成使用临时合成目录及真实 `collector`、`diagnose`，验证范围/字段拒绝、取消、帧质量与新鲜度、日志的 JSON 字符转义、v2 日志显式不可用、v2→v3 恢复、接收时间窗边界、扫描预算中断及空结果覆盖未知。桥测试需支持 `node:sqlite` 的 Node。生产 C++ 构建可关闭测试，运行查询不依赖 Node。
+
+```json
+{"schema":"ltp.cpp.sim-snapshot.v1","station":"stn.140","frame":"17","stage":"scanning","heartbeat":"recent","freshness":"recent","coverage":"unknown"}
+```
+
+另通过现有锁定的 Pi 1.5.2 SDK 隔离会话加载实际扩展，读取到 `{"active_tools":["read_simulation_snapshot"],"scope":"stn.140","seq":"16","coverage":"unknown"}`。未向模型提供方发请求。Qt 业务界面无变更。本轮未移除旧 Node 工程，未迁完整聚合、JSONL 轮转恢复、独立看门狗或 OPC UA，未实现 MCP。Windows 与现场均未执行。[迁移门槛与下一步](../docs/cpp-migration.md)。
