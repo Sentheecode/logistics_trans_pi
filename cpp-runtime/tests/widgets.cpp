@@ -27,6 +27,8 @@
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
+#include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -189,6 +191,199 @@ QString board_row(QWidget& window, const QString& code, int column) {
     }
     throw std::runtime_error(("missing station row "+code).toStdString());
 }
+void assert_log_rows_whole(QTableWidget* logs, const char* where, bool requireVisible) {
+    if (!logs || !logs->viewport()) throw std::runtime_error(std::string("missing log table at ")+where);
+    if (logs->verticalScrollMode()!=QAbstractItemView::ScrollPerItem)
+        throw std::runtime_error(std::string("log table scrolls by pixels at ")+where);
+    int sample=logs->verticalHeader()->defaultSectionSize();
+    for (int row=0; row<logs->rowCount(); ++row) {
+        if (!logs->isRowHidden(row)) { sample=logs->rowHeight(row); break; }
+    }
+    const int viewportHeight=logs->viewport()->height();
+    const int slack=sample>1 && viewportHeight>sample ? viewportHeight%sample : 0;
+    if (sample<28) throw std::runtime_error(("log row height was compressed to "+std::to_string(sample)+" at "+where).c_str());
+    const int pixels=logs->font().pixelSize();
+    if (pixels>0 && pixels<14) throw std::runtime_error(("log font was compressed to "+std::to_string(pixels)+"px at "+where).c_str());
+    if (slack!=0 || viewportHeight<sample*4)
+        throw std::runtime_error(QString("log viewport is not a whole number of rows at %1 vh=%2 rh=%3")
+            .arg(where).arg(viewportHeight).arg(sample).toStdString());
+    int visible=0;
+    int first=9999;
+    for (int row=0; row<logs->rowCount(); ++row) {
+        if (logs->isRowHidden(row) || !logs->item(row, 0)) continue;
+        const int top=logs->rowViewportPosition(row);
+        const int height=logs->rowHeight(row);
+        if (height!=sample) throw std::runtime_error(("log row height varies at "+std::string(where)).c_str());
+        if (top+height<=0 || top>=viewportHeight) continue;
+        if (top<0 || top+height>viewportHeight)
+            throw std::runtime_error(QString("log row is cut at %1 row %2 top %3 height %4 vh %5").arg(where).arg(row).arg(top).arg(height).arg(viewportHeight).toStdString());
+        first=std::min(first, top);
+        ++visible;
+    }
+    if (requireVisible && visible==0) throw std::runtime_error(std::string("log viewport has no complete row at ")+where);
+    if (visible>0 && first!=0) throw std::runtime_error(QString("log rows are not aligned to the top at %1 offset %2").arg(where).arg(first).toStdString());
+}
+void place_log_scroll(QTableWidget* logs, int value, const char* where) {
+    auto* bar=logs->verticalScrollBar();
+    logs->setCurrentCell(-1, -1);
+    QCoreApplication::processEvents();
+    const int target=std::clamp(value, bar->minimum(), bar->maximum());
+    bar->setValue(target);
+    if (bar->maximum()>0 && bar->value()!=target)
+        throw std::runtime_error(QString("log scroll did not stay at %1 target %2 value %3 max %4").arg(where).arg(target).arg(bar->value()).arg(bar->maximum()).toStdString());
+    assert_log_rows_whole(logs, where, true);
+}
+void save_log_shot(QWidget& window, QTableWidget* logs, const QString& path) {
+    if (path.isEmpty()) return;
+    window.grab().save(path+".png");
+    logs->viewport()->grab().save(path+"-viewport.png");
+    QFile meta(path+".txt");
+    if (!meta.open(QIODevice::WriteOnly|QIODevice::Truncate)) return;
+    const QRect table(logs->mapTo(&window, QPoint(0, 0)), logs->size());
+    const QRect viewport(logs->viewport()->mapTo(&window, QPoint(0, 0)), logs->viewport()->size());
+    meta.write(QString("table %1 %2 %3 %4\nviewport %5 %6 %7 %8\nrow %9\nscroll %10 %11\n")
+        .arg(table.x()).arg(table.y()).arg(table.width()).arg(table.height())
+        .arg(viewport.x()).arg(viewport.y()).arg(viewport.width()).arg(viewport.height())
+        .arg(logs->rowHeight(0))
+        .arg(logs->verticalScrollBar()->value()).arg(logs->verticalScrollBar()->maximum()).toUtf8());
+}
+void exercise_log_rows(QWidget& window, const QString& shotPrefix) {
+    auto* logs=window.findChild<QTableWidget*>("logTable");
+    auto* search=window.findChild<QLineEdit*>("logSearch");
+    auto* category=window.findChild<QComboBox*>("logCategory");
+    auto* level=window.findChild<QComboBox*>("logLevel");
+    auto* follow=window.findChild<QPushButton*>("logFollow");
+    if (!logs || !search || !category || !level || !follow) throw std::runtime_error("missing log controls");
+    if (follow->text()=="暂停跟随") follow->click();
+    if (follow->text()!="恢复跟随") throw std::runtime_error("log follow did not pause");
+    auto* bar=logs->verticalScrollBar();
+    place_log_scroll(logs, 0, "top");
+    save_log_shot(window, logs, shotPrefix.isEmpty() ? QString() : shotPrefix+"-top");
+    place_log_scroll(logs, bar->maximum()/2, "middle");
+    save_log_shot(window, logs, shotPrefix.isEmpty() ? QString() : shotPrefix+"-middle");
+    place_log_scroll(logs, bar->maximum(), "end");
+    save_log_shot(window, logs, shotPrefix.isEmpty() ? QString() : shotPrefix+"-end");
+    const auto categoryId=logs->item(0, 0)->data(Qt::UserRole+1).toString().toStdString();
+    choose(category, categoryId.c_str());
+    pump(40);
+    place_log_scroll(logs, 0, "category-filter");
+    for (int row=0; row<logs->rowCount(); ++row) {
+        auto* item=logs->item(row, 0);
+        if (!logs->isRowHidden(row) && (!item || item->data(Qt::UserRole+1).toString()!=QString::fromStdString(categoryId)))
+            throw std::runtime_error("log category filter leaked another category");
+    }
+    std::string levelId;
+    for (int row=0; row<logs->rowCount(); ++row) {
+        auto* item=logs->item(row, 0);
+        if (!item || logs->isRowHidden(row)) continue;
+        const auto rowLevel=item->data(Qt::UserRole+2).toString().toStdString();
+        if (levelId.empty()) levelId=rowLevel;
+        if (rowLevel=="warn") { levelId="warn"; break; }
+    }
+    if (levelId.empty()) throw std::runtime_error("category filter hid every log");
+    choose(level, levelId.c_str());
+    pump(40);
+    place_log_scroll(logs, logs->verticalScrollBar()->maximum(), "level-filter");
+    save_log_shot(window, logs, shotPrefix.isEmpty() ? QString() : shotPrefix+"-filtered");
+    for (int row=0; row<logs->rowCount(); ++row) {
+        auto* item=logs->item(row, 0);
+        if (!logs->isRowHidden(row) && (!item || item->data(Qt::UserRole+2).toString()!=QString::fromStdString(levelId) || item->data(Qt::UserRole+1).toString()!=QString::fromStdString(categoryId)))
+            throw std::runtime_error("log level filter leaked another row");
+    }
+    search->setText("没有这个日志ZZZ");
+    pump(30);
+    assert_log_rows_whole(logs, "empty-filter", false);
+    search->clear();
+    choose(category, "all");
+    choose(level, "all");
+    pump(40);
+    place_log_scroll(logs, 0, "filter-cleared");
+    if (follow->text()=="恢复跟随") follow->click();
+    if (follow->text()!="暂停跟随" || logs->currentRow()!=0) throw std::runtime_error("log follow did not resume at the newest row");
+    assert_log_rows_whole(logs, "follow-resumed", true);
+    save_log_shot(window, logs, shotPrefix.isEmpty() ? QString() : shotPrefix+"-following");
+}
+QPushButton* station_button(QWidget& window, const char* id) {
+    auto* table=window.findChild<QTableWidget*>("stationBoard");
+    if (!table) throw std::runtime_error("missing station board");
+    for (int row=0; row<table->rowCount(); ++row) {
+        auto* item=table->item(row, 0);
+        if (!item || item->data(Qt::UserRole).toString()!=QString::fromUtf8(id)) continue;
+        auto* cell=table->cellWidget(row, 3);
+        auto* button=cell ? cell->findChild<QPushButton*>() : nullptr;
+        if (!button) throw std::runtime_error(std::string("missing station detail button ")+id);
+        return button;
+    }
+    throw std::runtime_error(std::string("missing station row ")+id);
+}
+void set_station_open(QWidget& window, const char* id, bool open) {
+    auto* button=station_button(window, id);
+    const bool opened=button->text()=="详情";
+    if (opened!=open) button->click();
+    pump(60);
+}
+void assert_same_collector(const Snap& before, const Snap& after, const char* where, bool seqStable) {
+    if (after.mode!=before.mode || after.boot!=before.boot || after.revision!=before.revision || (seqStable && after.seq!=before.seq))
+        throw std::runtime_error(std::string("collector changed at ")+where);
+}
+void assert_stage_matches(QTableWidget* stages, const std::filesystem::path& directory, bool trustworthy) {
+    const auto view=sim::read(directory, "recent", 5);
+    if (!stages || stages->rowCount()!=3 || view.rows.empty()) throw std::runtime_error("stage table is not showing the current frame");
+    const auto& frame=view.rows.front();
+    for (int i=0; i<3; ++i) {
+        const auto value=trustworthy ? frame.carts[i] : std::string("UNKNOWN");
+        int current=0;
+        if (value=="scanning") current=1;
+        else if (value=="sorting") current=2;
+        else if (value=="station_complete") current=3;
+        for (int column=1; column<=3; ++column) {
+            auto* item=stages->item(i, column);
+            const QString expect=(column==current && current>0) ? (column==1 ? "读码" : column==2 ? "分拣" : "本工位完成") : "—";
+            if (!item || item->text()!=expect)
+                throw std::runtime_error(("stage cell does not match the collector frame row "+std::to_string(i)+" col "+std::to_string(column)).c_str());
+        }
+        auto* note=stages->item(i, 4);
+        if (!trustworthy && (!note || note->text()!="无可信值")) throw std::runtime_error("disconnected frame still showed a phase");
+    }
+}
+void assert_preview_isolated(Workbench& window) {
+    for (auto page : {"运行", "日志", "采集"}) {
+        show_page(window, QString::fromUtf8(page));
+        pump(40);
+        if (board_has(window, "140") || !board_has(window, "210") || !board_has(window, "220"))
+            throw std::runtime_error(std::string(page)+" leaked station 140 while previewing sort 3");
+        auto* pane=window.findChild<QWidget*>("commandPane");
+        if (pane && pane->isVisible()) throw std::runtime_error(std::string(page)+" showed pack controls during sort 3 preview");
+        if (QString::fromUtf8(page)=="运行") assert_no_live_leak(window);
+        if (QString::fromUtf8(page)=="日志") {
+            auto* logs=window.findChild<QTableWidget*>("logTable");
+            auto* detail=window.findChild<QLabel*>("logDetail");
+            if (!logs || logs->rowCount()!=0) throw std::runtime_error("sort 3 log page kept pack frames");
+            if (detail && (detail->text().contains("140") || detail->text().contains("扫码")))
+                throw std::runtime_error("sort 3 log detail kept a pack frame");
+        }
+        if (QString::fromUtf8(page)=="采集") {
+            auto* source=window.findChild<QLabel*>("collectLive");
+            auto* changes=window.findChild<QTableWidget*>("collectChanges");
+            if (source && (source->text().contains("140") || source->text().contains("sim.three-cart")))
+                throw std::runtime_error("sort 3 collection borrowed the pack frame");
+            if (changes && changes->rowCount()!=0) throw std::runtime_error("sort 3 collection kept pack changes");
+        }
+    }
+}
+void preview_sort3(Workbench& window, QComboBox* area, QComboBox* plc, const std::filesystem::path& directory, const Snap& origin, const char* where) {
+    choose(area, catalog::kAreaSeq);
+    choose(plc, catalog::kPlcSeq3);
+    wait([&]{ return board_has(window, "210") && board_has(window, "220") && !board_has(window, "140"); });
+    assert_same_collector(origin, snap(directory), where, true);
+    assert_preview_isolated(window);
+    assert_same_collector(origin, snap(directory), where, true);
+    choose(area, catalog::kAreaPick);
+    choose(plc, catalog::kPlcPack);
+    wait([&]{ return window.liveScope() && board_has(window, "140") && board_has(window, "150") && board_has(window, "160"); });
+    if (window.confirmedMode()!=QString::fromUtf8(origin.mode.c_str())) throw std::runtime_error(std::string("returning from sort 3 reset the mode at ")+where);
+    assert_same_collector(origin, snap(directory), where, true);
+}
 void click_station(QWidget& window, const char* id) {
     auto* table=window.findChild<QTableWidget*>("stationBoard");
     if (!table) throw std::runtime_error("missing station board");
@@ -285,6 +480,7 @@ int main(int argc, char** argv) {
             }
         }
         show_page(window,"日志");
+        const QString shotRoot=QString::fromLocal8Bit(qgetenv("LOGISTICS_SHOTS"));
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(160);
@@ -292,24 +488,8 @@ int main(int argc, char** argv) {
             auto* levels=logs ? logs->itemDelegateForColumn(1) : nullptr;
             if (!logs || logs->rowCount()<1 || !levels || levels->objectName()!="levelDelegate")
                 throw std::runtime_error("log levels are not distinctly painted");
-            int partial=0;
-            for (int row=0; row<logs->rowCount(); ++row) {
-                if (logs->isRowHidden(row) || !logs->item(row, 0)) continue;
-                const QRect rect=logs->visualItemRect(logs->item(row, 0));
-                if (rect.bottom()<0 || rect.top()>=logs->viewport()->height()) continue;
-                if (rect.top()<0 || rect.bottom()>logs->viewport()->height()-1) ++partial;
-            }
-            if (partial) {
-                QString detail;
-                for (int row=0; row<logs->rowCount(); ++row) {
-                    if (logs->isRowHidden(row) || !logs->item(row, 0)) continue;
-                    const QRect rect=logs->visualItemRect(logs->item(row, 0));
-                    if (rect.bottom()<0 || rect.top()>=logs->viewport()->height()) continue;
-                    if (rect.top()<0 || rect.bottom()>logs->viewport()->height()-1)
-                        detail+=QString(" row %1 %2x%3..%4 vh %5 rh %6").arg(row).arg(rect.top()).arg(rect.bottom()).arg(rect.height()).arg(logs->viewport()->height()).arg(logs->rowHeight(row));
-                }
-                throw std::runtime_error(("log row is cut by the viewport"+detail).toStdString());
-            }
+            wait([&]{ return logs->verticalScrollBar()->maximum()>=3; }, 20000);
+            exercise_log_rows(window, shotRoot.isEmpty() ? QString() : shotRoot+"/logs-"+QString::number(size.width()));
         }
         auto* module=window.findChild<QTabBar*>("moduleTabs");
         if (module->tabText(module->currentIndex())!="日志" || stages->isVisible())
@@ -322,6 +502,14 @@ int main(int argc, char** argv) {
         if (stages->verticalScrollBar()->maximum()!=0)
             throw std::runtime_error("current stages require scrolling");
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
+        auto* autoReason=window.findChild<QLabel*>("controlReason");
+        auto* actions=window.findChild<QWidget*>("commandPane");
+        if (!autoReason || autoReason->text()!="本 PLC 的模拟只作用于工位 140，自动中不可单步") throw std::runtime_error("automatic disable reason is wrong");
+        show_page(window, "采集");
+        if (!actions || !actions->isVisible() || !mode->isVisible() || !step->isVisible()) throw std::runtime_error("automatic controls are not on the collection page");
+        show_page(window, "运行");
+        if (actions->isVisible()) throw std::runtime_error("automatic controls leaked onto the run page");
+        assert_stage_matches(stages, directory, true);
         auto* title=window.findChild<QLabel*>("title");
         auto requireSans=[&](QWidget* widget, const char* name) {
             if (!widget) throw std::runtime_error(std::string("missing font target ")+name);
@@ -372,10 +560,39 @@ int main(int argc, char** argv) {
         const auto before_scope=snap(directory);
         if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcPack) || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("plc context hid the other stations");
-        if (board_row(window, "150", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览" || board_row(window, "140", 1)!="名称未登记")
+        if (board_row(window, "150", 3)!="未接入" || board_row(window, "160", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览")
             throw std::runtime_error("station source column is wrong");
-        if (board_row(window, "150", 2)!="—" || board_row(window, "140", 2)!="三车分拣 · 本轮")
+        if (board_row(window, "140", 1)!="名称未登记" || board_row(window, "150", 1)!="名称未登记" || board_row(window, "160", 1)!="名称未登记")
+            throw std::runtime_error("unregistered station name was invented");
+        if (board_row(window, "150", 2)!="—" || board_row(window, "160", 2)!="—" || board_row(window, "140", 2)!="三车分拣 · 本轮")
             throw std::runtime_error("sibling station reused station 140 records");
+        if (!autoReason || autoReason->text()!="本 PLC 的模拟只作用于工位 140，手动待步") throw std::runtime_error("manual reason is wrong");
+        show_page(window, "采集");
+        auto* linkButton=window.findChild<QPushButton*>("disconnectButton");
+        if (!actions || !actions->isVisible() || !step->isEnabled() || !linkButton || !linkButton->isEnabled()) throw std::runtime_error("manual controls are not on the collection page");
+        show_page(window, "运行");
+        if (actions->isVisible()) throw std::runtime_error("manual controls leaked onto the run page");
+        assert_stage_matches(stages, directory, true);
+        const auto before_expand=snap(directory);
+        set_station_open(window, catalog::kStation150, true);
+        if (station_button(window, catalog::kStation150)->text()!="详情") throw std::runtime_error("station 150 did not expand");
+        bool foundNote=false;
+        for (auto* label : window.findChildren<QLabel*>()) {
+            if (label->isVisible() && label->text().contains("没有模拟源")) foundNote=true;
+        }
+        if (!foundNote || stages->isVisible()) throw std::runtime_error("station 150 expansion borrowed the live stage");
+        assert_same_collector(before_expand, snap(directory), "expand 150", true);
+        set_station_open(window, catalog::kStation160, true);
+        assert_same_collector(before_expand, snap(directory), "expand 160", true);
+        if (cell(detail, "设备连接")!="未探测") throw std::runtime_error("expanded station invented a device connection");
+        set_station_open(window, catalog::kStation140, true);
+        wait([&]{ return stages->isVisible() && stages->rowCount()==3; });
+        assert_same_collector(before_expand, snap(directory), "restore 140", true);
+        assert_stage_matches(stages, directory, true);
+        preview_sort3(window, area, plc, directory, before_expand, "manual preview");
+        show_page(window, "运行");
+        if (!stages->isVisible()) throw std::runtime_error("returning from manual preview hid the live stage");
+        std::cout<<"PASS candidate manual preview and local expand\n";
         const auto plc_before=plc->currentData().toString();
         click_station(window,catalog::kStation150);
         if (plc->currentData().toString()!=plc_before || !board_has(window, "140"))
@@ -437,6 +654,15 @@ int main(int argc, char** argv) {
         auto broken=snap(directory);
         if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
             throw std::runtime_error("manual disconnect did not stay on the same collector");
+        show_page(window, "运行");
+        assert_stage_matches(stages, directory, false);
+        if (actions->isVisible()) throw std::runtime_error("disconnect controls leaked onto the run page");
+        preview_sort3(window, area, plc, directory, broken, "disconnect preview");
+        show_page(window, "运行");
+        wait([&]{ return banner->text().contains("模拟链路断开") && stages->isVisible() && stages->rowCount()==3; });
+        assert_stage_matches(stages, directory, false);
+        assert_same_collector(broken, snap(directory), "after disconnect preview", true);
+        std::cout<<"PASS candidate disconnect preview\n";
         for (int guard=0; guard<4 && banner->text().contains("模拟链路断开"); ++guard) {
             const auto current=snap(directory);
             step->click();

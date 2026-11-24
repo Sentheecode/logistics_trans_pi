@@ -8,7 +8,7 @@ import sqlite3
 collector, widgets, hmi, client = sys.argv[1:]
 
 def run(*args):
-    r=subprocess.run(args,capture_output=True,text=True,timeout=45)
+    r=subprocess.run(args,capture_output=True,text=True,timeout=90)
     assert r.returncode==0,(r.stdout,r.stderr)
     print(r.stdout)
 

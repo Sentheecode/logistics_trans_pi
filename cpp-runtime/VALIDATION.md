@@ -1,10 +1,10 @@
 # 当前验证记录
 
-本轮按内部设计原型改运行页和采集页。运行页是一张连续工位工作面，140 在行内展开本轮三车阶段，阶段只标当前帧，不写死原型里的分拣单号或帧号。排序区三保持 210/220 的正式名称和短空态。采集页分开最近快照和数据源绑定。手自动、单步和断链放在采集页，只在已绑定模拟的 PLC 上显示，自动时禁用原因仍可见。运行页只留采集详情入口。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。公开预发布包本轮不更新。
+本轮只修日志列表的半行，并复跑晨间候选的交互回归。运行页和采集页的已定样式没有重做。日志视口高度按 28px 行对齐，滚到头、中、尾以及筛选后都只显示完整行，正文字号仍是 14px。手自动、单步和断链仍只在采集页。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。公开预发布包本轮不更新，现有 Release `preview-windows-20261124-ui` 仍指向 `5a92900`。
 
 ## 本轮实测
 
-Linux 上使用 GCC 13.3.0、CMake 3.28.3、SQLite 3.45.1、Qt 6.4.2、Python 3.12.3、nlohmann/json 3.11.3。Qt 配置提示缺少 XKB 开发文件。测试使用 offscreen；截图使用 xvfb，并把 Fontconfig 限制为 DejaVu，系统里的文泉驿和 Droid Sans Fallback 不可见。
+Linux 上使用 GCC 13.3.0、CMake 3.28.3、SQLite 3.45.1、Qt 6.4.2、Python 3.12.3、nlohmann/json 3.11.3。Qt 配置提示缺少 XKB 开发文件。`ctest` 使用 offscreen。日志截图和关窗再开使用 xvfb 的 xcb，字体由 exe 旁的 Noto Sans CJK SC 加载，两次 HMI 都报告 `ui_font=Noto Sans CJK SC`、`cjk_glyph=yes`。没有用 `diagnose` 代替界面验收。
 
 ```bash
 cmake -S cpp-runtime -B /tmp/logistics-qt -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
@@ -12,9 +12,11 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过。`widgets_controls` 覆盖 1100×650 与 1280×800，并检查工位表、行内阶段、操作按钮互不遮挡。导航没有线体或业务模式下拉。外装同时显示 140/150/160，只有 140 展开模拟；排序区三不出现 140 的帧或模拟源。切页、展开详情和切换 PLC 不改变采集。字体从 exe 旁的 `fonts` 目录加载。截图在 xvfb 下生成，Fontconfig 只有 DejaVu，界面仍报告 `cjk_glyph=yes`。这不是 Windows 实机，也不是最终视觉验收。
+结果：**11/11** 通过。`widgets_controls` 在真实控件上走完外装自动、手动、单步、模拟断链、恢复和回到自动；手动和断链期间各切到排序区三再切回；展开 150/160 再收回 140。采集进程的 boot、模式和修订号保持不变，三页不出现 140 的帧。同一测试在 xvfb/xcb 下再跑一遍，1100×650 与 1280×800 的日志视口高度分别是 308 和 448，都能被 28 整除。滚动到头、中、尾时首行贴齐视口顶，底边 3px 没有文字像素。筛选后的可见行同样完整。
 
-Windows 便携包由 `windows-preview.yml` 在 Windows runner 上构建。包内只有 `Logistics.exe`。冒烟要求 `cjk_glyph=yes`。本段写下时，这次 Windows 构建尚未在本机执行。
+另起采集进程，用 sqlite 直接读 `runtime_state`：HMI 关闭后序号从 4 增到 7，boot 仍是 `e6427dfe6fca38cf73c01cf0fe39dc4f`，模式仍是自动，进程还在。再次打开 HMI，boot 不变，序号继续到 10。
+
+这不是 Windows 实机，也不是 DPI 验收。Windows 便携包仍由 `windows-preview.yml` 构建，包内文件名是 `Logistics-Preview-Windows-x64.zip`，内部产物名是 `windows-preview-verified`。本段写下时，这次提交的 Windows 构建尚未在本机执行。
 
 ## 此前记录
 

@@ -29,7 +29,6 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QShowEvent>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStackedWidget>
@@ -156,30 +155,52 @@ void setFigure(QTableWidgetItem* item) {
 }
 class SnapTable : public QTableWidget {
 public:
-    using QTableWidget::QTableWidget;
-    void snap() {
-        if (snapping_) return;
-        snapping_=true;
-        const int sample=rowCount()>0 ? std::max(1, rowHeight(0)) : std::max(1, verticalHeader()->defaultSectionSize());
-        const int header=horizontalHeader()->isHidden() ? 0 : horizontalHeader()->height();
-        const int avail=height()-header-frameWidth()*2;
-        const int extra=avail>sample ? avail%sample : 0;
-        const int gutter=verticalScrollBar()->isVisible() ? verticalScrollBar()->sizeHint().width() : 0;
-        const auto margins=viewportMargins();
-        if (margins.bottom()!=extra || margins.right()!=gutter) setViewportMargins(0, 0, gutter, extra);
-        snapping_=false;
+    SnapTable() {
+        setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
+        verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+        connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int){ alignOffset(); });
     }
+    void snap() { updateGeometries(); }
 protected:
-    void resizeEvent(QResizeEvent* event) override {
-        QTableWidget::resizeEvent(event);
-        snap();
-    }
-    void showEvent(QShowEvent* event) override {
-        QTableWidget::showEvent(event);
-        snap();
+    // QTableView clears the bottom margin, and scrolling to the end uses the
+    // header height rather than this viewport. Both can leave a partial row.
+    void updateGeometries() override {
+        if (locking_) return;
+        locking_=true;
+        QTableWidget::updateGeometries();
+        const int sample=rowSample();
+        const int height=viewport()->height();
+        const int slack=(sample>1 && height>sample) ? height%sample : 0;
+        if (slack>0) {
+            const QMargins margins=viewportMargins();
+            setViewportMargins(margins.left(), margins.top(), margins.right(), margins.bottom()+slack);
+        }
+        alignOffset();
+        locking_=false;
     }
 private:
-    bool snapping_=false;
+    int rowSample() const {
+        const int fallback=std::max(1, verticalHeader()->defaultSectionSize());
+        for (int row=0; row<rowCount(); ++row) {
+            if (!isRowHidden(row)) return std::max(1, rowHeight(row));
+        }
+        return fallback;
+    }
+    void alignOffset() {
+        if (aligning_) return;
+        const int sample=rowSample();
+        const int view=viewport()->height();
+        if (sample<=1 || view<=sample) return;
+        const int maxOffset=std::max(0, verticalHeader()->length()-view);
+        int offset=std::clamp(verticalHeader()->offset(), 0, maxOffset);
+        offset-=offset%sample;
+        if (offset==verticalHeader()->offset()) return;
+        aligning_=true;
+        verticalHeader()->setOffset(offset);
+        aligning_=false;
+    }
+    bool locking_=false;
+    bool aligning_=false;
 };
 void fitRows(QTableWidget* table, int rowHeight) {
     if (!table) return;
@@ -1629,6 +1650,7 @@ void Workbench::applyLogFilter() {
         logEmpty_->setText(logTable_->rowCount()==0 ? "还没有日志。模拟动作发生后才会出现。" : "没有符合筛选的记录。源日志仍在。");
     }
     showLogDetail();
+    if (auto* table=dynamic_cast<SnapTable*>(logTable_)) table->snap();
 }
 void Workbench::showLogDetail() {
     if(!logDetail_ || !logTable_) return;
