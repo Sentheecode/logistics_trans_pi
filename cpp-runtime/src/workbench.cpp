@@ -205,6 +205,7 @@ QString consoleStyle() {
         QWidget#identityBar QLabel { color:#f2faf9; }
         QWidget#commandPane { background:#edf4f4; border-top:1px solid #b8cccc; }
         QLabel#runHint { background:#e3eeee; color:#214c50; padding:5px 8px; }
+        QLabel#simOrder { background:#e3eeee; color:#214c50; padding:5px 8px; }
         QLabel#scopeBanner[state="warn"] { background:#fff2d9; color:#744509; padding:4px; }
         QTableWidget#stageTable::item:selected { background:#d1e9e7; color:#123d42; }
         QLabel#currentStation, QLabel#runtimeState { background:#23565b; border:1px solid #478084; padding:3px 10px; font-weight:700; }
@@ -454,7 +455,7 @@ Workbench::Workbench(std::filesystem::path directory)
 
     schematic_=new SchematicView;
     schematic_->setMinimumHeight(88);
-    schematic_->setMaximumHeight(96);
+    schematic_->setMaximumHeight(184);
     schematic_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     cardRow_=new QWidget;
     cardRow_->setFixedHeight(44);
@@ -548,7 +549,7 @@ Workbench::Workbench(std::filesystem::path directory)
     overview->setObjectName("surface");
     overview->setMinimumWidth(295);
     auto* overviewLayout=new QVBoxLayout(overview);
-    overviewLayout->setContentsMargins(8, 8, 8, 8);
+    overviewLayout->setContentsMargins(8, 4, 8, 4);
     overviewLayout->setSpacing(4);
     auto* overviewLabel=new QLabel("本 PLC 概览", overview);
     overviewLabel->setObjectName("section");
@@ -572,7 +573,7 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(recentTable_, {"时间", "记录"});
     recentTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     recentTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    recentTable_->setMinimumHeight(96);
+    recentTable_->setMinimumHeight(76);
     recentTable_->verticalHeader()->setDefaultSectionSize(28);
     recentTable_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     auto* recentLabel=new QLabel("近期记录", workspace);
@@ -582,6 +583,10 @@ Workbench::Workbench(std::filesystem::path directory)
     recentScope->setWordWrap(true);
     recentScope->hide();
     rightLayout->addWidget(facts);
+    simOrder_=new QLabel(right);
+    simOrder_->setObjectName("simOrder");
+    simOrder_->setWordWrap(true);
+    rightLayout->addWidget(simOrder_);
     resultTable_=new QTableWidget(right);
     resultTable_->setObjectName("runResultTable");
     prepareTable(resultTable_, {"执行与采集", "当前结果"});
@@ -614,8 +619,9 @@ Workbench::Workbench(std::filesystem::path directory)
     prepareTable(stageTable_, {"小车", "阶段", "说明"});
     stageTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     stageTable_->setSelectionMode(QAbstractItemView::SingleSelection);
-    stageTable_->verticalHeader()->setDefaultSectionSize(25);
-    stageTable_->setFixedHeight(122);
+    stageTable_->verticalHeader()->setDefaultSectionSize(22);
+    stageTable_->horizontalHeader()->setStyleSheet("QHeaderView::section { padding:3px 8px; }");
+    stageTable_->setFixedHeight(112);
     stageTable_->horizontalHeader()->setSectionResizeMode(2,QHeaderView::Stretch);
     leftLayout->addWidget(stageTable_);
     stageGuide_=new QLabel(left);
@@ -1505,24 +1511,29 @@ void Workbench::render() {
     interfaceLine_->setText(selection_.factory_id!=catalog::kFactory ? "关联系统 · 未配置" : area && area->code=="seq"
         ? "华睿：未连接 · 汇总/严控与完成协议未定 · 不填假数量"
         : "库卡：未授权通行 · LWMS：未连接 · 库位映射待补");
-    const bool carts_known=available_ && !view_.rows.empty() && view_.rows.front().quality=="good" && view_.freshness!="clock_uncertain" && (view_.runtime.mode=="manual" || view_.freshness=="recent");
-    std::vector<StationGlyph> glyphs;
-    for (auto* item : catalog_.stations_of(selection_.plc_id)) {
-        StationGlyph glyph;
-        glyph.id=item->id;
-        glyph.number=QString::fromStdString(item->name);
-        glyph.live=catalog_.is_live(item->id);
-        if (glyph.live && glyph.id==selection_.station_id && !view_.rows.empty()) {
-            glyph.carts_known=true;
-            for (int index=0; index<3; ++index) {
-                const auto raw=carts_known ? view_.rows.front().carts[index] : "UNKNOWN";
-                glyph.cart[index]=carts_known ? stateText(raw) : QString("状态未知");
-                glyph.cart_mark[index]=cartMark(raw);
-            }
-        }
-        glyphs.push_back(glyph);
+    // One projection of the selected station's current frame feeds the order and the shared lane.
+    CartLane lane;
+    lane.visible=live;
+    int completed=0;
+    for (int index=0;index<3;++index) {
+        const auto raw=good ? view_.rows.front().carts[index] : "UNKNOWN";
+        lane.states[index]=stateText(raw);
+        lane.marks[index]=good ? cartMark(raw) : CartMark::none;
+        if (raw=="scanning" || raw=="sorting" || raw=="blocked") lane.target=index;
+        if (raw=="station_complete") ++completed;
     }
-    schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), area ? QString::fromStdString(area->code) : QString(), glyphs, selection_.station_id);
+    simOrder_->setVisible(live);
+    const QString target=lane.target>=0 ? QString("料车 %1").arg(lane.target+1)
+        : good ? "当前无活动料车" : "目标未知";
+    const QString progress=good ? QString("%1 / 3 台工位完成").arg(completed) : "进度未知";
+    simOrder_->setText(live ? QString("模拟 LWMS 分拣单 SIM-SPS-01 · 模拟物料 A\n取料工位 %1 → %2 · %3")
+        .arg(QString::fromStdString(station->name),target,progress) : QString());
+    std::vector<StationGlyph> glyphs;
+    for (auto* item : catalog_.stations_of(selection_.plc_id))
+        glyphs.push_back({item->id,QString::fromStdString(item->name)});
+    schematic_->setMinimumHeight(live ? 142 : 108);
+    schematic_->setMaximumHeight(live ? 142 : 108);
+    schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), area ? QString::fromStdString(area->code) : QString(), glyphs, selection_.station_id,lane);
     if (cardRow_) for (auto* button : cardRow_->findChildren<QPushButton*>()) button->setChecked(button->property("stationId").toString().toStdString()==selection_.station_id);
     setRows(detailTable_, {
         {"工位", station ? QString::fromStdString(station->id+" "+station->name) : "未配置"},

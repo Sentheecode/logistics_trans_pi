@@ -180,7 +180,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error("schematic resource did not load");
         auto* stages=window.findChild<QTableWidget*>("stageTable");
         auto* result=window.findChild<QTableWidget*>("runResultTable");
-        if (!stages || !result) throw std::runtime_error("missing stage or result view");
+        auto* order=window.findChild<QLabel*>("simOrder");
+        if (!stages || !result || !order) throw std::runtime_error("missing stage or result view");
         const auto shown=schematic->shapeIds();
         if (shown.size()!=3 || !shown.contains(catalog::kStation140) || !shown.contains(catalog::kStation150) || !shown.contains(catalog::kStation160) || shown.contains(catalog::kStation210) || shown.contains(catalog::kStation20))
             throw std::runtime_error("layout showed stations outside the current PLC");
@@ -193,7 +194,7 @@ int main(int argc, char** argv) {
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"diagnosticButton","currentStation","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","runResultTable","recentTable","commandPane"})
+            for (auto name : {"diagnosticButton","currentStation","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
                 assert_inside(window,name);
         }
         auto* liveDialog=open_diagnostic(window,"日志");
@@ -292,12 +293,19 @@ int main(int argc, char** argv) {
         if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
         logs->setCurrentCell(0,0);
         const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
+        if (!schematic->showsCarts() || !order->text().contains("模拟 LWMS 分拣单"))
+            throw std::runtime_error("live order or separate cart lane missing");
+        const int target=schematic->targetCart();
+        if (target>=0 && !order->text().contains(QString("料车 %1").arg(target+1)))
+            throw std::runtime_error("order target and diagram diverged");
         const auto before_break=snap(directory);
         link->click();
         wait([&]{ return link->isEnabled() && snap(directory).seq==before_break.seq+1; });
         if (!selectedLog.isValid() || logs->currentRow()<=0 ||
             logs->item(logs->currentRow(),0)->data(Qt::UserRole+4)!=selectedLog)
             throw std::runtime_error("new logs changed the selected record");
+        if (schematic->targetCart()!=-1 || !order->text().contains("进度未知") || !order->text().contains("目标未知"))
+            throw std::runtime_error("bad frame reported an inferred target or progress");
         auto broken=snap(directory);
         if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
             throw std::runtime_error("manual disconnect did not stay on the same collector");
@@ -312,6 +320,8 @@ int main(int argc, char** argv) {
         pump(120);
         auto* reason=window.findChild<QLabel*>("controlReason");
         if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("station 150 looked like the control target");
+        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->isVisible() || !order->text().isEmpty())
+            throw std::runtime_error("unbound station borrowed the order or carts");
         const auto frozen=snap(directory);
         step->click();
         pump(400);

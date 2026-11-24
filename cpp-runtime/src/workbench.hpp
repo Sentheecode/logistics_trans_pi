@@ -77,7 +77,7 @@ private:
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
     QWidget *cardRow_=nullptr;
-    QLabel *stageGuide_=nullptr;
+    QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
     SchematicView* schematic_=nullptr;

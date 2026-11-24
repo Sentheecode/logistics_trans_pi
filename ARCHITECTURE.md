@@ -199,3 +199,14 @@ npm test --prefix runtime
 ### Codex 复查入口
 
 继续使用 https://github.com/Sentheecode/logistics_trans_pi/tree/experiment/cpp-runtime 。先读本段、[构建与启动](cpp-runtime/README.md) 和 [验证记录](cpp-runtime/VALIDATION.md)，再看 `cpp-runtime/src/catalog.*`、`schematic.*`、`workbench.*`、`resources/*.svg`、`tests/catalog.cpp` 与 `tests/widgets.cpp`。不要改 `main`，不要 force-push，不要为界面改领域、旧 Node/Pi 或信箱协议，不要添加设备地址或网络写入。复查时重跑上面三条命令；截图用 `hmi` 的捕获参数重新生成，不要把 PNG 提交进仓库。
+
+### 模拟分拣单与共用通道
+
+单屏用一个固定的合成示例单和物料展示链路。当前目标从同一可信模拟帧中处于扫码、分拣或阻塞的料车取出。工位完成进度只计该帧中明确完成的料车。等待间隔可以没有活动目标，坏质量和自动运行中过期帧显示目标及进度未知。该视图不建立额外的订单状态机或回执。
+
+拓扑分别绘制固定工位的货架与机械臂，以及共用通道的三台料车。料车高亮与单据目标来自相同的帧投影，图中位置仅为示意，不对应工位映射、坐标或行驶方向。只有已绑定的 SPS 工位显示单据和料车，其他工位只显示配置拓扑。原工位选择和模拟控制权限不受影响。
+
+
+### 后续维护入口
+
+本仓库仅做物流，不纳入灯光检测和无人检测。单屏和采集边界见 [ADR 0001](docs/adr/0001-logistics-workbench.md)。物流 MCP 运维只作为 [ADR 0002 提案](docs/adr/0002-logistics-mcp-operations-proposal.md) 保留，本轮未实现或部署。后续接手先读 [协作规则](AGENTS.md) 和 [验证记录](cpp-runtime/VALIDATION.md)。下一步可在只读模拟范围内补 Windows 验收，实际生产接口再另行评审。

@@ -288,3 +288,9 @@ Linux GCC 14.2、Qt 6.8.2、SQLite 3.46.1。分别从空目录运行 Release 配
 Linux 复用 Qt Release 与无 Qt 核心构建。运行 `cmake --build /tmp/cpp-review-qt -j6`、`ctest --test-dir /tmp/cpp-review-qt -j4 --output-on-failure`、`ctest --test-dir /tmp/cpp-review-core -j4 --output-on-failure` 及 `npm test --prefix runtime`。回归包括 1100×650 和 1280×800 的主屏控件边界、诊断六个入口及关闭后的选择、工位范围隔离、手自动操作和旧库迁移。通过 Qt offscreen 与临时模拟库抓取界面，截图不进入 Git。Windows 构建、DPI、字体、文件锁及现场部署未验证。
 
 结果：Qt 8/8、核心 6/6、旧 Node 49/49 通过。已查看自动、手动、模拟告警和排序区实际截图。
+
+### 模拟分拣单、共用通道及运维提案
+
+基线 `9feb0bf`。用既有 Linux Release Qt / 核心构建目录重新构建界面并执行回归。Qt 8/8、核心 6/6、旧 Node 49/49。界面回归覆盖模拟订单和目标一致、坏帧时目标及进度未知、切换非绑定站不展示料车或订单，以及原来的主屏尺寸、手自动、诊断和生命周期测试。
+
+在全新临时模拟目录运行 collector，以 Qt offscreen 分别捕获 1280×800 SPS 正常、1100×650 阻塞告警及 1100×650 排序区。目视确认三台料车与固定工位分开，紧凑主屏和操作保持可见。图片单独交付。Windows、真实布局和生产接口未验收。[运维提案](../docs/adr/0002-logistics-mcp-operations-proposal.md)仅做文档链接和文本检查，无 MCP 实现、服务或测试结果。
