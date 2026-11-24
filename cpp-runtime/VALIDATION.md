@@ -38,3 +38,5 @@ git diff --check
 - 核心回归覆盖模拟采集、手自动、历史迁移、范围、日志、监督回收与有限重启。Qt 验证真实控件、大小、隔离和刷新。新增数值分桶验证半开边界、时间戳回退、有效零、坏质量 null 与 CLI/MCP 输出一致。
 
 Windows EXE 构建、运行、文件锁和 SQLite 恢复，真实厂区、正式证书、单机到双机再到八台的内网验收均未执行。能力差异见 [迁移记录](../docs/cpp-migration.md)；远程接入与回退见 [部署说明](deploy/README.md)。
+
+Windows 便携包的单独验收入口见 [Windows 预览构建](deploy/windows/README.md)。Windows 结果以该提交的独立构建与解压验证为准。

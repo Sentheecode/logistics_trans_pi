@@ -30,6 +30,8 @@ HMI 不启动/停止采集；关窗和重开都不会改变模式或推进任务
 
 ## Windows 下载、构建、启动（非管理员）
 
+便携 ZIP 的生成与验收见[预览构建手册](deploy/windows/README.md)。
+
 在 **MSYS2 MINGW64** 终端操作，示例所有文件均放 D:。不是 UCRT64；不要求 Ninja。已有依赖时跳过安装。下列 pacman 使用当前配置仓库，不承诺自动得到指定版本；先检查 Qt、GCC 和 CMake 实际版本。若使用已有 Qt 6.11.1，必须确认它与当前 MinGW 编译器/架构匹配，设置其安装前缀和 bin；不能混用 MSVC、UCRT 或其他项目 DLL。
 
 ```bash
@@ -41,7 +43,7 @@ git rev-parse HEAD
 # 已有上一版目录：确认没有未提交改动后用 git pull --ff-only origin experiment/cpp-runtime 更新。
 
 # 在用户可写的 D:/msys64 内安装开发包，不需要 Windows 管理员权限。
-pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-nlohmann-json mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
+pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-sqlite mingw-w64-x86_64-nlohmann-json mingw-w64-x86_64-qt6-base mingw-w64-x86_64-python
 export PATH=/mingw64/bin:$PATH
 g++ --version
 cmake --version

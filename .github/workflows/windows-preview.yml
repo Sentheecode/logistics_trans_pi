@@ -1,0 +1,86 @@
+name: Windows portable preview
+
+on:
+  push:
+    branches: [experiment/cpp-runtime]
+    paths:
+      - '.github/workflows/windows-preview.yml'
+      - 'cpp-runtime/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2.34.0
+        with:
+          msystem: MINGW64
+          update: true
+          cache: false
+          install: >-
+            mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-sqlite
+            mingw-w64-x86_64-nlohmann-json
+      - name: Build and stage the preview
+        shell: msys2 {0}
+        run: |
+          cmake -S cpp-runtime -B build-preview -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_MCP_HTTP=OFF -DBUILD_OPCUA_LOOPBACK_FIXTURE=OFF
+          cmake --build build-preview --parallel 4
+          bash cpp-runtime/deploy/windows/stage.sh build-preview preview-stage
+      - name: Make ZIP and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory preview-artifact
+          $zip = 'Logistics-Preview-Windows-x64.zip'
+          Compress-Archive -Path preview-stage/* -DestinationPath "preview-artifact/$zip"
+          $hash = (Get-FileHash "preview-artifact/$zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content "preview-artifact/$zip.sha256" "$hash  $zip" -Encoding ascii
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-preview-candidate
+          path: preview-artifact/
+          if-no-files-found: error
+          retention-days: 7
+
+  clean-smoke:
+    runs-on: windows-2022
+    needs: build
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-preview-candidate
+          path: preview-artifact
+      - name: Extract and run without a development PATH
+        shell: pwsh
+        run: |
+          $zip = 'Logistics-Preview-Windows-x64.zip'
+          $expected = (Get-Content "preview-artifact/$zip.sha256").Split(' ')[0]
+          $actual = (Get-FileHash "preview-artifact/$zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expected -ne $actual) { throw 'ZIP checksum mismatch' }
+          $clean = Join-Path $env:RUNNER_TEMP 'Logistics clean preview'
+          Expand-Archive "preview-artifact/$zip" -DestinationPath $clean
+          if (-not ((Get-Content "$clean/BUILD-INFO.txt") -contains "source $env:GITHUB_SHA")) {
+            throw 'Package source SHA mismatch'
+          }
+          python cpp-runtime/deploy/windows/smoke.py "$clean"
+          if ($LASTEXITCODE -ne 0) { throw "Preview smoke failed ($LASTEXITCODE)" }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-preview-verified
+          path: preview-artifact/
+          if-no-files-found: error
+          retention-days: 14
