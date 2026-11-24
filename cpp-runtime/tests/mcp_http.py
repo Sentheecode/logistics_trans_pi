@@ -68,6 +68,13 @@ def client(scenario, port, root, cert):
     assert post(port, token=token, tls=tls, http_method="GET")[0] == 405
     assert post(port, token=token, tls=tls, path="/other")[0] == 404
     assert tool(port, "stn.140", token=token, tls=tls)["structuredContent"]["station"] == "stn.140"
+    minute = int(time.time()) // 60 * 60000
+    code, payload = post(port, "tools/call", {"name": "history", "arguments": {
+        "station": "stn.140", "tag": "sim.completed_carts", "bucket_ms": 60000,
+        "from_utc_ms": minute - 60000, "to_utc_ms": minute + 60000,
+    }}, token=token, tls=tls)
+    assert code == 200 and not payload["result"]["isError"]
+    assert sum(bucket["usable_values"] for bucket in payload["result"]["structuredContent"]["buckets"]) == 5
     denied = tool(port, "stn.999", token=token, tls=tls)
     assert denied["isError"] and denied["structuredContent"] == {"error": "scope_denied"}
     assert post(port, token=token, tls=tls, extra={"Host": "other.invalid"})[0] == 403

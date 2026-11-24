@@ -2,6 +2,7 @@
 #include <open62541/client_subscriptions.h>
 #include <open62541/server_config_default.h>
 
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -20,13 +21,74 @@ using Server = std::unique_ptr<UA_Server, decltype(&UA_Server_delete)>;
 constexpr UA_Int32 sample = 42;
 constexpr UA_DateTime source_time = UA_DATETIME_UNIX_EPOCH + UA_DATETIME_SEC;
 
+struct Reading {
+    const void* value;
+    const UA_DataType* type;
+    UA_StatusCode quality;
+};
+
 UA_StatusCode read_sample(UA_Server*, const UA_NodeId*, void*, const UA_NodeId*, void* context,
                          UA_Boolean include_time, const UA_NumericRange*, UA_DataValue* value) {
-    const auto status = UA_Variant_setScalarCopy(&value->value, context, &UA_TYPES[UA_TYPES_INT32]);
-    value->hasValue = status == UA_STATUSCODE_GOOD;
+    const auto& reading = *static_cast<const Reading*>(context);
+    if (reading.value) {
+        const auto copied = UA_Variant_setScalarCopy(&value->value, reading.value, reading.type);
+        if (copied != UA_STATUSCODE_GOOD) return copied;
+        value->hasValue = true;
+    }
+    value->status = reading.quality;
+    value->hasStatus = reading.quality != UA_STATUSCODE_GOOD;
     value->hasSourceTimestamp = include_time;
     value->sourceTimestamp = source_time;
-    return status;
+    return UA_STATUSCODE_GOOD;
+}
+
+bool timestamps_present(const UA_DataValue& value) {
+    return value.hasSourceTimestamp && value.sourceTimestamp == source_time
+        && value.hasServerTimestamp && value.serverTimestamp > source_time;
+}
+
+bool read_values(UA_Client* client, UA_UInt16 ns, UA_Int32 expected) {
+    std::array<UA_ReadValueId, 5> nodes{};
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        nodes[i].nodeId = UA_NODEID_NUMERIC(ns, static_cast<UA_UInt32>(i + 1));
+        nodes[i].attributeId = UA_ATTRIBUTEID_VALUE;
+    }
+    UA_ReadRequest request{};
+    request.timestampsToReturn = UA_TIMESTAMPSTORETURN_BOTH;
+    request.nodesToRead = nodes.data();
+    request.nodesToReadSize = nodes.size();
+    auto reply = UA_Client_Service_read(client, request);
+    bool ok = false;
+    if (reply.responseHeader.serviceResult == UA_STATUSCODE_GOOD && reply.resultsSize == nodes.size()) {
+        const auto& integer = reply.results[0];
+        const auto& boolean = reply.results[1];
+        const auto& number = reply.results[2];
+        const auto& bad = reply.results[3];
+        const auto& missing = reply.results[4];
+        ok = integer.status == UA_STATUSCODE_GOOD && integer.hasValue && timestamps_present(integer)
+             && UA_Variant_hasScalarType(&integer.value, &UA_TYPES[UA_TYPES_INT32])
+             && *static_cast<const UA_Int32*>(integer.value.data) == expected
+             && boolean.status == UA_STATUSCODE_GOOD && boolean.hasValue && timestamps_present(boolean)
+             && UA_Variant_hasScalarType(&boolean.value, &UA_TYPES[UA_TYPES_BOOLEAN])
+             && *static_cast<const UA_Boolean*>(boolean.value.data)
+             && number.hasStatus && number.status == UA_STATUSCODE_UNCERTAIN
+             && number.hasValue && timestamps_present(number)
+             && UA_Variant_hasScalarType(&number.value, &UA_TYPES[UA_TYPES_DOUBLE])
+             && *static_cast<const UA_Double*>(number.value.data) == 12.5
+             && bad.hasStatus && bad.status == UA_STATUSCODE_BADNODATA
+             && (!bad.hasValue || UA_Variant_isEmpty(&bad.value))
+             && missing.hasStatus && missing.status == UA_STATUSCODE_BADNODEIDUNKNOWN && !missing.hasValue;
+    }
+    if (!ok) {
+        for (std::size_t i = 0; i < reply.resultsSize; ++i) {
+            const auto& item = reply.results[i];
+            std::cerr << "batch item " << i << ": " << UA_StatusCode_name(item.status)
+                      << " value=" << item.hasValue << " source=" << item.hasSourceTimestamp
+                      << " server=" << item.hasServerTimestamp << '\n';
+        }
+    }
+    UA_ReadResponse_clear(&reply);
+    return ok;
 }
 
 bool read_fixture(const std::string& url, UA_UInt16 ns) {
@@ -37,29 +99,7 @@ bool read_fixture(const std::string& url, UA_UInt16 ns) {
     config->securityMode = UA_MESSAGESECURITYMODE_NONE;
     if (UA_Client_connect(client.get(), url.c_str()) != UA_STATUSCODE_GOOD)
         return false;
-
-    UA_ReadValueId nodes[2]{};
-    nodes[0].nodeId = UA_NODEID_NUMERIC(ns, 1);
-    nodes[1].nodeId = UA_NODEID_NUMERIC(ns, 2);
-    nodes[0].attributeId = nodes[1].attributeId = UA_ATTRIBUTEID_VALUE;
-    UA_ReadRequest request{};
-    request.timestampsToReturn = UA_TIMESTAMPSTORETURN_BOTH;
-    request.nodesToRead = nodes;
-    request.nodesToReadSize = 2;
-    auto reply = UA_Client_Service_read(client.get(), request);
-    bool ok = false;
-    if (reply.responseHeader.serviceResult == UA_STATUSCODE_GOOD && reply.resultsSize == 2) {
-        const auto& good = reply.results[0];
-        const auto& missing = reply.results[1];
-        ok = good.status == UA_STATUSCODE_GOOD && good.hasValue
-             && UA_Variant_hasScalarType(&good.value, &UA_TYPES[UA_TYPES_INT32])
-             && *static_cast<const UA_Int32*>(good.value.data) == sample
-             && good.hasSourceTimestamp && good.sourceTimestamp == source_time
-             && good.hasServerTimestamp && good.serverTimestamp > source_time
-             && missing.hasStatus && missing.status == UA_STATUSCODE_BADNODEIDUNKNOWN
-             && !missing.hasValue;
-    }
-    UA_ReadResponse_clear(&reply);
+    const auto ok = read_values(client.get(), ns, sample);
     UA_Client_disconnect(client.get());
     return ok;
 }
@@ -101,7 +141,7 @@ bool subscribe(const std::string& url, UA_UInt16 ns, int expected,
     change_uri(config->securityPolicyUri, "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
     const auto connected = UA_Client_connect(client.get(), url.c_str());
     if (!should_connect) return connected != UA_STATUSCODE_GOOD;
-    if (connected != UA_STATUSCODE_GOOD) return false;
+    if (connected != UA_STATUSCODE_GOOD || !read_values(client.get(),ns,expected)) return false;
 
     auto request = UA_CreateSubscriptionRequest_default();
     request.requestedPublishingInterval = 100;
@@ -181,18 +221,33 @@ bool serve(UA_UInt16 port, const std::string& url, UA_Int32 value, Certificate* 
         return false;
 
     const auto ns = UA_Server_addNamespace(server.get(), "urn:synthetic:loopback");
-    char name[] = "SyntheticSample";
-    auto attr = UA_VariableAttributes_default;
-    attr.accessLevel = UA_ACCESSLEVELMASK_READ;
-    attr.dataType = UA_TYPES[UA_TYPES_INT32].typeId;
-    UA_DataSource source{};
-    source.read = read_sample;
-    if (UA_Server_addDataSourceVariableNode(server.get(), UA_NODEID_NUMERIC(ns, 1),
-            UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER), UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
-            UA_QUALIFIEDNAME(ns, name), UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
-            attr, source, &value, nullptr) != UA_STATUSCODE_GOOD
-        || UA_Server_run_startup(server.get()) != UA_STATUSCODE_GOOD)
-        return false;
+    UA_Boolean enabled = true;
+    UA_Double measurement = 12.5;
+    std::array<Reading, 4> readings{{
+        {&value, &UA_TYPES[UA_TYPES_INT32], UA_STATUSCODE_GOOD},
+        {&enabled, &UA_TYPES[UA_TYPES_BOOLEAN], UA_STATUSCODE_GOOD},
+        {&measurement, &UA_TYPES[UA_TYPES_DOUBLE], UA_STATUSCODE_GOOD},
+        {&measurement, &UA_TYPES[UA_TYPES_DOUBLE], UA_STATUSCODE_GOOD}
+    }};
+    char names[][20] = {"SyntheticCount", "SyntheticEnabled", "SyntheticMeasure", "SyntheticNoData"};
+    for (std::size_t i = 0; i < readings.size(); ++i) {
+        auto attr = UA_VariableAttributes_default;
+        attr.accessLevel = UA_ACCESSLEVELMASK_READ;
+        attr.dataType = readings[i].type->typeId;
+        UA_DataSource source{};
+        source.read = read_sample;
+        if (UA_Server_addDataSourceVariableNode(server.get(), UA_NODEID_NUMERIC(ns, static_cast<UA_UInt32>(i + 1)),
+                UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER), UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                UA_QUALIFIEDNAME(ns, names[i]), UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE),
+                attr, source, &readings[i], nullptr) != UA_STATUSCODE_GOOD)
+            return false;
+    }
+    // The server validates initial variable types during node creation. Apply fixture
+    // quality after that check, before opening the listener.
+    readings[2].quality = UA_STATUSCODE_UNCERTAIN;
+    readings[3].quality = UA_STATUSCODE_BADNODATA;
+    readings[3].value = nullptr;
+    if (UA_Server_run_startup(server.get()) != UA_STATUSCODE_GOOD) return false;
 
     std::atomic<bool> finish{false};
     std::thread loop([&] {
@@ -220,7 +275,7 @@ int main(int argc, char** argv) {
 
     if (argc == 2) {
         const bool ok = serve(port, url, sample, nullptr, nullptr, [&](UA_UInt16 ns) { return read_fixture(url, ns); });
-        std::cout << (ok ? "Synthetic OPC UA Read passed (value, quality, timestamps, missing node)"
+        std::cout << (ok ? "Synthetic OPC UA batch Read passed (Int32, Boolean, Double, quality and timestamps)"
                          : "Synthetic OPC UA Read validation failed") << '\n';
         return ok ? 0 : 1;
     }

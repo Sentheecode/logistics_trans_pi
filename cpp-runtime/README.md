@@ -85,23 +85,40 @@ Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依�
 | 旧契约 | 当前 C++ 版 |
 |---|---|
 | query_tags / GET tags | 未实现 HTTP 兼容；status 仅展示合成三车帧 |
-| query_history / GET history | CLI 提供尾部、接收时间窗与事件时间帧统计；无 HTTP 契约、逐标签值聚合或覆盖证明 |
+| query_history / GET history | CLI 提供尾部、接收时间窗与事件时间帧统计；仅固定模拟标签提供数值聚合，无旧 HTTP 契约或覆盖证明 |
 | list_alarms / GET alarms | 未实现契约兼容；alarms 仅最新合成条件 |
 | search_logs / GET logs | CLI 提供保留日志、时间窗及 v4 淘汰计数；无旧筛选字段及时间覆盖证明 |
 | correlate_time_window / GET correlations | 未实现 |
 | health / events WebSocket | 未实现 |
 | 提案、确认和设备写入 | 未实现且无入口 |
 
-人工诊断使用 C++ CLI，客户端集成使用 [MCP](deploy/README.md)。完整差异见 [迁移验收表](../docs/cpp-migration.md)。
+人工诊断使用 C++ CLI，客户端集成使用 [MCP](deploy/README.md)。当前运行时全用 C++。旧格式、旧接口和可追溯版本见 [迁移验收表](../docs/cpp-migration.md)。
 
 ## MCP 工具与运行边界
 
-启动 `logistics-mcp DATA_DIR`，由 MCP 客户端在 stdio 协议上列出和调用工具。每次调用指定 `station: "stn.140"`。日志只返回序号、时间、允许的级别和分类及关联帧序号。历史默认返回 10 条，最多 40 条；同时给出 `from_utc_ms`、`to_utc_ms` 可按接收时间筛选；再提供 `bucket_ms` 则统计事件时间桶。报警是最近的模拟条件，并明确是否有当前有效证据。
+启动 `logistics-mcp DATA_DIR`，由 MCP 客户端在 stdio 协议上列出和调用工具。每次调用指定 `station: "stn.140"`。日志只返回序号、时间、允许的级别和分类及关联帧序号。历史默认返回 10 条，最多 40 条；同时给出 `from_utc_ms`、`to_utc_ms` 可按接收时间筛选；再提供 `bucket_ms` 则统计事件时间桶；同时指定 `tag` 可聚合该模拟数值标签。报警是最近的模拟条件，并明确是否有当前有效证据。
 
 Linux 可通过管理员批准的 [HTTPS 网关部署](deploy/README.md)。[验证记录](VALIDATION.md) 列出实际测试，Windows 和现场部署尚未执行。
 
 ## OPC UA 与恢复验证
 
-可选 `-DBUILD_OPCUA_LOOPBACK_FIXTURE=ON` 需要 open62541 1.4.11 CMake 包。测试仅在 IPv4 环回执行合成 Read，以及临时证书的加密订阅、信任拒绝、模拟服务重启后重新建立会话和订阅。默认采集器仍使用模拟适配器，真实设备及生产证书未接入。
+可选 `-DBUILD_OPCUA_LOOPBACK_FIXTURE=ON` 需要 open62541 1.4.11 CMake 包。测试仅在 IPv4 环回执行合成批量 Read，覆盖 Int32、Boolean、Double、Good、Uncertain、Bad、缺失点及时间戳，也验证临时证书加密订阅、信任拒绝及断开后重新建立会话和订阅。默认采集器仍使用模拟适配器，真实设备及生产证书未接入。
 
-SQLite 备份测试在独立目录验证完整性、帧和日志恢复以及重启续写。旧 JSONL 归档仍属于独立的 legacy 栈。对照见 [迁移表](../docs/cpp-migration.md)。
+## 模拟数值聚合与本机归档
+
+单工位提供 `sim.completed_carts` 与 `sim.blocked_carts`，由合成帧的三车状态计算。使用源时间、服务端时间、接收时间的优先顺序划桶，沿用 1 秒、1 分钟、1 小时的对齐半开窗口，最多 24 小时和 120 桶。每桶返回帧数、可用数值数和最小值、最大值、平均值。坏质量、断链或不完整状态不会计作零，全无可用值时三项统计为 null。有效状态下的真实零仍参与聚合。示例在 Linux 用当前一分钟及前一分钟作为窗口：
+
+```bash
+minute=$(( $(date +%s) / 60 * 60000 ))
+./build-logistics/diagnose DATA_DIR tag-rollup-json sim.completed_carts "$((minute - 60000))" "$((minute + 60000))" 60000
+```
+
+归档是单独的本机工具，MCP 没有此入口。输出目录必须由程序新建，SQLite 归档上限 64 MiB，操作预算 10 秒。可从采集运行中的库读取一致快照。恢复前做结构检查，快照和恢复库保留历史、日志、淘汰计数及已确认运行模式，清空采集心跳与启动标识。启动恢复目录中的采集器后，才会有新会话和当前证据。
+
+```bash
+./build-logistics/simulation-archive backup DATA_DIR NEW_ARCHIVE_DIR
+./build-logistics/simulation-archive restore NEW_ARCHIVE_DIR NEW_RESTORE_DIR
+./build-logistics/diagnose NEW_RESTORE_DIR snapshot-json 5
+```
+
+归档中只有 `simulation.sqlite`。需要恢复时只使用专用本地目录；如果进程被强制中断，可能留有半成品目录，复验后使用其他新目录运行。旧 JSONL 分段、旧 SQLite 格式和转换策略见 [迁移表](../docs/cpp-migration.md)。

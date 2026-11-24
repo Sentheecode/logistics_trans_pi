@@ -257,20 +257,28 @@ bool current_frame_usable(const View& view) {
         && view.rows.front().boot==view.runtime.boot && view.rows.front().quality=="good"
         && view.rows.front().link=="up";
 }
-std::vector<EventBucket> event_buckets(const std::filesystem::path& dir,TimeWindow window,int bucket_ms){
+bool valid_event_bucket_window(TimeWindow window,int bucket_ms) {
     constexpr std::int64_t max_utc_ms=253402300799999;
-    if ((bucket_ms!=1000 && bucket_ms!=60000 && bucket_ms!=3600000) ||
-        window.from_ms<0 || window.to_ms>max_utc_ms || window.from_ms>=window.to_ms ||
-        window.from_ms%bucket_ms || window.to_ms%bucket_ms ||
-        (window.to_ms-window.from_ms)/bucket_ms>120 || window.to_ms-window.from_ms>86400000)
+    return (bucket_ms==1000 || bucket_ms==60000 || bucket_ms==3600000)
+        && window.from_ms>=0 && window.from_ms<window.to_ms && window.to_ms<=max_utc_ms
+        && window.from_ms%bucket_ms==0 && window.to_ms%bucket_ms==0
+        && (window.to_ms-window.from_ms)/bucket_ms<=120 && window.to_ms-window.from_ms<=86400000;
+}
+namespace {
+void begin_event_query(Db& db, TimeWindow window, int bucket_ms, int& budget) {
+    if (!valid_event_bucket_window(window,bucket_ms))
         throw std::runtime_error("expected aligned UTC window, at most 24 hours and 120 buckets");
-    int budget=1000;
-    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);
-    d.exec("PRAGMA query_only=ON; BEGIN");
-    validate(d);
-    sqlite3_progress_handler(d.db,1000,[](void* remaining) {
+    db.exec("PRAGMA query_only=ON; BEGIN");
+    validate(db);
+    sqlite3_progress_handler(db.db,1000,[](void* remaining) {
         return --*static_cast<int*>(remaining)<=0 ? 1 : 0;
     },&budget);
+}
+}
+std::vector<EventBucket> event_buckets(const std::filesystem::path& dir,TimeWindow window,int bucket_ms){
+    int budget=1000;
+    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);
+    begin_event_query(d,window,bucket_ms,budget);
     Stmt s(d,R"SQL(
         WITH events AS (
           SELECT COALESCE(source_ms,server_ms,received_ms) AS ts,
@@ -293,6 +301,46 @@ std::vector<EventBucket> event_buckets(const std::filesystem::path& dir,TimeWind
     while(s.step()==SQLITE_ROW){
         auto at=[&](int i){return sqlite3_column_int64(s.s,i);};
         result.push_back({at(0),at(1),at(2),at(3),at(4),at(5),at(6),at(7),at(8),at(9),at(10)});
+    }
+    return result;
+}
+std::optional<NumericTag> numeric_tag(std::string_view id) {
+    if (id==kCompletedCartsTag) return NumericTag::completed_carts;
+    if (id==kBlockedCartsTag) return NumericTag::blocked_carts;
+    return std::nullopt;
+}
+std::vector<TagBucket> tag_buckets(const std::filesystem::path& dir,TimeWindow window,
+                                   int bucket_ms,NumericTag tag) {
+    int budget=1000;
+    Db d(dir/"simulation.sqlite",SQLITE_OPEN_READONLY);
+    begin_event_query(d,window,bucket_ms,budget);
+    Stmt s(d,R"SQL(
+        WITH values_at_time AS (
+          SELECT COALESCE(source_ms,server_ms,received_ms) AS ts,
+            CASE WHEN quality='good' AND link='up'
+               AND cart1 IN ('waiting','scanning','sorting','blocked','station_complete')
+               AND cart2 IN ('waiting','scanning','sorting','blocked','station_complete')
+               AND cart3 IN ('waiting','scanning','sorting','blocked','station_complete')
+               THEN (cart1=?4)+(cart2=?4)+(cart3=?4) END AS value
+          FROM frames
+        )
+        SELECT (ts/?1)*?1 AS bucket, count(*), count(value), min(value), max(value), avg(value)
+        FROM values_at_time WHERE ts>=?2 AND ts<?3 GROUP BY bucket ORDER BY bucket
+    )SQL");
+    s.integer(1,bucket_ms); s.integer(2,window.from_ms); s.integer(3,window.to_ms);
+    s.text(4, tag==NumericTag::completed_carts ? "station_complete" : "blocked");
+    std::vector<TagBucket> result;
+    while(s.step()==SQLITE_ROW) {
+        TagBucket b;
+        b.start_ms=sqlite3_column_int64(s.s,0);
+        b.samples=sqlite3_column_int64(s.s,1);
+        b.usable_values=sqlite3_column_int64(s.s,2);
+        if (b.usable_values) {
+            b.minimum=sqlite3_column_int(s.s,3);
+            b.maximum=sqlite3_column_int(s.s,4);
+            b.mean=sqlite3_column_double(s.s,5);
+        }
+        result.push_back(b);
     }
     return result;
 }

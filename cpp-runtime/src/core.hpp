@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 namespace sim {
 std::int64_t now_ms();
@@ -30,6 +31,18 @@ struct EventBucket {
 };
 std::vector<EventBucket> event_buckets(const std::filesystem::path& directory,
                                       TimeWindow window, int bucket_ms);
+inline constexpr auto kCompletedCartsTag="sim.completed_carts";
+inline constexpr auto kBlockedCartsTag="sim.blocked_carts";
+enum class NumericTag { completed_carts, blocked_carts };
+std::optional<NumericTag> numeric_tag(std::string_view id);
+struct TagBucket {
+    std::int64_t start_ms{}, samples{}, usable_values{};
+    std::optional<int> minimum, maximum;
+    std::optional<double> mean;
+};
+bool valid_event_bucket_window(TimeWindow window, int bucket_ms);
+std::vector<TagBucket> tag_buckets(const std::filesystem::path& directory, TimeWindow window,
+                                   int bucket_ms, NumericTag tag);
 struct LogRetention { std::int64_t evicted{}, evicted_through_id{}; };
 struct View { std::vector<Row> rows; std::vector<LogRecord> logs; std::optional<LogRetention> log_retention; bool more{}, logs_available{}; std::string freshness; RuntimeInfo runtime; };
 class Writer final : public HistorySink {

@@ -6,4 +6,4 @@
 
 公开提交仅用通用抽象和虚构示例，避免用户规划图、真实现场映射、内部地址、数据库、账号、凭据和现场配置。现场连接、写设备、生产部署另行授权。实验功能提交到约定实验分支，未经授权不得变更 main。
 
-旧 Node 证据、独有能力与移除记录集中在 [迁移验收表](docs/cpp-migration.md)。当前 C++ 和 MCP 验收无需 Node。按 [运维 ADR](docs/adr/0002-logistics-mcp-operations.md) 复跑协议、权限和界面回归；HTTP 显式启用并始终保留环回边界。
+当前检出只交付 C++ 运行时。旧 Node 代码、脚本、证据与移除记录集中在 [迁移验收表](docs/cpp-migration.md)。当前 C++ 和 MCP 验收无需 Node。按 [运维 ADR](docs/adr/0002-logistics-mcp-operations.md) 复跑协议、权限和界面回归；HTTP 显式启用并始终保留环回边界。

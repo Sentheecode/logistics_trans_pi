@@ -49,6 +49,26 @@ with tempfile.TemporaryDirectory() as base:
     for start, stop, width in [(1, 3000, 1000), (0, 121000, 1000), (0, 3000, 5000)]:
         assert run(diagnose, data, "rollup-json", str(start), str(stop), str(width)).returncode
 
+    # Numeric tags are fixed derived observations, with bad/null never treated as zero.
+    with closing(sqlite3.connect(Path(data)/"simulation.sqlite")) as db:
+        db.execute("UPDATE frames SET cart1='blocked', cart3='waiting' WHERE seq=1")
+        db.execute("UPDATE frames SET quality='bad' WHERE seq=5")
+        db.commit()
+
+    def tags(tag, start, stop, width):
+        result = run(diagnose, data, "tag-rollup-json", tag, str(start), str(stop), str(width), check=True)
+        return json.loads(result.stdout)["buckets"]
+
+    completed = tags("sim.completed_carts", 1000, 4000, 1000)
+    assert completed == [
+        dict(start_utc_ms=1000, samples=3, usable_values=1, min=3, max=3, avg=3),
+        dict(start_utc_ms=2000, samples=1, usable_values=1, min=1, max=1, avg=1),
+        dict(start_utc_ms=3000, samples=1, usable_values=0, min=None, max=None, avg=None),
+    ]
+    blocked, = tags("sim.blocked_carts", 0, 60000, 60000)
+    assert blocked == dict(start_utc_ms=0, samples=5, usable_values=2, min=0, max=1, avg=0.5)
+    assert run(diagnose, data, "tag-rollup-json", "unconfigured", "0", "60000", "60000").returncode
+
     if sys.platform == "linux":
         def start(name):
             d = Path(base)/name

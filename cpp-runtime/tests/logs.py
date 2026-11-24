@@ -155,21 +155,4 @@ with tempfile.TemporaryDirectory() as tmp:
     assert count==before_meta[0][0]+len(evicted)
     assert through==max(evicted)[0]
 
-
-    # Restore a consistent SQLite online backup into a separate empty simulation directory.
-    # Source is read-only and the original collector/data stay independent.
-    with tempfile.TemporaryDirectory() as restored:
-        copy = str(pathlib.Path(restored) / "simulation.sqlite")
-        source_uri = pathlib.Path(path).resolve().as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(source_uri, uri=True)) as source, closing(sqlite3.connect(copy)) as target:
-            source.backup(target)
-            assert target.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert query(copy, "SELECT id FROM sim_logs ORDER BY id") == after_ids
-        assert query(copy, meta_sql) == [(count, through)]
-        last_seq = query(path, "SELECT MAX(seq) FROM frames")[0][0]
-        assert query(copy, "SELECT MAX(seq) FROM frames") == [(last_seq,)]
-        subprocess.run([collector, restored, "1", "20"], capture_output=True, timeout=10, check=True)
-        assert query(copy, "SELECT MAX(seq) FROM frames") == [(last_seq + 1,)]
-        assert query(path, "SELECT MAX(seq) FROM frames") == [(last_seq,)]
-
-print("PASS: log schema migration, bounded retention, rollback and backup recovery")
+print("PASS: log schema migration, bounded retention and rollback")

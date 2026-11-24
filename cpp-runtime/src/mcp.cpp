@@ -53,8 +53,10 @@ Json schema(bool range, bool buckets) {
         properties["from_utc_ms"] = stamp;
         properties["to_utc_ms"] = stamp;
     }
-    if (buckets)
+    if (buckets) {
         properties["bucket_ms"] = {{"type", "integer"}, {"enum", {1000, 60000, 3600000}}};
+        properties["tag"] = {{"type", "string"}, {"enum", {sim::kCompletedCartsTag, sim::kBlockedCartsTag}}};
+    }
     return {{"type", "object"}, {"properties", std::move(properties)},
             {"required", Json::array({"station"})}, {"additionalProperties", false}};
 }
@@ -68,7 +70,7 @@ Json tool_list() {
         tool("status", "Read the simulation collector heartbeat and latest observed frame.", schema(false, false)),
         tool("alarms", "Read the latest observed simulation alarm condition and current-evidence flag.", schema(false, false)),
         tool("logs", "Read redacted simulation log metadata. Set both UTC bounds for a receive-time window.", schema(true, false)),
-        tool("history", "Read simulation frames. Set both UTC bounds for a receive-time window, or also set bucket_ms for event-time counts.", schema(true, true))
+        tool("history", "Read simulation frames. Set both UTC bounds for a receive-time window, or set bucket_ms for event-time counts. Include a tag for min/max/avg of that simulation metric.", schema(true, true))
     })}};
 }
 
@@ -92,7 +94,7 @@ Json read_tool(const std::filesystem::path& dir, const std::string& name, const 
         const auto& key = it.key();
         if (key == "station") continue;
         if (range && (key == "limit" || key == "from_utc_ms" || key == "to_utc_ms")) continue;
-        if (name == "history" && key == "bucket_ms") continue;
+        if (name == "history" && (key == "bucket_ms" || key == "tag")) continue;
         throw InvalidArguments{};
     }
 
@@ -106,16 +108,28 @@ Json read_tool(const std::filesystem::path& dir, const std::string& name, const 
         window = sim::TimeWindow{from, to};
     }
     Json result = {{"station", station}, {"simulation_only", true}, {"coverage", "unknown"}};
+    if (args.contains("tag") && !args.contains("bucket_ms")) throw InvalidArguments{};
     if (args.contains("bucket_ms")) {
         const auto width = static_cast<int>(integer(args["bucket_ms"], 1000, 3600000));
-        if (!window || args.contains("limit") || (width != 1000 && width != 60000 && width != 3600000)
-            || window->from_ms % width || window->to_ms % width
-            || (window->to_ms - window->from_ms) / width > 120)
+        if (!window || args.contains("limit") || !sim::valid_event_bucket_window(*window,width))
             throw InvalidArguments{};
         result["window"] = {{"from_inclusive", window->from_ms}, {"to_exclusive", window->to_ms},
                             {"basis", "event_utc_ms"}};
         result["bucket_ms"] = width;
         auto& buckets = result["buckets"] = Json::array();
+        if (args.contains("tag")) {
+            if (!args["tag"].is_string()) throw InvalidArguments{};
+            const auto tag = sim::numeric_tag(args["tag"].get_ref<const std::string&>());
+            if (!tag) throw InvalidArguments{};
+            result["tag"] = args["tag"];
+            const auto value = [](const auto& optional) { return optional ? Json(*optional) : Json(nullptr); };
+            for (const auto& b : sim::tag_buckets(dir, *window, width, *tag)) {
+                buckets.push_back({{"start_utc_ms", b.start_ms}, {"samples", b.samples},
+                                   {"usable_values", b.usable_values}, {"min", value(b.minimum)},
+                                   {"max", value(b.maximum)}, {"avg", value(b.mean)}});
+            }
+            return result;
+        }
         for (const auto& b : sim::event_buckets(dir, *window, width)) {
             buckets.push_back({{"start_utc_ms", b.start_ms}, {"samples", b.samples}, {"good", b.good},
                                {"bad", b.bad}, {"uncertain", b.uncertain}, {"unknown_quality", b.unknown_quality},

@@ -91,6 +91,20 @@ with tempfile.TemporaryDirectory() as temp:
     assert result(replies, 5)["frames"][0]["received_utc_ms"] == latest
     rollup = result(replies, 6)
     assert sum(b["samples"] for b in rollup["buckets"]) == 16 and rollup["coverage"] == "unknown"
+    tag_window = {**station, "from_utc_ms": minute - 60000, "to_utc_ms": minute + 60000,
+                  "bucket_ms": 60000}
+    tag_reply = run(data, [*launch,
+                           tool("history", {**tag_window, "tag": "sim.completed_carts"}, 1),
+                           tool("history", {**tag_window, "tag": "unknown"}, 2),
+                           tool("history", {**station, "tag": "sim.blocked_carts"}, 3)])
+    numeric = result(tag_reply, 1)
+    cli_tag = subprocess.run([diagnose, str(data), "tag-rollup-json", "sim.completed_carts",
+                              str(minute - 60000), str(minute + 60000), "60000"],
+                             capture_output=True, check=True, timeout=10)
+    assert numeric["buckets"] == json.loads(cli_tag.stdout)["buckets"]
+    assert sum(b["usable_values"] for b in numeric["buckets"]) == 13
+    for n in (2, 3):
+        assert result(tag_reply, n, True) == {"error": "invalid_tool_arguments"}
     assert result(replies, 7, True) == {"error": "scope_denied"}
     for n in (8, 9, 10):
         assert result(replies, n, True) == {"error": "invalid_tool_arguments"}

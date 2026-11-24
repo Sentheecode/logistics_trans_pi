@@ -68,7 +68,7 @@
 - 相同地址可有多条来源记录；配置 tag 的地址别名、重复启用规则需单独确认。预留行不能占用有效业务 tag 的写权限。
 - 下层点位带“多层物料不需要”说明，暂不推断当前工位是否启用；工位/物料适用条件待补充。
 
-可复算检查：`python3 scripts/inspect-station-140.py`。该工具只检查保存的来源，不连接 PLC，不改点表，不宣称 OPC UA 地址已验证。重复地址、写分节内仍标 PLC→PC 的行、非 BOOL 的 DBX 地址等作为执行准备项列出，而非擅自修改当前版本。
+该基线的可复算检查见 [历史审计脚本](https://github.com/Sentheecode/logistics_trans_pi/blob/89fae7b32595dc734f6bf173a393670cc2b1b086/scripts/inspect-station-140.py)。该工具只检查保存的来源，不连接 PLC，不改点表，不宣称 OPC UA 地址已验证。重复地址、写分节内仍标 PLC→PC 的行、非 BOOL 的 DBX 地址等作为执行准备项列出，而非擅自修改当前版本。
 
 本次整理共 116 行：PLC 给上位机 66 行，上位机给 PLC 50 行；有名称 75 行，斜杠预留 28 行，空名称 13 行。只读检查发现同分节重复地址 3 组、跨分节相同地址 31 个、写分节中原始方向为读取的行 34 条、非 BOOL 使用 DBX 记法 4 条。它们均在 `station-140-review.json` 引用具体来源行，保留 SHA256 便于识别版本；这些数字不代表 116 个可订阅的唯一 tag。
 
@@ -100,7 +100,7 @@ PLC 的“允许 AGV 进入/离开”是 PLC→PC 输入，本项目不能把它
 - operation：动作的一次实际执行及重启恢复状态；不能把执行实例状态写回静态 tag/process 配置行。
 - external_message_inbox/outbox：外部请求去重、回传重试与收发证据的持久记录，消息 ID 和幂等规则需厂商接口文档再定。
 
-这是本次提出的设计建议，不是用户已给定结构；当前不新增业务 DDL，也不安装厂商 SDK。原有 `db/001-infrastructure.sql` 仍是独立采集基础设施草案，不导入这些未完整映射的现场点位。
+这是本次提出的设计建议，不是用户已给定结构；当前不新增业务 DDL，也不安装厂商 SDK。旧版独立采集 DDL 见 [历史草案](https://github.com/Sentheecode/logistics_trans_pi/blob/89fae7b32595dc734f6bf173a393670cc2b1b086/db/001-infrastructure.sql)，不导入这些未完整映射的现场点位。
 
 基础字段建议如下，供下一轮与用户正式 process/tag 结构对齐；不是已建表或擅自新增的现场编码：
 
