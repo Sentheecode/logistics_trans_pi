@@ -77,8 +77,11 @@ private:
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
     QTableWidget *stationBoard_=nullptr;
-    QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
+    QLabel *stageGuide_=nullptr, *simOrder_=nullptr, *progressLabel_=nullptr, *pageScope_=nullptr;
     QTableWidget *resultTable_=nullptr;
+    QWidget *liveFace_=nullptr;
+    QString boardSignature_, expandedId_, expandedPlc_;
     void showStageResult();
+    void presentStations(bool live, bool good, const std::vector<const catalog::Station*>& rows);
     SchematicView* schematic_=nullptr;
 };

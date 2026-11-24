@@ -256,12 +256,12 @@ int main(int argc, char** argv) {
         wait([&]{ return history->rowCount()>0; });
         stages->setCurrentCell(1,0);
         pump(200);
-        if (!cell(result,"所选步骤").contains("小车2") || stages->currentRow()!=1)
-            throw std::runtime_error("stage selection did not survive refresh");
+        if (stages->rowCount()!=3 || stages->currentRow()!=1 || !order->isVisible())
+            throw std::runtime_error("stage rows did not stay visible after refresh");
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
+            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","scopeBanner","simOrder","commandPane","modeButton","primary","disconnectButton"})
                 assert_inside(window,name);
             assert_tabs_above_factory(window);
             auto bounds=[&](const char* name){
@@ -269,17 +269,14 @@ int main(int argc, char** argv) {
                 if (!widget || !widget->isVisible()) throw std::runtime_error(std::string("missing visible control ")+name);
                 return QRect(widget->mapTo(&window, QPoint(0, 0)), widget->size());
             };
-            const QRect resultBox=bounds("runResultTable");
-            const QRect recentHeading=bounds("recentLabel");
-            const QRect recentBox=bounds("recentTable");
+            const QRect boardBox=bounds("stationBoard");
             const QRect actions=bounds("commandPane");
             const QRect stageBox=bounds("stageTable");
-            const QRect guideBox=bounds("stageGuide");
-            if (resultBox.intersects(recentHeading) || recentHeading.intersects(recentBox) || recentBox.intersects(actions) || stageBox.intersects(guideBox))
+            const QRect banner=bounds("scopeBanner");
+            if (boardBox.intersects(actions) || boardBox.intersects(banner) || !boardBox.contains(stageBox.center()))
                 throw std::runtime_error("run page sections overlap");
-            if (guideBox.top()+4<stageBox.bottom()) throw std::runtime_error("current step note is not under the stage table");
-            if (recentHeading.top()+4<resultBox.bottom()) throw std::runtime_error("recent records cover the result table");
-            for (int column=0; column<board->columnCount(); ++column) {
+            if (actions.bottom()>window.height()) throw std::runtime_error("actions fall outside the window");
+            for (int column=0; column<std::min(3, board->columnCount()); ++column) {
                 auto* item=board->item(0, column);
                 auto* header=board->horizontalHeader();
                 if (!item || !header || std::abs(board->visualItemRect(item).x()-header->sectionViewportPosition(column))>3)
@@ -301,7 +298,17 @@ int main(int argc, char** argv) {
                 if (rect.bottom()<0 || rect.top()>=logs->viewport()->height()) continue;
                 if (rect.top()<0 || rect.bottom()>logs->viewport()->height()-1) ++partial;
             }
-            if (partial) throw std::runtime_error("log row is cut by the viewport");
+            if (partial) {
+                QString detail;
+                for (int row=0; row<logs->rowCount(); ++row) {
+                    if (logs->isRowHidden(row) || !logs->item(row, 0)) continue;
+                    const QRect rect=logs->visualItemRect(logs->item(row, 0));
+                    if (rect.bottom()<0 || rect.top()>=logs->viewport()->height()) continue;
+                    if (rect.top()<0 || rect.bottom()>logs->viewport()->height()-1)
+                        detail+=QString(" row %1 %2x%3..%4 vh %5 rh %6").arg(row).arg(rect.top()).arg(rect.bottom()).arg(rect.height()).arg(logs->viewport()->height()).arg(logs->rowHeight(row));
+                }
+                throw std::runtime_error(("log row is cut by the viewport"+detail).toStdString());
+            }
         }
         auto* module=window.findChild<QTabBar*>("moduleTabs");
         if (module->tabText(module->currentIndex())!="日志" || stages->isVisible())
@@ -311,8 +318,8 @@ int main(int argc, char** argv) {
         if (!stages->isVisible() || stages->currentRow()!=1 || !window.liveScope())
             throw std::runtime_error("returning to the run page changed station or stage");
         window.resize(1100,650);
-        if (stages->verticalScrollBar()->maximum()!=0 || result->verticalScrollBar()->maximum()!=0)
-            throw std::runtime_error("current stages or results require scrolling");
+        if (stages->verticalScrollBar()->maximum()!=0)
+            throw std::runtime_error("current stages require scrolling");
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
         auto* title=window.findChild<QLabel*>("title");
         auto requireSans=[&](QWidget* widget, const char* name) {
@@ -364,9 +371,9 @@ int main(int argc, char** argv) {
         const auto before_scope=snap(directory);
         if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcPack) || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("plc context hid the other stations");
-        if (board_row(window, "150", 3)!="未绑定" || board_row(window, "140", 3)!="模拟" || board_row(window, "140", 1)!="名称未登记")
+        if (board_row(window, "150", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览" || board_row(window, "140", 1)!="名称未登记")
             throw std::runtime_error("station source column is wrong");
-        if (board_row(window, "150", 2)!="未绑定模拟源" || board_row(window, "160", 4)!="没有模拟记录")
+        if (board_row(window, "150", 2)!="—" || board_row(window, "140", 2)!="三车分拣 · 本轮")
             throw std::runtime_error("sibling station reused station 140 records");
         const auto plc_before=plc->currentData().toString();
         click_station(window,catalog::kStation150);
@@ -416,7 +423,7 @@ int main(int argc, char** argv) {
         if (follow->text()!="恢复跟随") throw std::runtime_error("pause follow did not stick");
         logs->setCurrentCell(0,0);
         const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
-        if (schematic->showsCarts() || !order->text().contains("模拟 LWMS 分拣单") || !stages->isVisible())
+        if (schematic->showsCarts() || order->text().contains("SIM-01") || (!order->text().contains("取料工位") && !order->text().contains("当前无活动料车")) || !stages->isVisible())
             throw std::runtime_error("live order should stay on station 140, not a shared lane");
         const auto before_break=snap(directory);
         link->click();
@@ -478,7 +485,7 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcPack);
         if (schematic->shapeIds().size()!=3 || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("pack layout did not show all three stations");
-        if (board_row(window, "150", 4)!="没有模拟记录" || board_row(window, "140", 3)!="模拟")
+        if (board_row(window, "150", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览" || board_row(window, "150", 2).contains("140"))
             throw std::runtime_error("pack board leaked or hid station 140");
         const auto peers=cell(detail, "关联工位");
         if (!peers.contains(catalog::kStation140) || !peers.contains(catalog::kStation150) || !peers.contains(catalog::kStation160) || peers.contains(catalog::kStation210))
@@ -662,7 +669,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("sorting plc banner still names station 140");
         auto* owner=window.findChild<QLabel*>("acquisitionOwner");
         auto* hint=window.findChild<QLabel*>("previewHint");
-        if (!owner || owner->text()!="采集 · 外装" || !hint || !hint->isVisible() || hint->text()!="预览 · 排序区三" || hint->text().contains("140"))
+        if (!owner || owner->text()!="采集归属 外装" || !hint || !hint->isVisible() || hint->text()!="仅预览 · 采集归属仍为外装" || hint->text().contains("140"))
             throw std::runtime_error("preview changed the acquisition owner");
         window.resize(1100, 650);
         pump(80);
@@ -673,7 +680,7 @@ int main(int argc, char** argv) {
         if (noteTop<boardBottom-1) throw std::runtime_error("readiness note covers the station table");
         if (std::abs(note->mapTo(&window, QPoint(0, 0)).x()-board->mapTo(&window, QPoint(0, 0)).x())>12)
             throw std::runtime_error("readiness note is not left aligned with the station table");
-        if (board_row(window, "220", 2).isEmpty() || board_row(window, "220", 3).isEmpty() || board_row(window, "220", 4).isEmpty())
+        if (board_row(window, "220", 2)!="—" || board_row(window, "220", 3)!="未接入" || board_row(window, "210", 1)!="前悬架右前下摆臂总成")
             throw std::runtime_error("station 220 row is incomplete");
         for (int row=0; row<detail->rowCount(); ++row)
             if (detail->item(row, 0) && detail->item(row, 0)->text()=="线体")
