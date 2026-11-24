@@ -1150,8 +1150,8 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
         if(recentTable_) recentTable_->setRowCount(0);
         if(collectChanges_) collectChanges_->setRowCount(0);
         logTable_->setRowCount(0);
-        if(logEmpty_){ logEmpty_->setVisible(true); logEmpty_->setText("当前 PLC 未绑定模拟源。这里没有该 PLC 的日志。"); }
-        if(logDetail_) logDetail_->setText("没有当前 PLC 的记录。模拟免责声明只保留在日志页说明里。");
+        if(logEmpty_){ logEmpty_->setVisible(true); logEmpty_->setText("当前工位未绑定模拟源，此范围没有日志。"); }
+        if(logDetail_) logDetail_->setText("当前工位没有可查看的日志。");
         return;
     }
     const auto id=logs.empty()?0:logs.front().id;
@@ -1192,6 +1192,9 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
             ++index;
         }
     }
+    const auto* selected=logTable_->item(logTable_->currentRow(),0);
+    const auto selectedId=selected ? selected->data(Qt::UserRole+4).toLongLong() : -1;
+    int selectedRow=-1;
     logTable_->setRowCount(count);
     for(int i=0;i<count;++i){
         const auto& row=logs[static_cast<std::size_t>(i)];
@@ -1212,11 +1215,14 @@ void Workbench::refillLogs(const std::vector<sim::LogRecord>& logs) {
                 item->setData(Qt::UserRole+1, QString::fromStdString(row.category));
                 item->setData(Qt::UserRole+2, QString::fromStdString(row.level));
                 item->setData(Qt::UserRole+3, QString::fromStdString(row.text));
+                item->setData(Qt::UserRole+4, QVariant::fromValue<qlonglong>(row.id));
+                if(row.id==selectedId) selectedRow=i;
             }
             if(row.level=="warn" && column==1) item->setForeground(QColor("#8a5a12"));
             logTable_->setItem(i, column, item);
         }
     }
+    logTable_->setCurrentCell(selectedRow, selectedRow>=0 ? 0 : -1);
     applyLogFilter();
 }
 void Workbench::applyLogFilter() {

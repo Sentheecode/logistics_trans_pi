@@ -84,7 +84,8 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     if(scalar(*p->db,"PRAGMA user_version")==1){
         p->db->exec("BEGIN IMMEDIATE; CREATE TABLE runtime_state(id INTEGER PRIMARY KEY CHECK(id=1),mode TEXT NOT NULL,revision INTEGER NOT NULL,heartbeat_ms INTEGER NOT NULL,boot TEXT NOT NULL); INSERT INTO runtime_state VALUES(1,'automatic',0,0,''); PRAGMA user_version=2; COMMIT;");
     }
-    if(scalar(*p->db,"PRAGMA user_version")==2){
+    const bool needs_log_migration=scalar(*p->db,"PRAGMA user_version")==2;
+    if(needs_log_migration){
         p->db->exec("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS sim_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,received_ms INTEGER NOT NULL,level TEXT NOT NULL,category TEXT NOT NULL,object TEXT NOT NULL,text TEXT NOT NULL,frame_seq INTEGER); PRAGMA user_version=3; COMMIT;");
     }
     Stmt state(*p->db,"SELECT mode,revision FROM runtime_state WHERE id=1");
@@ -93,7 +94,7 @@ Writer::Writer(const std::filesystem::path& dir):p(std::make_unique<Impl>()) {
     if(p->info.revision<0||(p->info.mode!="manual"&&p->info.mode!="automatic"))throw std::runtime_error("invalid runtime mode");
     p->info.boot=p->boot;
     Stmt last(*p->db,"SELECT link,quality,event,cart1,cart2,cart3 FROM frames ORDER BY seq DESC LIMIT 1");
-    if(last.step()==SQLITE_ROW){
+    if(!needs_log_migration && last.step()==SQLITE_ROW){
         p->seen_frame=true;
         p->prev_link=last.text(0); p->prev_quality=last.text(1); p->prev_event=last.text(2);
         for(int i=0;i<3;++i) p->prev_carts[i]=last.text(3+i);
@@ -115,12 +116,13 @@ int Writer::last_phase() const{
     return static_cast<int>(phase);
 }
 void Writer::append(const Observation& observation){publish(&observation,p->info.mode);}
-void Writer::publish(const Observation* observation,const std::string& mode,bool command){
+void Writer::publish(const Observation* observation,const std::string& mode,bool command,const std::string& audit_text){
     if(mode!="manual"&&mode!="automatic")throw std::runtime_error("invalid mode");
     auto t=now_ms();
     auto ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-p->start).count();
     p->db->exec("BEGIN IMMEDIATE");
     try {
+        std::int64_t frame_seq=-1;
         if(observation){
         const auto& o=*observation;
         Stmt s(*p->db,"INSERT INTO frames(received_ms,source_ms,server_ms,boot,monotonic_ns,phase,cart1,cart2,cart3,quality,reason,link,alarm,event) VALUES(?,?,NULL,?,?,?,?,?,?,?,?,?,?,?)");
@@ -128,6 +130,7 @@ void Writer::publish(const Observation* observation,const std::string& mode,bool
         for(int i=0;i<3;++i)if(o.available)s.text(6+i,o.state.carts[i]);
         s.text(9,o.quality);s.text(10,o.reason);s.text(11,o.link);s.text(12,o.alarm);s.text(13,o.event);s.step();
         const auto seq=sqlite3_last_insert_rowid(p->db->db);
+        frame_seq=seq;
         const bool link_changed=!p->seen_frame || o.link!=p->prev_link;
         const bool quality_changed=!p->seen_frame || o.quality!=p->prev_quality;
         bool carts_changed=o.available && !p->seen_frame;
@@ -152,6 +155,7 @@ void Writer::publish(const Observation* observation,const std::string& mode,bool
         }
         Stmt status(*p->db,"UPDATE runtime_state SET mode=?,revision=?,heartbeat_ms=?,boot=? WHERE id=1");
         status.text(1,mode);status.integer(2,p->info.revision+(command?1:0));status.integer(3,t);status.text(4,p->boot);status.step();
+        if(!audit_text.empty())write_log(*p->db,t,"info","audit","local-sim",audit_text,frame_seq);
         p->db->exec("COMMIT");
         p->info.mode=mode;p->info.revision+=command?1:0;p->info.heartbeat_ms=t;p->info.liveness="recent";
     }catch(...){p->db->exec("ROLLBACK");throw;}

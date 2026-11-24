@@ -222,9 +222,14 @@ int main(int argc, char** argv) {
         auto* clock=window.findChild<QLabel*>("heartbeatState");
         if (!link || !link->isEnabled() || !banner || !clock) throw std::runtime_error("missing disconnect or clock");
         if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
+        logs->setCurrentCell(0,0);
+        const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
         const auto before_break=snap(directory);
         link->click();
         wait([&]{ return link->isEnabled() && snap(directory).seq==before_break.seq+1; });
+        if (!selectedLog.isValid() || logs->currentRow()<=0 ||
+            logs->item(logs->currentRow(),0)->data(Qt::UserRole+4)!=selectedLog)
+            throw std::runtime_error("new logs changed the selected record");
         auto broken=snap(directory);
         if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
             throw std::runtime_error("manual disconnect did not stay on the same collector");

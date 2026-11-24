@@ -30,7 +30,7 @@ public:
     Writer(const Writer&) = delete;
     Writer& operator=(const Writer&) = delete;
     void append(const Observation& observation) override;
-    void publish(const Observation* observation, const std::string& mode, bool command=false);
+    void publish(const Observation* observation, const std::string& mode, bool command=false, const std::string& audit_text={});
     void note(const std::string& level, const std::string& category, const std::string& object, const std::string& text, std::int64_t frame_seq=-1);
     RuntimeInfo info() const;
     int last_phase() const;

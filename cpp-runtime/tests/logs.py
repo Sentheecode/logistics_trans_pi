@@ -71,6 +71,32 @@ with tempfile.TemporaryDirectory() as tmp:
     if version2 != 3 or frames2 != frames + 1 or logs2 < 1:
         raise AssertionError(("v2", frames2, logs2, version2))
 
+    # Force an audit insert error in this disposable fixture. Mode and revision
+    # must roll back with it even if the collector exits before writing a reply.
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("""create trigger reject_audit before insert on sim_logs
+                      when new.category='audit' and new.level='info'
+                      begin select raise(abort,'synthetic audit failure'); end""")
+        db.commit()
+    state_sql = "select mode, revision from runtime_state"
+    previous_state = query(path, state_sql)
+    failing = subprocess.Popen([collector, tmp], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert failing.stdout.readline().startswith("SIMULATION_ONLY")
+        response = subprocess.run([client, tmp, "manual"], capture_output=True, text=True, timeout=8)
+        assert response.returncode != 0
+        failing.wait(timeout=5)
+        assert failing.returncode != 0 and "synthetic audit failure" in failing.stderr.read()
+        assert query(path, state_sql) == previous_state
+    finally:
+        if failing.poll() is None:
+            failing.kill()
+            failing.wait(timeout=5)
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("drop trigger reject_audit")
+        db.commit()
+    frames2 = counts(path)[0]
+
     before = frames2
     with closing(sqlite3.connect(path)) as db:
         db.execute("drop table runtime_state")

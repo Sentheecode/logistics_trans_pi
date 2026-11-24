@@ -17,28 +17,29 @@ int main(int argc,char** argv){
         int samples=0;
         while(!stopped&&(count==0||samples<count)){
             sim::poll_control(dir,[&](const sim::ControlRequest& request){
-                auto finish=[&](const std::string& result){
-                    writer.note(result=="ok"?"info":"warn","audit","local-sim","本地模拟操作发出 "+request.command+"，结果 "+result+"。没有操作者身份，不记录凭据。",-1);
+                auto audit=[&](const std::string& result){return "本地模拟操作发出 "+request.command+"，结果 "+result+"。没有操作者身份，不记录凭据。";};
+                auto reject=[&](const std::string& result){
+                    writer.note("warn","audit","local-sim",audit(result),-1);
                     return result;
                 };
                 auto info=writer.info();
-                if(request.boot!=info.boot)return finish("session_changed");
-                if(request.revision!=info.revision)return finish("stale_revision");
+                if(request.boot!=info.boot)return reject("session_changed");
+                if(request.revision!=info.revision)return reject("stale_revision");
                 if(request.command=="manual"){
-                    if(info.mode=="manual")return finish("already_manual");
-                    writer.publish(nullptr,"manual",true);
+                    if(info.mode=="manual")return reject("already_manual");
+                    writer.publish(nullptr,"manual",true,audit("ok"));
                 }else if(request.command=="automatic_confirmed"){
-                    if(info.mode!="manual")return finish("already_automatic");
-                    writer.publish(nullptr,"automatic",true);
+                    if(info.mode!="manual")return reject("already_automatic");
+                    writer.publish(nullptr,"automatic",true,audit("ok"));
                     next=std::chrono::steady_clock::now()+std::chrono::milliseconds(interval);
                 }else{
-                    if(info.mode!="manual")return finish("manual_required");
+                    if(info.mode!="manual")return reject("manual_required");
                     sim::Observation observation;
                     if(request.command=="step")observation=source.next();
                     else{observation.phase=writer.last_phase();observation.available=false;observation.quality="bad";observation.reason="disconnected";observation.link="down";observation.alarm="unknown";observation.event="SIM_MANUAL_DISCONNECT";}
-                    writer.publish(&observation,"manual",true);++samples;
+                    writer.publish(&observation,"manual",true,audit("ok"));++samples;
                 }
-                return finish("ok");
+                return std::string("ok");
             });
             auto now=std::chrono::steady_clock::now();
             if(writer.info().mode=="automatic"&&now>=next){writer.append(source.next());++samples;next=now+std::chrono::milliseconds(interval);}
