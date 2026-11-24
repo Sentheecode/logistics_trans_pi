@@ -4,6 +4,8 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDialog>
+#include <QMenu>
 #include <QLineEdit>
 #include <QDir>
 #include <QElapsedTimer>
@@ -62,26 +64,37 @@ void check_labels(QWidget& window) {
         if (!label->fontMetrics().inFont(QChar(0x6a21))) throw std::runtime_error("missing Chinese glyph");
     }
 }
+QDialog* open_diagnostic(QWidget& window, const QString& name) {
+    auto* button=window.findChild<QPushButton*>("diagnosticButton");
+    auto* dialog=window.findChild<QDialog*>("diagnosticsDialog");
+    if (!button || !button->menu() || !dialog) throw std::runtime_error("missing diagnostic menu");
+    for (auto* action : button->menu()->actions()) {
+        if (action->text()!=name) continue;
+        action->trigger();
+        if (!dialog->isVisible()) throw std::runtime_error("diagnostic did not open");
+        return dialog;
+    }
+    throw std::runtime_error("missing diagnostic action");
+}
 void assert_point_detail_reachable(QWidget& window) {
     auto* tabs=window.findChild<QTabWidget*>("moduleTabs");
     auto* points=window.findChild<QTableWidget*>("pointAuditTable");
     auto* scroll=window.findChild<QScrollArea*>("pointDetailScroll");
     auto* label=window.findChild<QLabel*>("pointDetail");
     if (!tabs || !points || !scroll || !label || points->rowCount()<1) throw std::runtime_error("missing point detail scroll");
-    const int previous=tabs->currentIndex();
-    for (int i=0; i<tabs->count(); ++i) if (tabs->tabText(i)=="点表") tabs->setCurrentIndex(i);
+    auto* dialog=open_diagnostic(window,"点表");
     points->selectRow(0);
     pump(100);
     if (!label->text().contains("审计码")) throw std::runtime_error("point detail has no audit line");
-    const QPoint origin=scroll->mapTo(&window, QPoint(0, 0));
-    if (!scroll->isVisible() || origin.y()<0 || origin.y()+scroll->height()>window.height()+2)
+    const QPoint origin=scroll->mapTo(dialog, QPoint(0, 0));
+    if (!scroll->isVisible() || origin.y()<0 || origin.y()+scroll->height()>dialog->height()+2)
         throw std::runtime_error("point detail scroll is outside the window");
     const int need=label->heightForWidth(std::max(1, scroll->viewport()->width()));
     if (label->height()+2<need) throw std::runtime_error("point detail label is shorter than its wrapped text");
     const int hidden=label->height()-scroll->viewport()->height();
     if (hidden>4 && scroll->verticalScrollBar()->maximum()+4<hidden)
         throw std::runtime_error("point detail scroll cannot reach the last line");
-    tabs->setCurrentIndex(previous);
+    dialog->close();
 }
 void assert_inside(QWidget& window, const char* name) {
     auto* widget=window.findChild<QWidget*>(name);
@@ -160,8 +173,9 @@ int main(int argc, char** argv) {
         auto* line=window.findChild<QComboBox*>("lineCombo");
         auto* station=window.findChild<QComboBox*>("stationCombo");
         if (!line || !station) throw std::runtime_error("missing line or station selection");
-        if (!window.findChild<QWidget*>("catalogPane") || !window.findChild<QWidget*>("commandPane") || !window.findChild<QSplitter*>("mainSplit"))
-            throw std::runtime_error("missing navigation pane or splitter");
+        if (!window.findChild<QWidget*>("catalogPane") || !window.findChild<QWidget*>("commandPane"))
+            throw std::runtime_error("missing context or operations");
+        if (window.findChild<QWidget*>("sideNav")) throw std::runtime_error("sidebar still exists");
         if (QString(schematic->metaObject()->className())!="SchematicView" || !schematic->loaded())
             throw std::runtime_error("schematic resource did not load");
         auto* stages=window.findChild<QTableWidget*>("stageTable");
@@ -176,7 +190,20 @@ int main(int argc, char** argv) {
         pump(200);
         if (!cell(result,"所选步骤").contains("小车2") || stages->currentRow()!=1)
             throw std::runtime_error("stage selection did not survive refresh");
-        assert_inside(window,"commandPane");
+        for (auto size : {QSize(1100,650), QSize(1280,800)}) {
+            window.resize(size);
+            pump(120);
+            for (auto name : {"diagnosticButton","currentStation","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","runResultTable","recentTable","commandPane"})
+                assert_inside(window,name);
+        }
+        auto* liveDialog=open_diagnostic(window,"日志");
+        auto* module=window.findChild<QTabWidget*>("moduleTabs");
+        if (module->tabText(module->currentIndex())!="日志" || !stages->isVisible())
+            throw std::runtime_error("diagnostic displaced run view");
+        liveDialog->close();
+        if (stages->currentRow()!=1 || !window.liveScope())
+            throw std::runtime_error("closing diagnostics changed station or stage");
+        window.resize(1100,650);
         if (stages->verticalScrollBar()->maximum()!=0 || result->verticalScrollBar()->maximum()!=0)
             throw std::runtime_error("current stages or results require scrolling");
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
@@ -482,15 +509,16 @@ int main(int argc, char** argv) {
         if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
             throw std::runtime_error("focused sibling still looked controllable");
         auto* modules=window.findChild<QTabWidget*>("moduleTabs");
-        if (!modules || modules->count()!=7) throw std::runtime_error("module tabs missing");
+        if (!modules || modules->count()!=6) throw std::runtime_error("module tabs missing");
         const auto tabbed=window.selectedStationId();
         const auto before_tabs=snap(directory);
-        for (auto title : {"运行", "工位", "事件", "点表", "接口", "日志", "采集"}) {
-            bool found=false;
-            for (int i=0; i<modules->count(); ++i) if (modules->tabText(i)==QString::fromUtf8(title)) { modules->setCurrentIndex(i); found=true; }
-            if (!found) throw std::runtime_error("missing module tab");
+        for (auto title : {"工位", "事件", "点表", "接口", "日志", "采集"}) {
+            auto* dialog=open_diagnostic(window,QString::fromUtf8(title));
             pump(80);
-            check_labels(window);
+            if (modules->tabText(modules->currentIndex())!=QString::fromUtf8(title))
+                throw std::runtime_error("diagnostic action opened wrong page");
+            dialog->close();
+            if (step->isEnabled()) throw std::runtime_error("diagnostic changed controls");
             if (window.selectedStationId()!=tabbed || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
                 throw std::runtime_error("module switch changed the PLC scope");
             if (history->rowCount()!=0 || points->rowCount()!=0) throw std::runtime_error("module switch copied station 140 records");
@@ -498,7 +526,6 @@ int main(int argc, char** argv) {
         const auto after_tabs=snap(directory);
         if (after_tabs.mode!=before_tabs.mode || after_tabs.revision!=before_tabs.revision || after_tabs.boot!=before_tabs.boot)
             throw std::runtime_error("module switch changed collector ownership");
-        modules->setCurrentIndex(0);
         std::cout<<"PASS widgets: Qiantang navigation, manual/automatic retained, svg sync, plc fan-out, simulated scope\n";
         return 0;
     } catch (const std::exception& error) {

@@ -2,6 +2,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QFont>
+#include <QDialog>
 #include <QTimer>
 #include <QWidget>
 #include <iostream>
@@ -35,7 +36,8 @@ int main(int argc,char** argv){
                 if(!popup_saved)captured=false;
                 return;
             }
-            captured=window.grab().save(capture);
+            auto* diagnostic=window.findChild<QDialog*>("diagnosticsDialog");
+            captured=(diagnostic && diagnostic->isVisible() ? diagnostic->grab() : window.grab()).save(capture);
         });timer.start(100);
         window.show();
         if(smoke)QTimer::singleShot(smoke,&window,[&]{std::cout<<"rendered_observations="<<window.observations()<<'\n';app.exit(window.observations()>=2&&(capture.isEmpty()||captured)?0:1);});

@@ -9,6 +9,7 @@
 class QCheckBox;
 class QComboBox;
 class QFrame;
+class QDialog;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -28,9 +29,8 @@ public:
     QStringList controllerPeerIds() const;
     bool liveScope() const;
     void activateSchematicStation(const QString& id);
-protected:
-    void showEvent(QShowEvent* event) override;
 private:
+    void openDiagnostic(const QString& title);
     void refresh();
     void display(const sim::View& view);
     void render();
@@ -55,16 +55,17 @@ private:
     sim::View view_;
     std::future<sim::View> read_;
     std::future<std::string> command_;
-    bool waiting_confirmation_=false, available_=false, updating_=false, split_applied_=false;
+    bool waiting_confirmation_=false, available_=false, updating_=false;
     std::int64_t command_revision_=0, last_seq_=0;
     std::string last_mode_, cards_plc_;
     int observations_=0;
     QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
-    QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr, *collectionStatus_=nullptr;
+    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr, *collectionStatus_=nullptr;
     QLabel *stationTitle_=nullptr, *stationMeta_=nullptr, *configLine_=nullptr, *lineState_=nullptr, *peerLine_=nullptr, *interfaceLine_=nullptr, *plcAuto_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
     QTabWidget* moduleTabs_=nullptr;
+    QDialog* diagnostics_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
     QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QLabel *logEmpty_=nullptr, *logDetail_=nullptr, *collectOwner_=nullptr, *collectLive_=nullptr;
@@ -80,5 +81,5 @@ private:
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
     SchematicView* schematic_=nullptr;
-    QSplitter *mainSplit_=nullptr, *contentSplit_=nullptr;
+    QSplitter *contentSplit_=nullptr;
 };

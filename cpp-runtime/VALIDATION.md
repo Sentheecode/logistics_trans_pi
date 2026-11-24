@@ -280,3 +280,11 @@ Linux GCC 14.2、Qt 6.8.2、SQLite 3.46.1。分别从空目录运行 Release 配
 目录测试覆盖跨业务范围关系拒绝、同 PLC 跨线与空线。Qt 测试覆盖多工厂级联、仓库随范围更新、上下游空态、拓扑反向同步、非采集工位的控制／日志／数据隔离。阶段选择在刷新后保留，执行结果与选中行联动。紧凑尺寸下底部操作带位于窗口内，当前步骤与采集结果无需滚动。旧库迁移、审计失败回滚、自动／手动、同 PLC 工位切换和采集进程独立性继续通过。
 
 使用全新临时目录运行 `collector`。设置 `QT_QPA_PLATFORM=offscreen` 后运行 `hmi <目录> 1800 <PNG> normal`，或以 `sort compact` 截取排序区的 1100×650 窗口。已人工查看 1280×800 和 1100×650 的 SPS 画面及紧凑排序区。仅合成数据，截图单独交付。Windows 构建、字体、DPI、文件锁和部署未验证。
+
+### 单屏工作台与诊断弹窗
+
+基线 `45133ea`。移除侧栏，主屏保留级联、工位与模式标识、采集心跳、阶段表、拓扑、当前结果、告警、局部滚动记录及底部操作。顶栏诊断菜单打开独立窗口，关闭后保留主屏工位和步骤。
+
+Linux 复用 Qt Release 与无 Qt 核心构建。运行 `cmake --build /tmp/cpp-review-qt -j6`、`ctest --test-dir /tmp/cpp-review-qt -j4 --output-on-failure`、`ctest --test-dir /tmp/cpp-review-core -j4 --output-on-failure` 及 `npm test --prefix runtime`。回归包括 1100×650 和 1280×800 的主屏控件边界、诊断六个入口及关闭后的选择、工位范围隔离、手自动操作和旧库迁移。通过 Qt offscreen 与临时模拟库抓取界面，截图不进入 Git。Windows 构建、DPI、字体、文件锁及现场部署未验证。
+
+结果：Qt 8/8、核心 6/6、旧 Node 49/49 通过。已查看自动、手动、模拟告警和排序区实际截图。

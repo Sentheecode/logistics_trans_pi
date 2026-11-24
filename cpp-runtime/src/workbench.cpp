@@ -22,7 +22,9 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QShowEvent>
+#include <QDialog>
+#include <QMenu>
+#include <QDialogButtonBox>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSplitter>
@@ -205,12 +207,9 @@ QString consoleStyle() {
         QLabel#runHint { background:#e3eeee; color:#214c50; padding:5px 8px; }
         QLabel#scopeBanner[state="warn"] { background:#fff2d9; color:#744509; padding:4px; }
         QTableWidget#stageTable::item:selected { background:#d1e9e7; color:#123d42; }
-        QWidget#sideNav { background:%2; border-right:1px solid %4; }
-        QLabel#navSection { color:%5; font-size:11px; font-weight:500; padding:16px 8px 4px 8px; }
-        QPushButton#navButton { background:transparent; border:none; border-radius:3px; color:%5; text-align:left; padding:4px 8px; min-height:32px; font-weight:500; }
-        QPushButton#navButton:hover { background:%7; color:%3; }
-        QPushButton#navButton:checked { background:%7; color:%6; font-weight:600; }
-        QPushButton#navButton:focus { border:1px solid %6; }
+        QLabel#currentStation, QLabel#runtimeState { background:#23565b; border:1px solid #478084; padding:3px 10px; font-weight:700; }
+        QLabel#runtimeState[mode="manual"] { background:#d6eeeb; color:#123d42; }
+        QPushButton#diagnosticButton { background:#f1f7f7; color:#123d42; min-height:20px; }
         QWidget#surface { background:%2; border:1px solid %4; border-radius:3px; }
         QLabel#title { font-size:16px; font-weight:600; color:#ffffff; }
         QLabel#pageTitle, QLabel#emptyTitle { font-size:18px; font-weight:600; color:%3; }
@@ -360,7 +359,7 @@ Workbench::Workbench(std::filesystem::path directory)
 
     auto* identity=new QWidget;
     identity->setObjectName("identityBar");
-    identity->setFixedHeight(40);
+    identity->setFixedHeight(44);
     auto* identityLayout=new QHBoxLayout(identity);
     identityLayout->setContentsMargins(16, 8, 16, 8);
     identityLayout->setSpacing(12);
@@ -380,10 +379,19 @@ Workbench::Workbench(std::filesystem::path directory)
     fit(processLabel_); fit(runtimeLabel_); fit(heartbeatLabel_);
     identityLayout->addWidget(title);
     identityLayout->addWidget(sim);
+    stationBadge_=new QLabel("当前工位  未配置");
+    stationBadge_->setObjectName("currentStation");
+    identityLayout->addWidget(stationBadge_);
+    identityLayout->addWidget(runtimeLabel_);
     identityLayout->addStretch(1);
     identityLayout->addWidget(processLabel_);
-    identityLayout->addWidget(runtimeLabel_);
     identityLayout->addWidget(heartbeatLabel_);
+    auto* diagnosticButton=new QPushButton("诊断");
+    diagnosticButton->setObjectName("diagnosticButton");
+    auto* diagnosticMenu=new QMenu(diagnosticButton);
+    diagnosticMenu->setObjectName("diagnosticMenu");
+    diagnosticButton->setMenu(diagnosticMenu);
+    identityLayout->addWidget(diagnosticButton);
 
     auto* context=new QWidget;
     context->setObjectName("catalogPane");
@@ -510,7 +518,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* workspace=new QWidget(run);
     workspace->setObjectName("runWorkspace");
     auto* workspaceLayout=new QVBoxLayout(workspace);
-    workspaceLayout->setContentsMargins(12, 8, 12, 8);
+    workspaceLayout->setContentsMargins(0, 4, 0, 4);
     workspaceLayout->setSpacing(4);
     runLayout->addWidget(runTitle);
     runLayout->addWidget(runHint);
@@ -938,64 +946,29 @@ Workbench::Workbench(std::filesystem::path directory)
     collectLayout->addWidget(collectUnbound);
     collectLayout->addWidget(collectChanges_, 1);
 
-    moduleTabs_=new QTabWidget;
+    diagnostics_=new QDialog(this);
+    diagnostics_->setObjectName("diagnosticsDialog");
+    diagnostics_->setWindowTitle("诊断");
+    auto* diagnosticLayout=new QVBoxLayout(diagnostics_);
+    moduleTabs_=new QTabWidget(diagnostics_);
     moduleTabs_->setObjectName("moduleTabs");
-    moduleTabs_->setFocusPolicy(Qt::StrongFocus);
-    moduleTabs_->tabBar()->setFocusPolicy(Qt::StrongFocus);
-    moduleTabs_->addTab(run, "运行");
+    moduleTabs_->tabBar()->hide();
     moduleTabs_->addTab(scrollPage(stationPage), "工位");
     moduleTabs_->addTab(historyPage, "事件");
     moduleTabs_->addTab(pointPage, "点表");
     moduleTabs_->addTab(scrollPage(boundaryPage), "接口");
     moduleTabs_->addTab(logPage, "日志");
     moduleTabs_->addTab(collectPage, "采集");
-    moduleTabs_->setCurrentIndex(0);
-    moduleTabs_->tabBar()->hide();
-    auto* side=new QWidget;
-    side->setObjectName("sideNav");
-    side->setFixedWidth(196);
-    auto* sideLayout=new QVBoxLayout(side);
-    sideLayout->setContentsMargins(8, 8, 8, 12);
-    sideLayout->setSpacing(4);
-    auto addSection=[&](const QString& text){
-        auto* label=new QLabel(text, side);
-        label->setObjectName("navSection");
-        sideLayout->addWidget(label);
-    };
-    auto addNav=[&](const QString& text, int index){
-        auto* button=new QPushButton(text, side);
-        button->setObjectName("navButton");
-        button->setCheckable(true);
-        button->setProperty("moduleIndex", index);
-        button->setFocusPolicy(Qt::StrongFocus);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        if(index==0) button->setChecked(true);
-        sideLayout->addWidget(button);
-        connect(button, &QPushButton::clicked, this, [this, index]{ if(moduleTabs_) moduleTabs_->setCurrentIndex(index); });
-    };
-    addSection("运行");
-    addNav("运行", 0);
-    addNav("采集", 6);
-    addSection("业务");
-    addNav("工位", 1);
-    addNav("接口", 4);
-    addSection("诊断");
-    addNav("事件", 2);
-    addNav("日志", 5);
-    addNav("点表", 3);
-    sideLayout->addStretch(1);
-    connect(moduleTabs_, &QTabWidget::currentChanged, side, [side](int index){
-        for(auto* button: side->findChildren<QPushButton*>("navButton"))
-            button->setChecked(button->property("moduleIndex").toInt()==index);
-    });
-
-    mainSplit_=new QSplitter(Qt::Horizontal);
-    mainSplit_->setObjectName("mainSplit");
-    mainSplit_->setChildrenCollapsible(false);
-    mainSplit_->addWidget(side);
-    mainSplit_->addWidget(moduleTabs_);
-    mainSplit_->setStretchFactor(0, 0);
-    mainSplit_->setStretchFactor(1, 1);
+    diagnosticLayout->addWidget(moduleTabs_);
+    auto* closeDiagnostics=new QDialogButtonBox(diagnostics_);
+    closeDiagnostics->addButton("关闭",QDialogButtonBox::RejectRole);
+    connect(closeDiagnostics,&QDialogButtonBox::rejected,diagnostics_,&QDialog::reject);
+    diagnosticLayout->addWidget(closeDiagnostics);
+    for (int index=0; index<moduleTabs_->count(); ++index) {
+        const auto title=moduleTabs_->tabText(index);
+        auto* action=diagnosticMenu->addAction(title);
+        connect(action,&QAction::triggered,this,[this,title]{openDiagnostic(title);});
+    }
 
     auto* central=new QWidget;
     central->setObjectName("centralRoot");
@@ -1004,7 +977,7 @@ Workbench::Workbench(std::filesystem::path directory)
     root->setSpacing(0);
     root->addWidget(identity);
     root->addWidget(context);
-    root->addWidget(mainSplit_, 1);
+    root->addWidget(run, 1);
     setCentralWidget(central);
     auto* closure=new QLabel("关窗不停止采集");
     fit(closure);
@@ -1014,10 +987,6 @@ Workbench::Workbench(std::filesystem::path directory)
     statusBar()->addPermanentWidget(closure);
 
     connect(schematic_, &SchematicView::stationActivated, this, [this](const QString& id) { activateSchematicStation(id); });
-    connect(peerTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
-        auto* item=peerTable_->item(row, 0);
-        if (item) activateSchematicStation(item->text());
-    });
     connect(historyFilter_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { applyHistoryFilter(); });
     connect(pointSearch_, &QLineEdit::textChanged, this, [this](const QString&) { applyPointFilter(); });
     connect(pointDoubtsOnly_, &QCheckBox::toggled, this, [this](bool) { applyPointFilter(); });
@@ -1037,8 +1006,8 @@ Workbench::Workbench(std::filesystem::path directory)
     setTabOrder(areaCombo_, lineCombo_);
     setTabOrder(lineCombo_, stationCombo_);
     setTabOrder(stationCombo_, plcCombo_);
-    setTabOrder(plcCombo_, moduleTabs_);
-    setTabOrder(moduleTabs_, modeButton_);
+    setTabOrder(plcCombo_, diagnosticButton);
+    setTabOrder(diagnosticButton, modeButton_);
     setTabOrder(modeButton_, step_);
     setTabOrder(step_, disconnect_);
     connect(factoryCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -1088,25 +1057,25 @@ Workbench::Workbench(std::filesystem::path directory)
         } else command("manual");
     });
     setSelection(catalog_.live_selection());
-    QTimer::singleShot(0, this, [this] {
-        if (split_applied_ || mainSplit_->width()<=480) return;
-        split_applied_=true;
-        mainSplit_->setSizes({196, mainSplit_->width()-196});
-    });
     auto* timer=new QTimer(this);
     connect(timer, &QTimer::timeout, this, [this] { refresh(); });
     timer->start(100);
     buttons();
 }
 
-void Workbench::showEvent(QShowEvent* event) {
-    QMainWindow::showEvent(event);
-    if (split_applied_) return;
-    const int width=mainSplit_->width();
-    if (width<480) return;
-    split_applied_=true;
-    mainSplit_->setSizes({196, width-196});
+void Workbench::openDiagnostic(const QString& title) {
+    if (title=="运行") { diagnostics_->close(); return; }
+    for (int index=0; index<moduleTabs_->count(); ++index) {
+        if (moduleTabs_->tabText(index)!=title) continue;
+        moduleTabs_->setCurrentIndex(index);
+        diagnostics_->setWindowTitle("诊断 · "+title+" · 跟随主屏工位");
+        diagnostics_->resize(std::max(760,width()-120), std::max(530,height()-85));
+        diagnostics_->show();
+        diagnostics_->raise();
+        return;
+    }
 }
+
 
 void Workbench::fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected) {
     QSignalBlocker blocker(box);
@@ -1378,11 +1347,7 @@ void Workbench::activateSchematicStation(const QString& id) {
 }
 
 void Workbench::prepareCapture(const QString& kind) {
-    const auto open=[&](const char* title) {
-        if (!moduleTabs_) return;
-        const QString wanted=QString::fromUtf8(title);
-        for (int i=0; i<moduleTabs_->count(); ++i) if (moduleTabs_->tabText(i)==wanted) moduleTabs_->setCurrentIndex(i);
-    };
+    const auto open=[this](const char* title){openDiagnostic(QString::fromUtf8(title));};
     if (kind=="empty") {
         if (auto selection=catalog_.selection_for_plc(catalog_.empty_plc_id())) setSelection(*selection);
         open("运行");
@@ -1493,10 +1458,16 @@ void Workbench::render() {
     processLabel_->setText(process);
     fit(processLabel_);
     QString runtime="上位机 未知";
-    if (available_ && view_.runtime.mode=="manual") runtime="上位机 手动";
-    else if (available_ && view_.runtime.mode=="automatic") runtime="上位机 自动";
+    if (available_ && view_.runtime.mode=="manual") runtime="运行模式  手动";
+    else if (available_ && view_.runtime.mode=="automatic") runtime="运行模式  自动";
     runtimeLabel_->setText(runtime);
-    fit(runtimeLabel_);
+    const auto manual=available_ && view_.runtime.mode=="manual";
+    if (runtimeLabel_->property("mode").toString()!=(manual ? "manual" : "other")) {
+        runtimeLabel_->setProperty("mode",manual ? "manual" : "other");
+        runtimeLabel_->style()->unpolish(runtimeLabel_);
+        runtimeLabel_->style()->polish(runtimeLabel_);
+    }
+    runtimeLabel_->setMinimumWidth(runtimeLabel_->fontMetrics().horizontalAdvance(runtimeLabel_->text())+26);
     heartbeatLabel_->setText(view_.runtime.heartbeat_ms>0 ? "心跳 "+beijingTime(view_.runtime.heartbeat_ms, "HH:mm:ss")+" · 北京时间" : "无心跳");
     fit(heartbeatLabel_);
 
@@ -1517,6 +1488,8 @@ void Workbench::render() {
         scope="模拟流 "+QString::fromStdString(catalog::kStream);
         sim_quality=view_.rows.empty() || !available_ ? "未知" : good ? "正常" : "不可用";
     }
+    stationBadge_->setText("当前工位  "+(station ? QString::fromStdString(station->name) : QString("未配置")));
+    stationBadge_->setMinimumWidth(stationBadge_->fontMetrics().horizontalAdvance(stationBadge_->text())+26);
     stationTitle_->setText(station ? "工位 "+QString::fromStdString(station->name) : "未配置");
     fit(stationTitle_);
     const auto* line=catalog_.find_line(selection_.line_id);
@@ -1684,7 +1657,14 @@ void Workbench::render() {
     }
     eventNote_->setText(QString("最近 %1 帧 · 覆盖未知").arg(view_.rows.size()));
     const auto age=std::max<std::int64_t>(0, (sim::now_ms()-latest.received_ms)/1000);
-    if (!good) scopeBanner_->setText(!available_ ? "采集心跳不可用，历史不能当当前状态。" : latest.reason=="disconnected" ? "模拟链路断开，当前值未知。不是现场设备离线。" : view_.freshness=="clock_uncertain" ? "事件时间不确定。" : "源质量异常，不补零。");
+    if (!good) {
+        if (!available_) scopeBanner_->setText("采集异常 · 心跳不可用，当前状态未知。");
+        else if (latest.reason=="disconnected") scopeBanner_->setText("采集异常 · 模拟链路断开，当前值未知。");
+        else if (view_.freshness=="clock_uncertain") scopeBanner_->setText("采集异常 · 事件时间不确定。");
+        else if (latest.quality!="good") scopeBanner_->setText("采集异常 · 源质量异常，当前值未知。");
+        else scopeBanner_->setText("采集异常 · 当前帧已过期。");
+    }
+    else if (latest.alarm=="active") scopeBanner_->setText("模拟告警 · 小车阻塞，检查当前阶段。");
     else scopeBanner_->setText(QString("工位 140 模拟帧 #%1，%2 秒前。不是 LWMS 回执。").arg(latest.seq).arg(age));
     syncModuleChrome();
 }
@@ -1727,7 +1707,7 @@ void Workbench::unavailable(const QString& reason) {
 bool Workbench::captureReady(const QString& kind) const {
     if (observations_<2) return false;
     const auto onTab=[&](const char* title) {
-        return moduleTabs_ && moduleTabs_->tabText(moduleTabs_->currentIndex())==QString::fromUtf8(title);
+        return diagnostics_->isVisible() && moduleTabs_->tabText(moduleTabs_->currentIndex())==QString::fromUtf8(title);
     };
     if (kind=="demo-north") return selection_.station_id=="stn.demo-n1" && !liveScope();
     if (kind=="stations") return onTab("工位") && liveScope();
@@ -1754,7 +1734,7 @@ bool Workbench::captureReady(const QString& kind) const {
     const auto& row=view_.rows.front();
     if (kind=="manual") return available_ && view_.runtime.mode=="manual";
     if (kind=="normal") return available_ && view_.runtime.mode=="automatic" && row.quality=="good" && row.alarm=="cleared";
-    if (kind=="alarm") return available_ && row.alarm=="active";
+    if (kind=="alarm") return available_ && row.alarm=="active" && row.quality=="good" && (view_.freshness=="recent" || (view_.runtime.mode=="manual" && view_.freshness!="clock_uncertain"));
     return !available_ || row.quality!="good";
 }
 QString Workbench::confirmedMode() const { return QString::fromStdString(view_.runtime.mode); }
