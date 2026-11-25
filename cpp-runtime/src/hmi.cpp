@@ -1,6 +1,9 @@
 #include "workbench.hpp"
 #include <QApplication>
 #include <QComboBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QTableWidget>
 #include <QFont>
 #include <QFontInfo>
 #include <QFontMetrics>
@@ -15,7 +18,7 @@ int hmi_main(int argc,char** argv){
     try{
         int smoke=argc>=3?sim::number(argv[2],500,60000):0;
         QString capture=argc>=4?QString::fromUtf8(argv[3]):QString(),kind=argc>=5?argv[4]:"normal";
-        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="seq4"&&kind!="peers"&&kind!="south"&&kind!="demo-north"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="eventbad"&&kind!="points"&&kind!="pointfind"&&kind!="boundary"&&kind!="logs"&&kind!="collect"&&kind!="collect-sort"&&kind!="collect-seq4"&&kind!="collectdown"&&kind!="empty"&&kind!="emptystations"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
+        if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="seq4"&&kind!="peers"&&kind!="south"&&kind!="demo-north"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="eventbad"&&kind!="points"&&kind!="pointfind"&&kind!="boundary"&&kind!="logs"&&kind!="logs-open"&&kind!="collect"&&kind!="collect-sort"&&kind!="collect-seq4"&&kind!="collectdown"&&kind!="empty"&&kind!="emptystations"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
         Workbench window(std::filesystem::u8path(argv[1]));if(argc==6){if(std::string(argv[5])!="compact")throw std::runtime_error("invalid size");window.resize(1100,650);}
         const QFontInfo info(app.font());
         const bool cjk=QFontMetrics(app.font()).inFont(QChar(0x6a21));
@@ -49,6 +52,22 @@ int hmi_main(int argc,char** argv){
                 painter.end();
                 captured=canvas.save(capture);
                 return;
+            }
+            if(kind=="logs-open"){
+                auto* button=window.findChild<QPushButton*>("logTechButton");
+                auto* tech=window.findChild<QLabel*>("logTech");
+                if(!button||!tech)return;
+                if(!tech->isVisible()){button->click();return;}
+                if(!tech->isVisible()||tech->text().trimmed().isEmpty())return;
+            }
+            if(kind=="normal"){
+                auto* stages=window.findChild<QTableWidget*>("stageTable");
+                bool sorting=false;
+                if(stages) for(int row=0;row<stages->rowCount();++row){
+                    auto* cell=stages->item(row,2);
+                    if(cell && cell->text()==QString::fromUtf8("分拣")) sorting=true;
+                }
+                if(!sorting)return;
             }
             captured=window.grab().save(capture);
         });timer.start(100);

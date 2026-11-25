@@ -1,10 +1,10 @@
 # 当前验证记录
 
-本轮在 `274fd81` 的信息架构上收紧顶栏、表格和采集页，并给排序区一、二、四加上候选点表登记。登记只表示文档可用，运行页写「已登记点表 · 未接入」，「工位对应待确认」只在点表页。帧号、阶段、进度和按钮启用状态仍来自当前模拟，不写死静态稿。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。公开预发布包本轮不更新，现有 Release `preview-windows-20261124-ui` 仍指向 `5a92900`。
+本轮只收紧 0b6f25f 上仍看得见的四处：取料句不再把末位数字单独换行，140 展开底色铺到该行右缘，进行中的阶段格用强调色而当前已结束步骤保持中性，日志「技术细节」改成普通按钮文字并贴在报文和元数据下面。旁路字体子集补上「技」「术」两个缺字。帧号、阶段和进度仍来自当前模拟。下面「本轮实测」是这次实际跑过的命令。其后「此前记录」来自更早提交，本轮没有重跑 HTTP、nginx 或 OPC UA。公开预发布包本轮不更新，现有 Release `preview-windows-20261124-ui` 仍指向 `5a92900`。
 
 ## 本轮实测
 
-Linux 上使用 GCC 13.3.0、CMake 3.28.3、SQLite 3.45.1、Qt 6.4.2、Python 3.12.3、nlohmann/json 3.11.3。Qt 配置提示缺少 XKB 开发文件。`ctest` 使用 offscreen。日志截图和关窗再开使用 xvfb 的 xcb，字体由 exe 旁的 Noto Sans CJK SC 加载，两次 HMI 都报告 `ui_font=Noto Sans CJK SC`、`cjk_glyph=yes`。没有用 `diagnose` 代替界面验收。
+Linux 上使用 GCC 13.3.0、CMake 3.28.3、SQLite 3.45.1、Qt 6.4.2、Python 3.12.3、nlohmann/json 3.11.3。Qt 配置提示缺少 XKB 开发文件。`ctest` 使用 offscreen。截图使用 xvfb 的 xcb，字体由 exe 旁的 Noto Sans CJK SC 加载，HMI 报告 `ui_font=Noto Sans CJK SC`、`cjk_glyph=yes`。没有用 `diagnose` 代替界面验收。
 
 ```bash
 cmake -S cpp-runtime -B /tmp/logistics-qt -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
@@ -12,7 +12,7 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过。`widgets_controls` 仍走外装自动、手动、单步、断链和恢复，并检查排序区四的来源是「已登记点表 · 未接入」、点表页有「工位对应待确认」、采集页不出现 140。外装采集和排序区四采集在 1100 宽下标题与面板顶对齐。截图用 xvfb/xcb 分次抓取，帧号不是同一次。这不是 Windows 实机，也不是 DPI 验收，也不是视觉验收通过。公开 Release 不更新。
+结果：**11/11** 通过。`widgets_controls` 仍走外装自动、手动、单步、断链和恢复，并检查进行中阶段的前景色、排序区四的来源是「已登记点表 · 未接入」、点表页有「工位对应待确认」、采集页不出现 140。外装采集和排序区四采集在 1100 宽下标题与面板顶对齐。xvfb/xcb 另抓了外装运行 1100 与 1280、采集 1100、日志 1100 收起与展开，帧号不是同一次。这不是 Windows 实机，也不是 DPI 验收，也不是视觉验收通过。公开 Release 不更新。
 
 ## 此前记录
 

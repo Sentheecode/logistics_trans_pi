@@ -341,6 +341,14 @@ void assert_stage_matches(QTableWidget* stages, const std::filesystem::path& dir
             const QString expect=(column==current && current>0) ? (column==1 ? "读码" : column==2 ? "分拣" : "本工位完成") : "—";
             if (!item || item->text()!=expect)
                 throw std::runtime_error(("stage cell does not match the collector frame row "+std::to_string(i)+" col "+std::to_string(column)).c_str());
+            if ((current==1 && column==1) || (current==2 && column==2)) {
+                const QColor ink=item->foreground().color();
+                if (ink.red()>90 || ink.blue()<140) throw std::runtime_error("active stage is not indigo");
+            }
+            if (current==3 && column==3) {
+                const QColor ink=item->foreground().color();
+                if (ink.blue()>ink.red()+40) throw std::runtime_error("completed stage is emphasized in blue");
+            }
         }
         auto* note=stages->item(i, 4);
         if (!trustworthy && (!note || note->text()!="无可信值")) throw std::runtime_error("disconnected frame still showed a phase");
