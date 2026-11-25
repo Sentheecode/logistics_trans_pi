@@ -38,6 +38,7 @@
 #include <QTableWidget>
 #include <QTimeZone>
 #include <QShowEvent>
+#include <QWindow>
 #include <QTimer>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
