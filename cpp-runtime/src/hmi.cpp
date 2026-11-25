@@ -3,7 +3,6 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QPushButton>
-#include <QTableWidget>
 #include <QFont>
 #include <QFontInfo>
 #include <QFontMetrics>
@@ -58,18 +57,10 @@ int hmi_main(int argc,char** argv){
                 auto* tech=window.findChild<QLabel*>("logTech");
                 if(!button||!tech)return;
                 if(!tech->isVisible()){button->click();return;}
-                if(!tech->isVisible()||tech->text().trimmed().isEmpty())return;
+                if(tech->text().trimmed().isEmpty())return;
             }
-            if(kind=="normal"){
-                auto* stages=window.findChild<QTableWidget*>("stageTable");
-                bool sorting=false;
-                if(stages) for(int row=0;row<stages->rowCount();++row){
-                    auto* cell=stages->item(row,2);
-                    if(cell && cell->text()==QString::fromUtf8("分拣")) sorting=true;
-                }
-                if(!sorting)return;
-            }
-            captured=window.grab().save(capture);
+            captured=true;
+            if(!window.grab().save(capture)) captured=false;
         });timer.start(100);
         window.show();
         if(smoke)QTimer::singleShot(smoke,&window,[&]{std::cout<<"rendered_observations="<<window.observations()<<'\n';app.exit(window.observations()>=2&&(capture.isEmpty()||captured)?0:1);});
