@@ -26,7 +26,7 @@ HMI 不启动/停止采集；关窗和重开都不会改变模式或推进任务
 
 控制通道为同用户本地文件锁单槽信箱 `control.mailbox`，仅四种有限模拟命令。请求有启动身份、修订号、截止时间和长度上限；过期、重复修订号、并发忙均失败。不是通用控制面，无网络监听和设备通道。使用用户私有本地目录；Linux 0600 文件权限，Windows 继承目录 ACL，Windows 文件锁/权限仍待实测。CLI 和 MCP 仍只读。BUILD_TESTING 下的 `control_test_client` 是自动化测试夹具，不作为产品 CLI。
 
-界面为中文，标准窗口 1280×800，也支持缩到 1100×650。程序把界面字体设为 Noto Sans CJK SC，并回退到 Noto Sans CJK JP 与微软雅黑；Linux 依赖 `fonts-noto-cjk`，不靠系统偶然的宋体。没有 WebView 或 Qt Charts。主图区分合成工位、固定设备与共用通道。上位机手动／自动和 PLC 设备自动是两回事；后者显示未读取。工位 140 的点表只在「点表」页作审计，不生成写地址，也不套用到其他工位。浏览目录不改变采集。采集器在 schema v4 保留最近 300 条 `sim_logs`：操作审计、采集变化和三车阶段。日志显示北京时间，库里仍是 UTC 毫秒；不记录凭据或二维码原文。没有真实 S7 重连。
+界面为中文，标准窗口 1280×800，也支持缩到 1100×650。界面使用系统可用的中文字形，Linux 推荐 Noto Sans CJK SC，Windows 推荐微软雅黑。没有 WebView 或 Qt Charts。主图区分合成工位、固定设备与共用通道。上位机手动／自动和 PLC 设备自动是两回事；后者显示未读取。已绑定的示例工位 A1（诊断 ID 为 `stn.140`）的点表只在「点表」页作审计，不生成写地址，也不套用到其他工位。主屏左侧可以点选工位，右侧默认跟随目标料车。显式选行可保留该车详情。诊断菜单的「接口」展示资料字段与当前证据。浏览目录不改变采集。采集器在 schema v4 保留最近 300 条 `sim_logs`：操作审计、采集变化和三车阶段。日志显示北京时间，库里仍是 UTC 毫秒；不记录凭据或二维码原文。没有真实 S7 重连。
 
 ## Windows 下载、构建、启动（非管理员）
 
@@ -78,7 +78,7 @@ printf 'status\nalarms\nexit\n' | /d/build/logistics-cpp/diagnose.exe /d/logisti
 
 本轮只在 Linux GCC 14.2 / Qt 6.8.2 / SQLite 3.46.1 验证。Windows 11 24H2、MSYS2 MINGW64 GCC 16.2 / CMake 4.4.4 / Qt 6.11.1 是后续目标，不是已通过验收环境。没有以 Qt 6.11.1 构建的产物在 Qt 6.11.0 上兼容的保证。
 
-Windows 发布包以后使用与构建 Qt 一致的 `windeployqt` 收集 Qt 依赖，并单独核对 SQLite 和编译器运行库。不要复制其他项目发行 DLL。[Qt 官方部署说明](https://doc.qt.io/QT-6/windows-deployment.html)指出第三方库可能不由 windeployqt 收集。应在干净、非管理员目标机验收；本提交不包含发布二进制或 DLL。
+Windows 预览包从当前 MINGW64 构建前缀收集 Qt 平台插件，并按 PE 导入表查找依赖 DLL。独立 Windows runner 在精简 PATH 下解压烟测；版本结果以对应提交的 Actions 记录为准。[构建与验收流程](deploy/windows/README.md)
 
 ## CLI 与旧接口兼容范围
 

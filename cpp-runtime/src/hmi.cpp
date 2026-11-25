@@ -1,14 +1,12 @@
 #include "workbench.hpp"
 #include <QApplication>
 #include <QComboBox>
-#include <QFont>
 #include <QDialog>
 #include <QTimer>
 #include <QWidget>
 #include <iostream>
 int main(int argc,char** argv){
     QApplication app(argc,argv);
-    QFont font("Noto Sans CJK SC");font.setStyleHint(QFont::SansSerif,QFont::PreferAntialias);font.setFamilies({"Noto Sans CJK SC","Noto Sans CJK JP","Microsoft YaHei UI","Microsoft YaHei"});font.setPixelSize(13);app.setFont(font);
     if(argc<2||argc>6){std::cerr<<"Usage: hmi DATA_DIR [smoke_ms [capture.png [normal|manual|alarm|unavailable|sort|peers|south|demo-north|meter2|roster|stations|events|points|boundary|empty|dropdown [compact]]]]\n";return 2;}
     try{
         int smoke=argc>=3?sim::number(argv[2],500,60000):0;

@@ -17,6 +17,7 @@ def state(d):
         return db.execute('select mode from runtime_state').fetchone()[0],db.execute('select max(seq) from frames').fetchone()[0]
 
 with tempfile.TemporaryDirectory(prefix='cpp-widgets-') as tmp:
+    run(widgets,str(pathlib.Path(tmp)/'session-evidence'),'evidence')
     d=pathlib.Path(tmp)/'data'
     p=subprocess.Popen([collector,str(d)],stdout=subprocess.DEVNULL)
     try:

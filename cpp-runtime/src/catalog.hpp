@@ -32,7 +32,10 @@ inline constexpr const char* kStation220 = "stn.220";
 struct Factory { std::string id, code, name; };
 struct Area { std::string id, factory_id, code, name; };
 struct Plc { std::string id, area_id, code, name; };
-struct Station { std::string id, plc_id, code, name, stream; };
+struct Station {
+    std::string id, plc_id, code, name, stream;
+    std::string reference_note = "仅有示例目录";
+};
 struct Line { std::string id, area_id, name, storage, zone; };
 struct LineLink { std::string line_id, station_id; };
 

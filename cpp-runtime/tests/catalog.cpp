@@ -13,7 +13,7 @@ int main() {
         const auto directory=catalog::Directory::qiantang();
         CHECK(catalog::Directory::validate(directory).empty());
         CHECK(directory.factories.size()==3);
-        CHECK(directory.find_factory(catalog::kFactory)->name=="钱塘二厂");
+        CHECK(directory.find_factory(catalog::kFactory)->name=="示例工厂 A");
         CHECK(directory.areas_of(catalog::kFactory).size()==2);
         CHECK(directory.line_links.size()==directory.stations.size());
         CHECK(directory.stations_on_line("line.demo-empty").empty());

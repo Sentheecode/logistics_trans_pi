@@ -37,7 +37,7 @@ public:
     QStringList shapeIds() const;
     int targetCart() const { return lane_.target; }
     bool showsCarts() const { return lane_.visible; }
-    QSize sizeHint() const override { return {860, 460}; }
+    QSize sizeHint() const override { return {480, 175}; }
 signals:
     void stationActivated(const QString& stationId);
 protected:

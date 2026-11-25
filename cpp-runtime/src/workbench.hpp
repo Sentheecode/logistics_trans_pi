@@ -39,7 +39,6 @@ private:
     void setSelection(catalog::Selection selection);
     void refill();
     void fillCombo(QComboBox* box, const std::vector<std::pair<QString, QString>>& items, const QString& selected);
-    void rebuildCards();
     void syncModuleChrome();
     void applyHistoryFilter();
     void applyPointFilter();
@@ -56,7 +55,7 @@ private:
     std::future<std::string> command_;
     bool waiting_confirmation_=false, available_=false, updating_=false;
     std::int64_t command_revision_=0, last_seq_=0;
-    std::string last_mode_, cards_plc_;
+    std::string last_mode_;
     int observations_=0;
     QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
     QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
@@ -75,9 +74,11 @@ private:
     QTableWidget* logTable_=nullptr;
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
-    QWidget *cardRow_=nullptr;
+    bool stagePinned_=false;
+    QLabel *mapHeading_=nullptr, *stageHeading_=nullptr;
     QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
+    const sim::Row* stationFrame() const;
     SchematicView* schematic_=nullptr;
 };

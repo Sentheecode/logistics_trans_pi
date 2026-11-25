@@ -1,17 +1,18 @@
 #include "catalog.hpp"
 #include "schematic.hpp"
 #include "workbench.hpp"
+#include <sqlite3.h>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QMenu>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFont>
-#include <QFontInfo>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QMessageBox>
@@ -110,6 +111,10 @@ void assert_no_live_leak(Workbench& window) {
     auto* peers=window.findChild<QTableWidget*>("peerTable");
     auto* banner=window.findChild<QLabel*>("scopeBanner");
     if (!history || history->rowCount()!=0) throw std::runtime_error("non-live station showed history");
+    auto* diagnosticLink=window.findChild<QLabel*>("collectLink");
+    auto* diagnosticMode=window.findChild<QLabel*>("collectMode");
+    if (!diagnosticLink || diagnosticLink->text()!="未绑定" || !diagnosticMode || diagnosticMode->text()!="不作用于本工位")
+        throw std::runtime_error("non-live station showed a bound diagnostic link or mode");
     if (!stage || stage->isVisible() || stage->rowCount()!=0) throw std::runtime_error("non-live station showed stages");
     const auto scope=cell(detail, "实时范围");
     if (scope!="未接入" && scope!="未配置") throw std::runtime_error(("unexpected scope "+scope).toStdString());
@@ -139,9 +144,55 @@ void click_station(SchematicView* schematic, const char* id) {
     QCoreApplication::sendEvent(schematic, &press);
 }
 
+
+// This fixture owns an isolated SQLite directory. It can publish heartbeats without
+// advancing a frame, letting the screen observe a restart before the next manual step.
+void check_station_evidence(Workbench& window, const std::filesystem::path& directory) {
+    auto* quality=window.findChild<QLabel*>("collectQuality");
+    auto* link=window.findChild<QLabel*>("collectLink");
+    auto* mode=window.findChild<QLabel*>("collectMode");
+    auto* frame=window.findChild<QLabel*>("collectFrame");
+    auto* result=window.findChild<QTableWidget*>("runResultTable");
+    auto* step=window.findChild<QPushButton*>("primary");
+    if (!quality || !link || !mode || !frame || !result || !step) throw std::runtime_error("missing evidence controls");
+    const auto sample=sim::SimulationAdapter().next();
+    {
+        sim::Writer writer(directory);
+        writer.publish(&sample,"manual");
+        wait([&]{return step->isEnabled() && quality->text()=="正常";});
+        auto* dialog=open_diagnostic(window,"采集");
+        const auto held=frame->text();
+        QElapsedTimer clock; clock.start();
+        while (clock.elapsed()<3300) { writer.publish(nullptr,"manual"); pump(150); }
+        if (!step->isEnabled() || quality->text()!="正常" || mode->text()!="手动" || frame->text()!=held)
+            throw std::runtime_error("manual idle lost the held same-session step");
+        dialog->close();
+    }
+    {
+        sim::Writer restarted(directory);
+        wait([&]{return quality->text()=="未知" && mode->text()=="手动" && step->isEnabled();});
+        if (link->text()!="未知" || frame->text()=="无" || cell(result,"采集质量")!="无可信当前值")
+            throw std::runtime_error("previous-session evidence presented as current");
+        restarted.publish(&sample,"manual");
+        wait([&]{return quality->text()=="正常" && cell(result,"采集质量")=="正常";});
+    }
+    // A live UI reader must invalidate its current projection on its next failed
+    // read, even if its last successful snapshot held a healthy heartbeat.
+    sqlite3* fixture=nullptr;
+    const auto file=(directory/"simulation.sqlite").u8string();
+    const int opened=sqlite3_open_v2(file.c_str(),&fixture,SQLITE_OPEN_READWRITE,nullptr);
+    const int changed=opened==SQLITE_OK ? sqlite3_exec(fixture,"PRAGMA user_version=99",nullptr,nullptr,nullptr) : opened;
+    sqlite3_close(fixture);
+    if (changed!=SQLITE_OK) throw std::runtime_error("unable to create incompatible fixture");
+    auto* feedback=window.findChild<QLabel*>("controlFeedback");
+    wait([&]{return feedback && feedback->text().contains("无法读取") && !step->isEnabled();});
+    if (quality->text()!="未知" || link->text()!="未知" || mode->text()!="未知" || frame->text()=="无"
+        || cell(result,"采集质量")!="无可信当前值" || window.confirmedMode()!="unknown")
+        throw std::runtime_error("last successful read leaked into current evidence");
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
-    QFont font("Noto Sans CJK SC"); font.setStyleHint(QFont::SansSerif, QFont::PreferAntialias); font.setFamilies({"Noto Sans CJK SC", "Noto Sans CJK JP", "Microsoft YaHei UI", "Microsoft YaHei"}); font.setPixelSize(13); app.setFont(font);
     if (argc!=3) return 2;
     try {
         check_bad_svg();
@@ -152,6 +203,11 @@ int main(int argc, char** argv) {
         auto* mode=window.findChild<QPushButton*>("modeButton");
         auto* step=window.findChild<QPushButton*>("primary");
         if (!mode || !step) throw std::runtime_error("missing buttons");
+        if (std::string(argv[2])=="evidence") {
+            check_station_evidence(window, directory);
+            std::cout<<"PASS session, held step and failed read evidence\n";
+            return 0;
+        }
         if (std::string(argv[2])=="offline") {
             pump(700);
             auto* factory=window.findChild<QComboBox*>("factoryCombo");
@@ -159,6 +215,11 @@ int main(int argc, char** argv) {
             if (!factory || factory->count()!=3 || !factory->isEnabled()) throw std::runtime_error("offline catalog disabled");
             if (!schematic || !schematic->loaded()) throw std::runtime_error("offline schematic missing");
             if (mode->isEnabled() || step->isEnabled()) throw std::runtime_error("offline controls enabled");
+            auto* quality=window.findChild<QLabel*>("collectQuality");
+            auto* link=window.findChild<QLabel*>("collectLink");
+            auto* modeText=window.findChild<QLabel*>("collectMode");
+            if (!quality || quality->text()!="未知" || !link || link->text()!="未知" || !modeText || modeText->text()!="未知")
+                throw std::runtime_error("offline diagnostic reported current evidence");
             std::cout<<"PASS offline controls disabled\n";
             return 0;
         }
@@ -209,16 +270,30 @@ int main(int argc, char** argv) {
             throw std::runtime_error("current stages or results require scrolling");
         if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
         auto* title=window.findChild<QLabel*>("title");
-        auto requireSans=[&](QWidget* widget, const char* name) {
-            if (!widget) throw std::runtime_error(std::string("missing font target ")+name);
-            const QFontInfo info(widget->font());
-            if (info.family()!="Noto Sans CJK SC") throw std::runtime_error(std::string(name)+" resolved "+info.family().toStdString()+" / "+info.styleName().toStdString());
-            if (info.styleName()!="Regular" && info.styleName()!="Bold") throw std::runtime_error(std::string(name)+" unexpected style "+info.styleName().toStdString());
+        if (!title) throw std::runtime_error("missing workbench title");
+        auto checkGlyphs=[](QWidget* widget, const QString& text) {
+            const auto metrics=widget->fontMetrics();
+            for (const auto ch : text) {
+                if (!ch.isSpace() && !metrics.inFont(ch))
+                    throw std::runtime_error(("missing glyph in "+widget->objectName()+": "+ch).toStdString());
+            }
         };
-        requireSans(title, "title");
-        requireSans(mode, "mode");
-        requireSans(factory, "factory");
-        requireSans(points, "points");
+        checkGlyphs(title, title->text());
+        checkGlyphs(mode, mode->text());
+        checkGlyphs(points, points->horizontalHeaderItem(0)->text());
+        for (auto* box : {factory, area, line, station, plc}) {
+            box->showPopup();
+            QCoreApplication::processEvents();
+            auto* list=box->view();
+            if (!list->isVisible()) throw std::runtime_error("catalog popup did not open");
+            for (int row=0; row<box->count(); ++row) {
+                const auto text=box->itemText(row);
+                checkGlyphs(list, text);
+                if (list->viewport()->width()<list->fontMetrics().horizontalAdvance(text))
+                    throw std::runtime_error("catalog popup clips an option");
+            }
+            box->hidePopup();
+        }
         if (factory->count()!=3 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
@@ -250,7 +325,7 @@ int main(int argc, char** argv) {
         if (window.selectedStationId()!=catalog::kStation160 || schematic->selectedId()!=catalog::kStation160)
             throw std::runtime_error("line did not update station and topology");
         assert_no_live_leak(window);
-        if (cell(result,"采集质量")!="未绑定模拟源" || logs->rowCount()!=0 || step->isEnabled())
+        if (!cell(result,"资料范围").contains("未导入") || cell(result,"采集质量")!="未绑定模拟源" || logs->rowCount()!=0 || step->isEnabled())
             throw std::runtime_error("line selection leaked collector projection");
         click_station(schematic,catalog::kStation150);
         if (line->currentData().toString()!="line.demo-a" || station->currentData().toString()!=catalog::kStation150)
@@ -266,7 +341,7 @@ int main(int argc, char** argv) {
         choose(factory,"fac.demo-south");
         if (!window.selectedStationId().isEmpty()) throw std::runtime_error("empty business mode retained a station");
         choose(area,"area.demo-south.sort");
-        if (station->currentData().toString()!="stn.demo-s1") throw std::runtime_error("south station missing");
+        if (station->currentData().toString()!="stn.demo-s1" || !cell(result,"资料范围").contains("候选")) throw std::runtime_error("south station missing");
         assert_no_live_leak(window);
         choose(factory,catalog::kFactory);
         choose(station,catalog::kStation140);
@@ -319,8 +394,8 @@ int main(int argc, char** argv) {
         click_station(schematic, catalog::kStation150);
         pump(120);
         auto* reason=window.findChild<QLabel*>("controlReason");
-        if (step->isEnabled() || !reason || !reason->text().contains("140")) throw std::runtime_error("station 150 looked like the control target");
-        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->isVisible() || !order->text().isEmpty())
+        if (step->isEnabled() || !reason || !reason->text().contains("A1")) throw std::runtime_error("station 150 looked like the control target");
+        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->text()!=area->currentText()+"   ·   工位目录")
             throw std::runtime_error("unbound station borrowed the order or carts");
         const auto frozen=snap(directory);
         step->click();
@@ -484,14 +559,9 @@ int main(int argc, char** argv) {
             throw std::runtime_error("meter2 layout was not exactly its four stations");
         click_station(schematic, catalog::kStation80);
         if (window.selectedStationId()!=catalog::kStation80 || schematic->selectedId()!=catalog::kStation80) throw std::runtime_error("meter2 graphic click missed station 80");
-        bool card_clicked=false;
-        for (auto* button : window.findChildren<QPushButton*>("stationCard")) {
-            if (button->property("stationId").toString()!=QString::fromUtf8(catalog::kStation10)) continue;
-            button->click();
-            card_clicked=true;
-        }
-        if (!card_clicked || window.selectedStationId()!=catalog::kStation10 || cell(detail, "工位").contains(catalog::kStation140) || points->rowCount()!=0)
-            throw std::runtime_error("meter2 number focus reused station 140");
+        choose(station,catalog::kStation10);
+        if (schematic->selectedId()!=catalog::kStation10 || cell(detail,"工位").contains(catalog::kStation140) || points->rowCount()!=0)
+            throw std::runtime_error("station selector reused another station");
         assert_no_live_leak(window);
         for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
             window.resize(size);
@@ -516,7 +586,7 @@ int main(int argc, char** argv) {
         pump(150);
         check_labels(window);
         assert_no_live_leak(window);
-        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("140"))
+        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("A1"))
             throw std::runtime_error("focused sibling still looked controllable");
         auto* modules=window.findChild<QTabWidget*>("moduleTabs");
         if (!modules || modules->count()!=6) throw std::runtime_error("module tabs missing");
@@ -527,6 +597,16 @@ int main(int argc, char** argv) {
             pump(80);
             if (modules->tabText(modules->currentIndex())!=QString::fromUtf8(title))
                 throw std::runtime_error("diagnostic action opened wrong page");
+            if (modules->tabText(modules->currentIndex())=="接口") {
+                auto* list=dialog->findChild<QListWidget*>("interfaceList");
+                auto* summary=dialog->findChild<QLabel*>("interfaceSummary");
+                if (!list || !summary) throw std::runtime_error("missing diagnostic evidence");
+                const auto matches=list->findItems("排序任务",Qt::MatchExactly);
+                if (matches.size()!=1) throw std::runtime_error("sorting evidence missing");
+                list->setCurrentItem(matches.front());
+                if (!summary->text().contains("计划数量") || !summary->text().contains("回执"))
+                    throw std::runtime_error("sorting plan and completion evidence conflated");
+            }
             dialog->close();
             if (step->isEnabled()) throw std::runtime_error("diagnostic changed controls");
             if (window.selectedStationId()!=tabbed || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)

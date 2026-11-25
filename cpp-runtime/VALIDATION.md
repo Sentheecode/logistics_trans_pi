@@ -1,8 +1,23 @@
 # 当前验证记录
 
-基线 [89fae7b](https://github.com/Sentheecode/logistics_trans_pi/tree/89fae7b32595dc734f6bf173a393670cc2b1b086)。测试使用新的空目录、合成 SQLite 数据和临时环回证书。当前 Qt 布局未改。旧版截图和阶段验证留在上述历史提交，不作为本轮验收证据。
+## 2026-11-25 工作台与资料核对
 
-## 复验
+审阅 Cursor 的资料提交 `b640bda` 和界面提交 `297dd00`，从实验分支 `ed5cbc0` 选择性整合。输入为该分支提交的摘要与代码，未经独立验收的原始资料不进入工位配置。截图来自运行中的 Qt Widgets 和新建的本地模拟库。
+
+```bash
+cmake -S cpp-runtime -B /tmp/logistics-nov25-review -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_MCP_HTTP=ON -DBUILD_OPCUA_LOOPBACK_FIXTURE=ON
+cmake --build /tmp/logistics-nov25-review -j3
+ctest --test-dir /tmp/logistics-nov25-review --output-on-failure -j2
+```
+
+以上组合注册并通过 15/15 项 CTest，包括可选的环回 HTTPS 与加密 OPC UA 夹具。Linux Qt 6.8.2 offscreen 的正常视图为 1280×800，告警和排序区为 1100×650。联动、点选、手动待步、单步、断链、关闭诊断保留工位、同 PLC 的相邻工位隔离均由控件测试覆盖。新增检查覆盖采集器重启但尚未提交新帧、读取中断后的未知状态、排序资料字段与回执的区分。Windows CI 单独构建与解压验证，Windows 11 工控机、厂内网络和真实设备仍待验收。
+
+## 迁移基线的验证记录
+
+下列命令与结果对应此前的 C++ 迁移验收。测试使用独立目录、合成 SQLite 数据和临时环回证书。
+
+
 
 Linux 实测 GCC 14.2、CMake 3.31.6、SQLite 3.46.1、Qt 6.8.2、Python 3.13.5、nlohmann/json 3.11.3、libmicrohttpd 1.0.1、OpenSSL 3 和 nginx 1.26.3。Qt 测试使用 offscreen。头文件和库来自独立 Debian 安装前缀，未纳入仓库。Qt 配置提示缺少 XKB 开发文件；隔离运行有两个位置的 OpenSSL 库，配置提示搜索顺序。实测使用的独立前缀及包版本见下文。
 

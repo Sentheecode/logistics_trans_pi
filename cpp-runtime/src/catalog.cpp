@@ -18,7 +18,7 @@ bool id_ok(const std::string& id) {
 
 Directory Directory::qiantang() {
     Directory directory;
-    directory.factories = {{kFactory, "QT2", "钱塘二厂"},
+    directory.factories = {{kFactory, "DEMO-A", "示例工厂 A"},
         {"fac.demo-north", "DEMO-N", "北岸示例厂"}, {"fac.demo-south", "DEMO-S", "南湾示例厂"}};
     directory.areas = {
         {kAreaPick, kFactory, "pick", "SPS（立库）"},
@@ -29,33 +29,33 @@ Directory Directory::qiantang() {
         {"area.demo-south.sort", "fac.demo-south", "seq", "排序区"},
     };
     directory.plcs = {
-        {kPlcPack, kAreaPick, "pack", "外装"},
-        {kPlcMeter1, kAreaPick, "meter1", "仪表一"},
-        {kPlcMeter2, kAreaPick, "meter2", "仪表二"},
-        {kPlcSeq1, kAreaSeq, "seq1", "排序一"},
-        {kPlcSeq2, kAreaSeq, "seq2", "排序二"},
-        {kPlcSeq3, kAreaSeq, "seq3", "排序三"},
-        {kPlcSeq4, kAreaSeq, "seq4", "排序四"},
+        {kPlcPack, kAreaPick, "pack", "示例 PLC A"},
+        {kPlcMeter1, kAreaPick, "meter1", "示例 PLC B"},
+        {kPlcMeter2, kAreaPick, "meter2", "示例 PLC C"},
+        {kPlcSeq1, kAreaSeq, "seq1", "示例 PLC D"},
+        {kPlcSeq2, kAreaSeq, "seq2", "示例 PLC E"},
+        {kPlcSeq3, kAreaSeq, "seq3", "示例 PLC F"},
+        {kPlcSeq4, kAreaSeq, "seq4", "示例 PLC G"},
         {"plc.cfg.demo-north", "area.demo-north.sps", "demo-n", "示例 PLC N"},
         {"plc.cfg.demo-south", "area.demo-south.sort", "demo-s", "示例 PLC S"},
     };
-    // Station numbers are the given membership, in the source order. Names are those numbers.
+    // Stable IDs and codes are used by diagnostics. The UI shows synthetic names.
     directory.stations = {
-        {kStation140, kPlcPack, "140", "140", kStream},
-        {kStation150, kPlcPack, "150", "150", ""},
-        {kStation160, kPlcPack, "160", "160", ""},
-        {kStation20, kPlcMeter1, "20", "20", ""},
-        {kStation30, kPlcMeter1, "30", "30", ""},
-        {kStation90, kPlcMeter1, "90", "90", ""},
-        {kStation40, kPlcMeter2, "40", "40", ""},
-        {kStation10, kPlcMeter2, "10", "10", ""},
-        {kStation70, kPlcMeter2, "70", "70", ""},
-        {kStation80, kPlcMeter2, "80", "80", ""},
-        {kStation210, kPlcSeq1, "210", "210", ""},
-        {kStation220, kPlcSeq1, "220", "220", ""},
+        {kStation140, kPlcPack, "140", "A1", kStream},
+        {kStation150, kPlcPack, "150", "A2", "", "示例清单列有点表，未导入"},
+        {kStation160, kPlcPack, "160", "A3", "", "示例清单列有点表，未导入"},
+        {kStation20, kPlcMeter1, "20", "B1", ""},
+        {kStation30, kPlcMeter1, "30", "B2", ""},
+        {kStation90, kPlcMeter1, "90", "B3", ""},
+        {kStation40, kPlcMeter2, "40", "C1", ""},
+        {kStation10, kPlcMeter2, "10", "C2", ""},
+        {kStation70, kPlcMeter2, "70", "C3", ""},
+        {kStation80, kPlcMeter2, "80", "C4", ""},
+        {kStation210, kPlcSeq1, "210", "D1", ""},
+        {kStation220, kPlcSeq1, "220", "D2", ""},
         {"stn.demo-n1", "plc.cfg.demo-north", "N1", "示例工位 N1", ""},
         {"stn.demo-n2", "plc.cfg.demo-north", "N2", "示例工位 N2", ""},
-        {"stn.demo-s1", "plc.cfg.demo-south", "S1", "示例工位 S1", ""},
+        {"stn.demo-s1", "plc.cfg.demo-south", "S1", "示例工位 S1", "", "示例点表候选，工位映射待核对"},
     };
     directory.lines = {
         {"line.demo-a", kAreaPick, "示例线 A", "示例立库 A", "示例库区 A"},
