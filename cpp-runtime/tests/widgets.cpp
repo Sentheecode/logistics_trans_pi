@@ -318,7 +318,7 @@ QPushButton* station_button(QWidget& window, const char* id) {
 }
 void set_station_open(QWidget& window, const char* id, bool open) {
     auto* button=station_button(window, id);
-    const bool opened=button->text()=="详情";
+    const bool opened=button->text()=="收起";
     if (opened!=open) button->click();
     pump(60);
 }
@@ -575,7 +575,7 @@ int main(int argc, char** argv) {
         assert_stage_matches(stages, directory, true);
         const auto before_expand=snap(directory);
         set_station_open(window, catalog::kStation150, true);
-        if (station_button(window, catalog::kStation150)->text()!="详情") throw std::runtime_error("station 150 did not expand");
+        if (station_button(window, catalog::kStation150)->text()!="收起") throw std::runtime_error("station 150 did not expand");
         bool foundNote=false;
         for (auto* label : window.findChildren<QLabel*>()) {
             if (label->isVisible() && label->text().contains("没有模拟源")) foundNote=true;
@@ -838,6 +838,11 @@ int main(int argc, char** argv) {
             for (auto name : {"factoryCombo", "plcCombo", "modeButton", "primary", "disconnectButton", "commandPane", "scopeBanner", "controlReason"}) assert_inside(window, name);
             auto* reason=window.findChild<QLabel*>("controlReason");
             if (!reason || reason->text().isEmpty()) throw std::runtime_error("automatic mode hid the control reason");
+            bool saw140=false;
+            for (auto* label : window.findChildren<QLabel*>("rosterCode")) {
+                if (label->isVisible() && label->text()=="140") saw140=true;
+            }
+            if (!saw140) throw std::runtime_error("pack collection roster hid station 140");
         }
         show_page(window, "运行");
         choose(area, catalog::kAreaSeq);
@@ -877,8 +882,35 @@ int main(int argc, char** argv) {
         for (auto pair : seq_stations) {
             choose(area, catalog::kAreaSeq);
             choose(plc, pair[0]);
-            if (schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || !board_has(window, QString::fromUtf8(pair[1]).section('.', -1)) || cell(detail, "实时范围")!="未接入" || step->isEnabled())
+            const QString code=QString::fromUtf8(pair[1]).section('.', -1);
+            const bool documented=std::string(pair[0])!=catalog::kPlcSeq3;
+            const QString source=board_row(window, code, 3);
+            if (schematic->shapeIds().size()!=2 || schematic->shapeIds().contains(catalog::kStation140) || !board_has(window, code) || cell(detail, "实时范围")!="未接入" || step->isEnabled())
                 throw std::runtime_error("sorting plc mixed another machine or simulation");
+            if (documented) {
+                if (source!="已登记点表 · 未接入") throw std::runtime_error("candidate workbook was not shown as documentation only");
+            } else if (source!="未接入") throw std::runtime_error("sequence plc 3 gained a point-table registration");
+            if (source.contains("已绑定") || source.contains("已连接") || source.contains("已确认"))
+                throw std::runtime_error("documentation status was described as binding");
+            if (std::string(pair[0])==catalog::kPlcSeq4) {
+                show_page(window, "点表");
+                auto* scope=window.findChild<QLabel*>("pointScope");
+                if (!scope || !scope->text().contains("工位对应待确认") || scope->text().contains("已绑定") || scope->text().contains("未由用户点名确认"))
+                    throw std::runtime_error("point page did not keep workbook correspondence in the audit");
+                show_page(window, "采集");
+                for (auto* label : window.findChildren<QLabel*>()) {
+                    if (!label->isVisible()) continue;
+                    if (label->text().contains("140") || label->text().contains("sim.three-cart"))
+                        throw std::runtime_error(("sequence plc 4 collection leaked station 140 via "+label->objectName().toStdString()+" / "+label->text().toStdString()).c_str());
+                }
+                if (board_row(window, "230", 3)!="已登记点表 · 未接入" || board_row(window, "240", 3)!="已登记点表 · 未接入")
+                    throw std::runtime_error("sequence plc 4 lost its documentation-only source");
+                show_page(window, "运行");
+            }
+            for (auto* label : window.findChildren<QLabel*>()) {
+                if (label->text().contains("未由用户点名确认")) throw std::runtime_error("run page assigned confirmation to the user");
+                if (label->isVisible() && label->text().contains("工位对应待确认")) throw std::runtime_error("audit wording appeared on the run page");
+            }
             assert_no_live_leak(window);
             check_labels(window);
         }

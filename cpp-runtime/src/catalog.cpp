@@ -90,6 +90,12 @@ Directory Directory::qiantang() {
     return directory;
 }
 
+bool candidate_workbook(const std::string& station_id) {
+    return station_id==kStation170 || station_id==kStation180
+        || station_id==kStation190 || station_id==kStation200
+        || station_id==kStation230 || station_id==kStation240;
+}
+
 std::string Directory::validate(const Directory& directory) {
     std::vector<std::string> ids;
     auto take_id = [&](const std::string& id) -> std::string {

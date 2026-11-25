@@ -90,4 +90,8 @@ public:
     const Factory* factory_of_station(const std::string& station_id) const;
     bool is_live(const std::string& station_id) const;
 };
+
+// A candidate workbook is known for this station. That is document registration only:
+// it is not acquisition, binding, confirmation, or an installed point configuration.
+bool candidate_workbook(const std::string& station_id);
 }
