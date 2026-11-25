@@ -967,9 +967,7 @@ Workbench::Workbench(std::filesystem::path directory)
     pageHeadLayout->addStretch(1);
     pageHeadLayout->addWidget(openPoints);
     canvasLayout->addWidget(pageHead);
-    canvasLayout->addWidget(workspace, 0, Qt::AlignTop);
     connect(openPoints, &QPushButton::clicked, this, [this]{ openDiagnostic("点表"); });
-    canvasLayout->addStretch(1);
     runStack->addWidget(emptyRun);
     runStack->addWidget(runCanvas);
     runLayout->addWidget(runStack, 0);
@@ -1053,6 +1051,7 @@ Workbench::Workbench(std::filesystem::path directory)
     readyLayout->addWidget(openAccess, 0, Qt::AlignRight | Qt::AlignVCenter);
     workspaceLayout->addWidget(readyBox);
     auto* foot=new QWidget(workspace);
+    foot->setObjectName("runFoot");
     auto* footLayout=new QVBoxLayout(foot);
     footLayout->setContentsMargins(12, 0, 12, 2);
     footLayout->setSpacing(4);
@@ -1067,7 +1066,17 @@ Workbench::Workbench(std::filesystem::path directory)
     rangeRow->addWidget(openCollect);
     footLayout->addLayout(rangeRow);
     workspaceLayout->addWidget(foot);
-    workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    workspaceLayout->addStretch(1);
+    workspaceLayout->setAlignment(Qt::AlignTop);
+    workspace->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto* runScroll=new QScrollArea(runCanvas);
+    runScroll->setObjectName("runScroll");
+    runScroll->setWidgetResizable(true);
+    runScroll->setFrameShape(QFrame::NoFrame);
+    runScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    runScroll->setWidget(workspace);
+    runScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    canvasLayout->addWidget(runScroll, 1);
     connect(openAccess, &QPushButton::clicked, this, [this]{ openDiagnostic("接口"); });
     connect(openCollect, &QPushButton::clicked, this, [this]{ openDiagnostic("采集"); });
 
@@ -2635,6 +2644,7 @@ void Workbench::render() {
         if (auto* layout=qobject_cast<QVBoxLayout*>(tail->parentWidget()->layout())) {
             layout->setStretchFactor(tail, unconfigured ? 1 : 0);
             if (auto* stack=findChild<QStackedWidget*>("runStack")) layout->setStretchFactor(stack, unconfigured ? 0 : 1);
+            if (layout->count()>0) layout->setStretch(layout->count()-1, unconfigured ? 1 : 0);
         }
     }
     if (auto* body=findChild<QWidget*>("runBody")) body->setVisible(live);
@@ -2856,7 +2866,7 @@ bool Workbench::captureReady(const QString& kind) const {
     if (view_.rows.empty() || !liveScope()) return false;
     const auto& row=view_.rows.front();
     if (kind=="manual") return available_ && view_.runtime.mode=="manual";
-    if (kind=="normal") return available_ && view_.runtime.mode=="automatic" && row.quality=="good" && row.alarm=="cleared";
+    if (kind=="normal" || kind=="pack-end") return available_ && view_.runtime.mode=="automatic" && row.quality=="good" && row.alarm=="cleared";
     if (kind=="alarm") return available_ && row.alarm=="active" && row.quality=="good" && (view_.freshness=="recent" || (view_.runtime.mode=="manual" && view_.freshness!="clock_uncertain"));
     return !available_ || row.quality!="good";
 }

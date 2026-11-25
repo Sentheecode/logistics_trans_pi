@@ -138,6 +138,32 @@ void assert_point_detail_reachable(QWidget& window) {
         throw std::runtime_error("point detail scroll cannot reach the last line");
     show_page(window,"运行");
 }
+void assert_run_footer_separated(QWidget& window) {
+    auto* scroll=window.findChild<QScrollArea*>("runScroll");
+    auto* board=window.findChild<QTableWidget*>("stationBoard");
+    auto* foot=window.findChild<QWidget*>("runFoot");
+    if (!scroll || !board || !foot || !scroll->isVisible() || !board->isVisible() || !foot->isVisible())
+        throw std::runtime_error("run scroll, station board, or footer missing");
+    const QPoint boardBottom=board->mapTo(scroll->widget(), QPoint(0, board->height()));
+    const QPoint footTop=foot->mapTo(scroll->widget(), QPoint(0, 0));
+    if (footTop.y()<boardBottom.y()-1) throw std::runtime_error("footer overlaps the station board");
+    const QPoint origin=scroll->viewport()->mapTo(&window, QPoint(0, 0));
+    if (origin.y()<0 || origin.y()+scroll->viewport()->height()>window.height()+2)
+        throw std::runtime_error("run scroll viewport is outside the window");
+    auto* bar=scroll->verticalScrollBar();
+    bar->setValue(bar->maximum());
+    QCoreApplication::processEvents();
+    const int lastRow=board->rowCount()-1;
+    const QRect last=board->visualRect(board->model()->index(lastRow, 0));
+    const QPoint lastTop=board->viewport()->mapTo(scroll->viewport(), last.topLeft());
+    const QPoint lastBottom=board->viewport()->mapTo(scroll->viewport(), last.bottomLeft());
+    const QPoint footIn=foot->mapTo(scroll->viewport(), QPoint(0, 0));
+    if (!last.isValid() || lastBottom.y()>footIn.y()) throw std::runtime_error("scrolled footer still covers the last station");
+    if (lastTop.y()<0 || footIn.y()<0 || footIn.y()+foot->height()>scroll->viewport()->height()+4)
+        throw std::runtime_error("scrolled end does not keep the last station and footer on screen");
+    bar->setValue(0);
+    QCoreApplication::processEvents();
+}
 void assert_inside(QWidget& window, const char* name) {
     auto* widget=window.findChild<QWidget*>(name);
     if (!widget || !widget->isVisible()) throw std::runtime_error(std::string("missing visible control ")+name);
@@ -464,8 +490,9 @@ int main(int argc, char** argv) {
         for (auto size : {QSize(1100,650), QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"moduleTabs","pageTabRow","stationBoard","runtimeState","catalogPane","stageTable","simOrder"})
+            for (auto name : {"moduleTabs","pageTabRow","runtimeState","catalogPane","stageTable","simOrder"})
                 assert_inside(window,name);
+            assert_run_footer_separated(window);
             assert_tabs_above_factory(window);
             auto bounds=[&](const char* name){
                 auto* widget=window.findChild<QWidget*>(name);
@@ -905,7 +932,8 @@ int main(int argc, char** argv) {
             window.resize(size);
             pump(200);
             check_labels(window);
-            for (auto name : {"factoryCombo", "stationBoard", "plcCombo"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "plcCombo"}) assert_inside(window, name);
+            assert_run_footer_separated(window);
             if (window.findChild<QWidget*>("commandPane") && window.findChild<QWidget*>("commandPane")->isVisible())
                 throw std::runtime_error("unbound plc still showed the control bar");
         }
