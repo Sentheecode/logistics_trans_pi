@@ -533,6 +533,10 @@ int main(int argc, char** argv) {
             throw std::runtime_error("font merging is disabled");
         if (!QFontMetrics(QApplication::font()).inFont(QChar(0x6a21)))
             throw std::runtime_error("Chinese glyph is missing from the active font");
+        for (const char* id : {catalog::kStation140, catalog::kStation150, catalog::kStation160, catalog::kStation20, catalog::kStation30, catalog::kStation90, catalog::kStation40, catalog::kStation10, catalog::kStation70, catalog::kStation80}) {
+            for (const auto& name : catalog::drawing_names(id))
+                require_glyphs(QFontMetrics(QApplication::font()), QString::fromStdString(name), "drawing");
+        }
         if (!window.styleSheet().contains("border-radius:8px") || window.styleSheet().contains("qlineargradient") || window.styleSheet().contains("box-shadow"))
             throw std::runtime_error("controls are not rounded");
         for (auto* box : {factory, area, plc}) assert_combo_contrast(box);
@@ -568,10 +572,18 @@ int main(int argc, char** argv) {
         const auto before_scope=snap(directory);
         if (plc->currentData().toString()!=QString::fromUtf8(catalog::kPlcPack) || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("plc context hid the other stations");
-        if (board_row(window, "150", 3)!="未接入" || board_row(window, "160", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览")
+        if (board_row(window, "150", 3)!="已有点表·未接入" || board_row(window, "160", 3)!="已有点表·未接入" || board_row(window, "140", 3)!="模拟预览")
             throw std::runtime_error("station source column is wrong");
-        if (board_row(window, "140", 1)!="名称未登记" || board_row(window, "150", 1)!="名称未登记" || board_row(window, "160", 1)!="名称未登记")
-            throw std::runtime_error("unregistered station name was invented");
+        if (!board_row(window, "140", 1).contains("随车手册套装（单层）")
+            || !board_row(window, "150", 1).contains("前保右安装支架总成（多层）")
+            || !board_row(window, "150", 1).contains("后保右安装支架总成（多层）")
+            || !board_row(window, "160", 1).contains("通风窗盖板右端盖总成（多层）"))
+            throw std::runtime_error("drawing names were not shown");
+        auto* plan=window.findChild<QWidget*>("shopPlan");
+        if (!plan || !plan->isVisible() || plan->property("layout").toString()!="pack-right")
+            throw std::runtime_error("pack plan is not the right-side shop drawing");
+        auto* rack=window.findChild<QWidget*>("roundRack");
+        if (!rack || !rack->isVisible()) throw std::runtime_error("expanded station 140 hid the round rack");
         if (board_row(window, "150", 2)!="—" || board_row(window, "160", 2)!="—" || board_row(window, "140", 2)!="三车分拣 · 本轮")
             throw std::runtime_error("sibling station reused station 140 records");
         if (!autoReason || autoReason->text()!="本 PLC 的模拟只作用于工位 140，手动待步") throw std::runtime_error("manual reason is wrong");
@@ -720,8 +732,10 @@ int main(int argc, char** argv) {
         choose(plc, catalog::kPlcPack);
         if (schematic->shapeIds().size()!=3 || !board_has(window, "140") || !board_has(window, "150") || !board_has(window, "160"))
             throw std::runtime_error("pack layout did not show all three stations");
-        if (board_row(window, "150", 3)!="未接入" || board_row(window, "140", 3)!="模拟预览" || board_row(window, "150", 2).contains("140"))
+        if (board_row(window, "150", 3)!="已有点表·未接入" || board_row(window, "140", 3)!="模拟预览" || board_row(window, "150", 2).contains("140"))
             throw std::runtime_error("pack board leaked or hid station 140");
+        if (!window.findChild<QWidget*>("shopPlan") || window.findChild<QWidget*>("shopPlan")->property("layout").toString()!="pack-right")
+            throw std::runtime_error("pack plan layout changed");
         const auto peers=cell(detail, "关联工位");
         if (!peers.contains(catalog::kStation140) || !peers.contains(catalog::kStation150) || !peers.contains(catalog::kStation160) || peers.contains(catalog::kStation210))
             throw std::runtime_error("plc peer list incorrect");
@@ -874,6 +888,12 @@ int main(int argc, char** argv) {
         const auto meter=schematic->shapeIds();
         if (meter.size()!=4 || !meter.contains(catalog::kStation40) || !meter.contains(catalog::kStation10) || !meter.contains(catalog::kStation70) || !meter.contains(catalog::kStation80) || meter.contains(catalog::kStation140))
             throw std::runtime_error("meter2 layout was not exactly its four stations");
+        if (board_row(window, "40", 1)!="仪表扬声器罩总成（多层）" || board_row(window, "10", 1)!="T-BOXLP-TBOX041-AA（单层）" || !board_row(window, "80", 1).contains("中饰板饰条（单层）") || !board_row(window, "80", 1).contains("组合仪表盖板（单层）"))
+            throw std::runtime_error("meter2 drawing names missing");
+        if (board_row(window, "40", 3)!="已有布置图·点表仍缺·未接入" || board_row(window, "70", 3)!="已有布置图·点表仍缺·未接入")
+            throw std::runtime_error("meter2 source was not drawing-only");
+        if (!window.findChild<QWidget*>("shopPlan") || !window.findChild<QWidget*>("shopPlan")->isVisible() || window.findChild<QWidget*>("shopPlan")->property("layout").toString()!="meter-order")
+            throw std::runtime_error("meter2 plan was not drawing order");
         if (!board_has(window, "40") || !board_has(window, "10") || !board_has(window, "70") || !board_has(window, "80") || board_has(window, "140"))
             throw std::runtime_error("meter2 board did not show exactly its stations");
         const auto meter_plc=plc->currentData().toString();
@@ -907,6 +927,15 @@ int main(int argc, char** argv) {
             if (documented) {
                 if (source!="已登记点表 · 未接入") throw std::runtime_error("candidate workbook was not shown as documentation only");
             } else if (source!="未接入") throw std::runtime_error("sequence plc 3 gained a point-table registration");
+            if (std::string(pair[0])==catalog::kPlcSeq3) {
+                auto* seqPlan=window.findChild<QWidget*>("shopPlan");
+                if (!seqPlan || !seqPlan->isVisible() || seqPlan->property("layout").toString()!="seq3-sides")
+                    throw std::runtime_error("sequence plc 3 plan was not side by side");
+                if (board_row(window, "210", 1)!="前悬架右前下摆臂总成" || board_row(window, "220", 1)!="前悬架左前下摆臂总成")
+                    throw std::runtime_error("sequence plc 3 catalog names changed");
+            }
+            if (std::string(pair[0])==catalog::kPlcSeq1 && window.findChild<QWidget*>("shopPlan") && window.findChild<QWidget*>("shopPlan")->isVisible())
+                throw std::runtime_error("sequence plc 1 gained a shop plan");
             if (source.contains("已绑定") || source.contains("已连接") || source.contains("已确认"))
                 throw std::runtime_error("documentation status was described as binding");
             if (std::string(pair[0])==catalog::kPlcSeq4) {

@@ -94,4 +94,13 @@ public:
 // A candidate workbook is known for this station. That is document registration only:
 // it is not acquisition, binding, confirmation, or an installed point configuration.
 bool candidate_workbook(const std::string& station_id);
+// Part names copied from a shop drawing. Empty when this station has no drawing label.
+// These strings are display metadata, not electrical bindings or write configuration.
+std::vector<std::string> drawing_names(const std::string& station_id);
+// Stations 150 and 160 already have the pack workbook. That is not acquisition.
+bool pack_workbook(const std::string& station_id);
+// Instrument stations have drawing names and still have no point workbook.
+bool drawing_without_points(const std::string& station_id);
+// Run-page plan key: "pack-right", "seq3-sides", "meter-order", or empty for a list only.
+const char* shop_layout(const std::string& plc_id);
 }

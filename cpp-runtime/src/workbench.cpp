@@ -287,6 +287,174 @@ protected:
         painter.fillRect(QRect(tab.left()+4, height()-4, barWidth, 4), QColor("#3b5bdb"));
     }
 };
+void paintArm(QPainter& painter, const QPointF& origin) {
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#8b95a7"), 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawLine(origin, origin+QPointF(0, -12));
+    painter.drawLine(origin+QPointF(0, -12), origin+QPointF(16, -18));
+    painter.drawLine(origin+QPointF(8, 2), origin+QPointF(22, 2));
+    painter.restore();
+}
+class ShopPlan final : public QWidget {
+public:
+    explicit ShopPlan(QWidget* parent=nullptr) : QWidget(parent) {
+        setObjectName("shopPlan");
+        hide();
+    }
+    void apply(const catalog::Plc* plc, const std::vector<const catalog::Station*>& rows) {
+        stations_=rows;
+        kind_=plc ? QString::fromUtf8(catalog::shop_layout(plc->id)) : QString();
+        title_=plc ? QString::fromStdString(plc->name) : QString();
+        setProperty("layout", kind_);
+        if (kind_.isEmpty()) { hide(); return; }
+        setFixedHeight(kind_=="pack-right" ? 108 : kind_=="seq3-sides" ? 100 : 96);
+        show();
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.fillRect(rect(), QColor("#ffffff"));
+        if (kind_.isEmpty()) return;
+        QFont caption=font();
+        caption.setPixelSize(12);
+        painter.setFont(caption);
+        painter.setPen(QColor("#5c6370"));
+        const QString head=kind_=="pack-right"
+            ? "外装右 · 140 在左 · 150 与 160 端部相接 · 布置图平面 · 不是实时位置 · 不表示跨工位行驶"
+            : kind_=="seq3-sides"
+            ? "排序区三 · 布置图平面 · 210 在左、220 在右 · 不是实时位置"
+            : title_+" · 布置图顺序 · 已有布置图·点表仍缺·未接入 · 不是实时位置";
+        painter.drawText(QRectF(8, 2, width()-16, 18), Qt::AlignLeft|Qt::AlignVCenter, head);
+        if (kind_=="pack-right") paintPack(painter);
+        else if (kind_=="seq3-sides") paintSeq3(painter);
+        else paintMeter(painter);
+    }
+private:
+    void card(QPainter& painter, const QRectF& box) const {
+        painter.setPen(QPen(QColor("#e6e8eb"), 1));
+        painter.setBrush(QColor("#f7f8fa"));
+        painter.drawRoundedRect(box, 8, 8);
+    }
+    void namesAt(QPainter& painter, const QRectF& box, const std::string& id, bool arm) const {
+        const auto names=catalog::drawing_names(id);
+        QFont code=font();
+        code.setPixelSize(16);
+        code.setWeight(QFont::DemiBold);
+        painter.setFont(code);
+        painter.setPen(QColor("#1b1f23"));
+        const QString number=QString::fromStdString(id).section('.', -1);
+        painter.drawText(box.adjusted(10, 6, -28, 0), Qt::AlignLeft|Qt::AlignTop, number);
+        if (arm) paintArm(painter, QPointF(box.right()-26, box.top()+28));
+        QFont body=font();
+        body.setPixelSize(14);
+        body.setWeight(QFont::Normal);
+        painter.setFont(body);
+        painter.setPen(QColor("#1b1f23"));
+        QStringList lines;
+        for (const auto& name : names) lines<<QString::fromStdString(name);
+        if (lines.isEmpty()) {
+            const auto* known=id==catalog::kStation210 ? "前悬架右前下摆臂总成" : id==catalog::kStation220 ? "前悬架左前下摆臂总成" : "";
+            if (known[0]) lines<<QString::fromUtf8(known);
+        }
+        const int step=std::max(16, painter.fontMetrics().lineSpacing());
+        int top=static_cast<int>(box.top())+24;
+        for (const auto& line : lines) {
+            if (top+step>box.bottom()) break;
+            painter.drawText(QRectF(box.left()+10, top, box.width()-36, step), Qt::AlignLeft|Qt::AlignVCenter, line);
+            top+=step;
+        }
+    }
+    void paintPack(QPainter& painter) const {
+        const QRectF body(8, 22, width()-16, height()-28);
+        const double leftWidth=std::max(180.0, body.width()*0.32);
+        const QRectF left(body.left(), body.top(), leftWidth, body.height());
+        const QRectF right(left.right()+12, body.top(), body.right()-left.right()-12, body.height());
+        card(painter, left);
+        card(painter, right);
+        namesAt(painter, left, catalog::kStation140, true);
+        const QRectF west=right.adjusted(0, 0, -right.width()/2, 0);
+        const QRectF east=right.adjusted(right.width()/2, 0, 0, 0);
+        namesAt(painter, west, catalog::kStation150, true);
+        namesAt(painter, east, catalog::kStation160, true);
+        const double seam=right.center().x();
+        painter.setPen(QPen(QColor("#c5ccd6"), 1, Qt::DashLine));
+        painter.drawLine(QPointF(seam, right.top()+6), QPointF(seam, right.top()+20));
+        painter.drawLine(QPointF(seam, right.bottom()-16), QPointF(seam, right.bottom()-6));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor("#8b95a7"));
+        painter.drawRoundedRect(QRectF(seam-28, right.bottom()-8, 56, 5), 2, 2);
+    }
+    void paintSeq3(QPainter& painter) const {
+        const QRectF body(8, 22, width()-16, height()-40);
+        const QRectF left(body.left(), body.top(), (body.width()-12)/2, body.height());
+        const QRectF right(left.right()+12, body.top(), body.right()-left.right()-12, body.height());
+        card(painter, left);
+        card(painter, right);
+        namesAt(painter, left, catalog::kStation210, false);
+        namesAt(painter, right, catalog::kStation220, false);
+        QFont note=font();
+        note.setPixelSize(12);
+        painter.setFont(note);
+        painter.setPen(QColor("#5c6370"));
+        painter.drawText(QRectF(8, height()-18, width()-16, 16), Qt::AlignLeft|Qt::AlignVCenter,
+            "排序料架 · 待排序料架 · 使用位 · 缓存料架 · 未接入 · 无占位");
+    }
+    void paintMeter(QPainter& painter) const {
+        if (stations_.empty()) return;
+        const QRectF body(8, 22, width()-16, height()-28);
+        const int count=static_cast<int>(stations_.size());
+        const double gap=8;
+        const double bay=(body.width()-gap*(count-1))/count;
+        for (int index=0; index<count; ++index) {
+            const QRectF box(body.left()+index*(bay+gap), body.top(), bay, body.height());
+            card(painter, box);
+            namesAt(painter, box, stations_[static_cast<std::size_t>(index)]->id, false);
+        }
+    }
+    QString kind_, title_;
+    std::vector<const catalog::Station*> stations_;
+};
+class RoundRack final : public QWidget {
+public:
+    explicit RoundRack(QWidget* parent=nullptr) : QWidget(parent) {
+        setObjectName("roundRack");
+        setFixedHeight(34);
+    }
+    void setFrame(const QString& a, const QString& b, const QString& c, int active) {
+        states_[0]=a; states_[1]=b; states_[2]=c; active_=active; update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QFont note=font();
+        note.setPixelSize(12);
+        painter.setFont(note);
+        painter.setPen(QColor("#5c6370"));
+        const double gap=6;
+        const double bay=(width()-gap*2)/3.0;
+        for (int index=0; index<3; ++index) {
+            const QRectF box(index*(bay+gap), 2, bay, 30);
+            const bool active=index==active_;
+            painter.setPen(QPen(active ? QColor("#3b5bdb") : QColor("#d5dbe3"), active ? 2 : 1));
+            painter.setBrush(QColor("#ffffff"));
+            painter.drawRoundedRect(box, 6, 6);
+            QFont body=font();
+            body.setPixelSize(12);
+            body.setWeight(active ? QFont::DemiBold : QFont::Normal);
+            painter.setFont(body);
+            painter.setPen(active ? QColor("#3b5bdb") : QColor("#1b1f23"));
+            painter.drawText(box.adjusted(6, 0, -6, 0), Qt::AlignVCenter|Qt::AlignLeft,
+                QString("小车 %1  %2").arg(index+1).arg(states_[index]));
+        }
+    }
+private:
+    QString states_[3]={"—", "—", "—"};
+    int active_=-1;
+};
 class RunStack : public QStackedWidget {
 public:
     using QStackedWidget::QStackedWidget;
@@ -708,7 +876,7 @@ Workbench::Workbench(std::filesystem::path directory)
     stationBoard_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Fixed);
     stationBoard_->setShowGrid(false);
     stationBoard_->setColumnWidth(0, 88);
-    stationBoard_->setColumnWidth(3, 188);
+    stationBoard_->setColumnWidth(3, 232);
     stationBoard_->setColumnWidth(4, 64);
     auto* workHeading=new QLabel("模拟作业");
     workHeading->setObjectName("workHeading");
@@ -825,6 +993,10 @@ Workbench::Workbench(std::filesystem::path directory)
     simOrder_=new QLabel("当前无活动料车");
     simOrder_->setObjectName("simOrder");
     simOrder_->setWordWrap(false);
+    roundRack_=new RoundRack(this);
+    roundRack_->hide();
+    rackNote_=new QLabel("不是左右位置", this);
+    rackNote_->setObjectName("muted");
     resultTable_=new QTableWidget(this);
     resultTable_->setObjectName("runResultTable");
     prepareTable(resultTable_, {"执行与采集", "当前结果"});
@@ -832,6 +1004,8 @@ Workbench::Workbench(std::filesystem::path directory)
     runBody->hide();
     workspaceLayout->setContentsMargins(0, 0, 0, 0);
     workspaceLayout->setSpacing(0);
+    shopPlan_=new ShopPlan(workspace);
+    workspaceLayout->addWidget(shopPlan_);
     workspaceLayout->addWidget(stationBoard_);
     auto* readyBox=new QWidget(workspace);
     readyBox->setObjectName("readyBox");
@@ -853,7 +1027,7 @@ Workbench::Workbench(std::filesystem::path directory)
     workspaceLayout->addWidget(readyBox);
     auto* foot=new QWidget(workspace);
     auto* footLayout=new QVBoxLayout(foot);
-    footLayout->setContentsMargins(16, 4, 16, 8);
+    footLayout->setContentsMargins(12, 0, 12, 2);
     footLayout->setSpacing(4);
     scopeBanner_->setParent(foot);
     auto* rangeRow=new QHBoxLayout;
@@ -936,13 +1110,12 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* trackLayout=new QVBoxLayout(track);
     trackLayout->setContentsMargins(0, 0, 0, 0);
     trackLayout->setSpacing(4);
-    auto* trackHead=new QHBoxLayout;
-    auto* trackTitle=new QLabel("本工位本轮", track);
-    trackTitle->setObjectName("section");
-    trackHead->addWidget(trackTitle);
-    trackHead->addWidget(progressLabel_);
-    trackHead->addStretch(1);
-    trackLayout->addLayout(trackHead);
+    auto* rackRow=new QHBoxLayout;
+    rackRow->setContentsMargins(0, 0, 0, 0);
+    rackRow->addWidget(progressLabel_);
+    rackRow->addWidget(rackNote_);
+    rackRow->addWidget(roundRack_, 1);
+    trackLayout->addLayout(rackRow);
     trackLayout->addWidget(stageTable_);
     faceLayout->addWidget(doc);
     faceLayout->addWidget(rule);
@@ -1859,7 +2032,8 @@ void Workbench::syncModuleChrome() {
             QStringList signature;
             for (auto* station : catalog_.stations_of(selection_.plc_id)) {
                 const bool own=catalog_.is_live(station->id);
-                signature<<QString::fromStdString(station->code)+(own ? ":live" : catalog::candidate_workbook(station->id) ? ":doc" : ":idle");
+                const QString mark=own ? "live" : catalog::candidate_workbook(station->id) ? "doc" : catalog::pack_workbook(station->id) ? "pack" : catalog::drawing_without_points(station->id) ? "drawn" : "idle";
+                signature<<QString::fromStdString(station->code)+":"+mark;
             }
             const QString sig=signature.join("|");
             if (roster->property("rosterSig").toString()!=sig) {
@@ -1880,10 +2054,16 @@ void Workbench::syncModuleChrome() {
                     code->setObjectName("rosterCode");
                     code->setStyleSheet("color:#1b1f23; font-size:14px; font-weight:600; background:transparent;");
                     const bool own=catalog_.is_live(station->id);
-                    const bool documented=!own && catalog::candidate_workbook(station->id);
-                    auto* state=new QLabel(own ? "模拟源" : documented ? "已登记点表 · 未接入" : "未接入", row);
+                    const QString stateText=own ? "模拟源"
+                        : catalog::candidate_workbook(station->id) ? "已登记点表 · 未接入"
+                        : catalog::pack_workbook(station->id) ? "已有点表·未接入"
+                        : catalog::drawing_without_points(station->id) ? "已有布置图·点表仍缺·未接入"
+                        : "未接入";
+                    auto* state=new QLabel(stateText, row);
+                    state->setWordWrap(true);
+                    state->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
                     state->setObjectName("sourceChip");
-                    state->setProperty("state", own ? "live" : documented ? "doc" : "idle");
+                    state->setProperty("state", own ? "live" : "idle");
                     state->style()->unpolish(state);
                     state->style()->polish(state);
                     line->addWidget(code);
@@ -2078,11 +2258,22 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
     auto sourceText=[&](const catalog::Station* station){
         if (catalog_.is_live(station->id)) return QString("模拟预览");
         if (catalog::candidate_workbook(station->id)) return QString("已登记点表 · 未接入");
+        if (catalog::pack_workbook(station->id)) return QString("已有点表·未接入");
+        if (catalog::drawing_without_points(station->id)) return QString("已有布置图·点表仍缺·未接入");
         return QString("未接入");
+    };
+    auto displayName=[&](const catalog::Station* station){
+        const auto drawn=catalog::drawing_names(station->id);
+        if (!drawn.empty()) {
+            QStringList lines;
+            for (const auto& name : drawn) lines<<QString::fromStdString(name);
+            return lines.join("\n");
+        }
+        return station->name==station->code ? QString("名称未登记") : QString::fromStdString(station->name);
     };
     auto paintSummary=[&](int row, const catalog::Station* station, bool grouped){
         const bool own=catalog_.is_live(station->id);
-        const QString name=station->name==station->code ? "名称未登记" : QString::fromStdString(station->name);
+        const QString name=displayName(station);
         const QStringList columns={QString::fromStdString(station->code), name, workText(own), sourceText(station)};
         for (int column=0; column<columns.size(); ++column) {
             auto* item=stationBoard_->item(row, column);
@@ -2101,6 +2292,8 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
     if (signature!=boardSignature_) {
         if (stageTable_) stageTable_->setParent(this);
         if (simOrder_) simOrder_->setParent(this);
+        if (roundRack_) roundRack_->setParent(this);
+        if (rackNote_) rackNote_->setParent(this);
         if (progressLabel_) progressLabel_->setParent(this);
         QWidget* previousFace=liveFace_;
         liveFace_=nullptr;
@@ -2136,13 +2329,12 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
         auto* trackLayout=new QVBoxLayout(track);
         trackLayout->setContentsMargins(0, 0, 0, 0);
         trackLayout->setSpacing(4);
-        auto* trackHead=new QHBoxLayout;
-        auto* trackTitle=new QLabel("本工位本轮", track);
-        trackTitle->setObjectName("section");
-        trackHead->addWidget(trackTitle);
-        trackHead->addWidget(progressLabel_);
-        trackHead->addStretch(1);
-        trackLayout->addLayout(trackHead);
+        auto* rackRow=new QHBoxLayout;
+        rackRow->setContentsMargins(0, 0, 0, 0);
+        rackRow->addWidget(progressLabel_);
+        rackRow->addWidget(rackNote_);
+        rackRow->addWidget(roundRack_, 1);
+        trackLayout->addLayout(rackRow);
         trackLayout->addWidget(stageTable_);
         faceLayout->addWidget(doc);
         faceLayout->addWidget(track, 1);
@@ -2167,7 +2359,7 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
             layout->addStretch(1);
             layout->addWidget(link);
             stationBoard_->setCellWidget(row, 4, cell);
-            stationBoard_->setRowHeight(row, 44);
+            stationBoard_->setRowHeight(row, displayName(station).count('\n')>0 ? 52 : 40);
             connect(link, &QPushButton::clicked, this, [this, id]{
                 expandedId_=expandedId_==id ? QString() : id;
                 boardSignature_.clear();
@@ -2184,8 +2376,14 @@ void Workbench::presentStations(bool live, bool good, const std::vector<const ca
                 stationBoard_->setRowHeight(row, std::max(148, liveFace_->sizeHint().height()+4));
             }             else {
                 const bool documented=catalog::candidate_workbook(station->id);
+                const bool workbook=catalog::pack_workbook(station->id);
+                const bool drawn=catalog::drawing_without_points(station->id);
                 auto* note=new QLabel(documented
                     ? "已登记点表，尚未接入。不借用其他工位的模拟。"
+                    : workbook
+                    ? "已有点表，尚未接入。没有模拟源，不借用其他工位的作业。"
+                    : drawn
+                    ? "已有布置图，点表仍缺。没有模拟源，不借用其他工位的作业。"
                     : "已登记。此工位没有模拟源，不借用其他工位的作业。");
                 note->setObjectName("muted");
                 note->setContentsMargins(28, 8, 16, 8);
@@ -2310,11 +2508,24 @@ void Workbench::render() {
         stationCodes.push_back(QString::fromStdString(item->code));
     }
     schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), glyphs, "", lane);
+    if (auto* plan=static_cast<ShopPlan*>(shopPlan_)) plan->apply(plc, peer_rows);
     if (pageScope_) {
         pageScope_->setText(plc ? QString::fromStdString(plc->name)+" · 全部 "+QString::number(peer_rows.size())+" 个工位" : "未选择 PLC");
         pageScope_->setMinimumWidth(pageScope_->fontMetrics().horizontalAdvance(pageScope_->text())+4);
     }
     if (stationBoard_) presentStations(live, good, peer_rows);
+    if (auto* rack=static_cast<RoundRack*>(roundRack_)) {
+        int active=-1;
+        QString rackStates[3];
+        for (int index=0; index<3; ++index) {
+            const auto raw=live && !view_.rows.empty() && good ? view_.rows.front().carts[index] : "UNKNOWN";
+            rackStates[index]=live ? stateText(raw) : QString("—");
+            if (raw=="scanning" || raw=="sorting") active=index;
+        }
+        rack->setFrame(rackStates[0], rackStates[1], rackStates[2], active);
+        const bool openedLive=live && !expandedId_.isEmpty() && catalog_.is_live(expandedId_.toStdString());
+        rack->setVisible(openedLive);
+    }
     setRows(detailTable_, {
         {"工位", stationCodes.isEmpty() ? "未配置" : stationCodes.join("、")},
         {"业务模式", area ? QString::fromStdString(area->name) : "未配置"},
@@ -2334,7 +2545,10 @@ void Workbench::render() {
     peerTable_->setSelectionMode(QAbstractItemView::NoSelection);
     for (int i=0; i<static_cast<int>(peer_rows.size()); ++i) {
         const bool own=catalog_.is_live(peer_rows[i]->id);
-        const QString name=peer_rows[i]->name==peer_rows[i]->code ? "名称未登记" : QString::fromStdString(peer_rows[i]->name);
+        const auto drawn=catalog::drawing_names(peer_rows[i]->id);
+        const QString name=drawn.empty()
+            ? (peer_rows[i]->name==peer_rows[i]->code ? "名称未登记" : QString::fromStdString(peer_rows[i]->name))
+            : QString::fromStdString(drawn.front());
         QStringList columns={QString::fromStdString(peer_rows[i]->code), name, own ? "模拟源" : "无模拟源"};
         for (int column=0; column<columns.size(); ++column) {
             auto* item=new QTableWidgetItem(columns[column]);
@@ -2346,8 +2560,11 @@ void Workbench::render() {
     const auto audit_rows=audit::for_station(live ? catalog_.live_station_id() : std::string());
     bool documentedWorkbook=false;
     for (auto* station : peer_rows) if (catalog::candidate_workbook(station->id)) documentedWorkbook=true;
-    if (!audit_rows.empty()) pointScope_->setText("只读。点表只属于本 PLC 的工位 140，其他工位没有点表。");
+    const bool drawnOnly=std::any_of(peer_rows.begin(), peer_rows.end(), [](const catalog::Station* station){ return catalog::drawing_without_points(station->id); });
+    if (!audit_rows.empty()) pointScope_->setText("只读。点表只属于工位 140，本批没有新的电气交接。150 与 160 的名称来自布置图标注，点表未接入。布置图不是写配置。");
     else if (documentedWorkbook) pointScope_->setText("候选点表已登记。工位对应待确认。尚未装入点配置。");
+    else if (drawnOnly) pointScope_->setText("布置图名称只作显示。点表仍缺，尚未接入。不是电气交接。");
+    else if (plc && std::string(catalog::shop_layout(plc->id))=="seq3-sides") pointScope_->setText("当前 PLC 没有点表。料架名称未接入，没有占位。");
     else pointScope_->setText("当前 PLC 没有点表。");
     pointTable_->setRowCount(static_cast<int>(audit_rows.size()));
     for (int i=0; i<static_cast<int>(audit_rows.size()); ++i) {

@@ -96,6 +96,49 @@ bool candidate_workbook(const std::string& station_id) {
         || station_id==kStation230 || station_id==kStation240;
 }
 
+namespace {
+struct DrawingParts { const char* id; const char* first; const char* second; };
+const DrawingParts kDrawingParts[]={
+    {kStation140, "随车手册套装（单层）", nullptr},
+    {kStation150, "前保右安装支架总成（多层）", "后保右安装支架总成（多层）"},
+    {kStation160, "通风窗盖板右端盖总成（多层）", nullptr},
+    {kStation20, "转向管柱下护罩总成（单层）", "屏幕装饰罩盖板总成（单层）"},
+    {kStation30, "8.88英寸仪表显示屏总成", "屏幕装饰罩总成（多层）"},
+    {kStation90, "4G集成天线总成", "DAB主机总成（多层）"},
+    {kStation40, "仪表扬声器罩总成（多层）", nullptr},
+    {kStation10, "T-BOXLP-TBOX041-AA（单层）", nullptr},
+    {kStation70, "转向管柱上护罩总成（单层）", "组合仪表装饰罩盖板总成（单层）"},
+    {kStation80, "中饰板饰条（单层）", "组合仪表盖板（单层）"},
+};
+}
+
+std::vector<std::string> drawing_names(const std::string& station_id) {
+    for (const auto& row : kDrawingParts) {
+        if (station_id!=row.id) continue;
+        std::vector<std::string> names;
+        if (row.first && row.first[0]) names.emplace_back(row.first);
+        if (row.second && row.second[0]) names.emplace_back(row.second);
+        return names;
+    }
+    return {};
+}
+
+bool pack_workbook(const std::string& station_id) {
+    return station_id==kStation150 || station_id==kStation160;
+}
+
+bool drawing_without_points(const std::string& station_id) {
+    return station_id==kStation20 || station_id==kStation30 || station_id==kStation90
+        || station_id==kStation40 || station_id==kStation10 || station_id==kStation70 || station_id==kStation80;
+}
+
+const char* shop_layout(const std::string& plc_id) {
+    if (plc_id==kPlcPack) return "pack-right";
+    if (plc_id==kPlcSeq3) return "seq3-sides";
+    if (plc_id==kPlcMeter1 || plc_id==kPlcMeter2) return "meter-order";
+    return "";
+}
+
 std::string Directory::validate(const Directory& directory) {
     std::vector<std::string> ids;
     auto take_id = [&](const std::string& id) -> std::string {
