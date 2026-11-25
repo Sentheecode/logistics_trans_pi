@@ -2,7 +2,7 @@ name: Windows portable preview
 
 on:
   push:
-    branches: [experiment/cpp-runtime]
+    branches: [experiment/cpp-runtime, cursor/windows-ui-preview-063d]
     paths:
       - '.github/workflows/windows-preview.yml'
       - 'cpp-runtime/**'
@@ -87,3 +87,74 @@ jobs:
           path: preview-artifact/
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    needs: clean-smoke
+    if: github.ref == 'refs/heads/cursor/windows-ui-preview-063d' && !contains(github.event.head_commit.message, '[hold-release]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: windows-preview-verified
+          path: preview-artifact
+      - name: Publish the Windows prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+          import zipfile
+          root = pathlib.Path("preview-artifact")
+          zip_path = root / "Logistics-Preview-Windows-x64.zip"
+          with zipfile.ZipFile(zip_path) as archive:
+              info = archive.read("BUILD-INFO.txt").decode("utf-8", "replace")
+              exes = [name for name in archive.namelist() if name.lower().endswith(".exe")]
+              fonts = [name for name in archive.namelist() if name.startswith("fonts/") and name.lower().endswith(".otf")]
+          if exes != ["Logistics.exe"]:
+              raise SystemExit(f"expected one Logistics.exe, found {exes}")
+          if len(fonts) < 2:
+              raise SystemExit(f"expected side-by-side fonts, found {fonts}")
+          digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+          excerpt = "\n".join(info.splitlines()[:8])
+          notes = "\n".join([
+              "这是模拟工作台的 Windows x64 预发布包，不是现场版本。不连接 S7、LWMS、库卡、华睿或 AGV。",
+              "",
+              "只发布这一个 ZIP。包内只有 Logistics.exe。Qt、MinGW、SQLite 仍是旁边的 DLL。中文字体在 fonts 目录，不在 exe 里；程序同时接受微软雅黑并允许缺字回退。",
+              "",
+              "解压后双击 START.cmd。同一个 exe 会分别启动采集器和工作台。",
+              "",
+              "排序区是四个 PLC：排序区一 170/180，排序区二 190/200，排序区三 210/220，排序区四 230/240。这些工位有名称，没有模拟源，也不会显示工位 140 的数据。",
+              "",
+              f"ZIP SHA-256：{digest}",
+              "",
+              "```",
+              excerpt,
+              "```",
+              "",
+              f"源码提交：{os.environ['SOURCE_SHA']}",
+              "",
+          ])
+          (root / "RELEASE.md").write_text(notes, encoding="utf-8")
+          print(excerpt)
+          print("zip", digest, zip_path.stat().st_size)
+          PY
+          tag=preview-windows-20261124-ui
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Windows preview: one executable and sorting stations" \
+            --notes-file preview-artifact/RELEASE.md \
+            preview-artifact/Logistics-Preview-Windows-x64.zip

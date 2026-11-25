@@ -16,6 +16,7 @@ inline constexpr const char* kPlcSeq1 = "plc.cfg.seq1";
 inline constexpr const char* kPlcSeq2 = "plc.cfg.seq2";
 inline constexpr const char* kPlcSeq3 = "plc.cfg.seq3";
 inline constexpr const char* kPlcSeq4 = "plc.cfg.seq4";
+inline constexpr const char* kPlcEmpty = "plc.cfg.demo-empty";
 inline constexpr const char* kStation140 = "stn.140";
 inline constexpr const char* kStation150 = "stn.150";
 inline constexpr const char* kStation160 = "stn.160";
@@ -26,13 +27,23 @@ inline constexpr const char* kStation40 = "stn.40";
 inline constexpr const char* kStation10 = "stn.10";
 inline constexpr const char* kStation70 = "stn.70";
 inline constexpr const char* kStation80 = "stn.80";
+inline constexpr const char* kStation170 = "stn.170";
+inline constexpr const char* kStation180 = "stn.180";
+inline constexpr const char* kStation190 = "stn.190";
+inline constexpr const char* kStation200 = "stn.200";
 inline constexpr const char* kStation210 = "stn.210";
 inline constexpr const char* kStation220 = "stn.220";
+inline constexpr const char* kStation230 = "stn.230";
+inline constexpr const char* kStation240 = "stn.240";
 
 struct Factory { std::string id, code, name; };
 struct Area { std::string id, factory_id, code, name; };
 struct Plc { std::string id, area_id, code, name; };
 struct Station { std::string id, plc_id, code, name, stream; };
+inline std::string station_label(const Station& station) {
+    if (station.name.empty() || station.name==station.code) return station.code;
+    return station.code+" "+station.name;
+}
 struct Line { std::string id, area_id, name, storage, zone; };
 struct LineLink { std::string line_id, station_id; };
 
@@ -79,4 +90,17 @@ public:
     const Factory* factory_of_station(const std::string& station_id) const;
     bool is_live(const std::string& station_id) const;
 };
+
+// A candidate workbook is known for this station. That is document registration only:
+// it is not acquisition, binding, confirmation, or an installed point configuration.
+bool candidate_workbook(const std::string& station_id);
+// Part names copied from a shop drawing. Empty when this station has no drawing label.
+// These strings are display metadata, not electrical bindings or write configuration.
+std::vector<std::string> drawing_names(const std::string& station_id);
+// Stations 150 and 160 already have the pack workbook. That is not acquisition.
+bool pack_workbook(const std::string& station_id);
+// Instrument stations have drawing names and still have no point workbook.
+bool drawing_without_points(const std::string& station_id);
+// Run-page plan key: "pack-right", "seq3-sides", "meter-order", or empty for a list only.
+const char* shop_layout(const std::string& plc_id);
 }

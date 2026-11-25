@@ -126,7 +126,7 @@ void archive(const fs::path& input, const fs::path& output, bool restoring) {
 }
 }
 
-int main(int argc, char** argv) {
+int archive_main(int argc, char** argv) {
     const std::string_view mode = argc > 1 ? argv[1] : "";
     if (argc != 4 || (mode != "backup" && mode != "restore")) {
         std::cerr << "Usage: simulation-archive backup|restore SOURCE_DIR NEW_OUTPUT_DIR\n";

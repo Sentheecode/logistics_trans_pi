@@ -18,15 +18,19 @@ fi
 mkdir -- "$stage"
 mkdir -p -- "$stage/plugins/platforms" "$stage/licenses"
 
-for name in collector hmi diagnose simulation-archive logistics-mcp; do
-    cp -- "$build/$name.exe" "$stage/"
-done
+cp -- "$build/Logistics.exe" "$stage/Logistics.exe"
+mkdir -p -- "$stage/fonts"
+cp -- "$source_dir/../../resources/fonts/NotoSansCJKsc-Regular.otf" "$stage/fonts/NotoSansCJKsc-Regular.otf"
+cp -- "$source_dir/../../resources/fonts/NotoSansCJKsc-Bold.otf" "$stage/fonts/NotoSansCJKsc-Bold.otf"
 plugins=$(cygpath -u "$(qmake6 -query QT_INSTALL_PLUGINS | tr -d '\r')")
 platform_plugin="$plugins/platforms/qwindows.dll"
 cp -- "$platform_plugin" "$stage/plugins/platforms/"
 printf '[Paths]\nPrefix=.\nPlugins=plugins\n' > "$stage/qt.conf"
 cp -- "$source_dir/START.cmd" "$stage/"
 cp -- "$source_dir/README.txt" "$stage/"
+mkdir -p -- "$stage/licenses/noto"
+cp -- "$source_dir/../../resources/fonts/OFL.txt" "$stage/licenses/noto/OFL.txt"
+cp -- "$source_dir/../../resources/fonts/NOTICE.txt" "$stage/licenses/noto/NOTICE.txt"
 
 # Scan PE imports, including the platform plugin. Copy only dependencies of the
 # selected executables from their own MINGW64 distribution.

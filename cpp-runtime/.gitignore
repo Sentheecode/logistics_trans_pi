@@ -3,5 +3,6 @@
 __pycache__/
 *.sqlite*
 *.png
+!resources/icons/*.png
 control.mailbox
 writer.lease*

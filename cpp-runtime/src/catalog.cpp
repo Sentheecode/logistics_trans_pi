@@ -21,25 +21,26 @@ Directory Directory::qiantang() {
     directory.factories = {{kFactory, "QT2", "钱塘二厂"},
         {"fac.demo-north", "DEMO-N", "北岸示例厂"}, {"fac.demo-south", "DEMO-S", "南湾示例厂"}};
     directory.areas = {
-        {kAreaPick, kFactory, "pick", "SPS（立库）"},
+        {kAreaPick, kFactory, "pick", "分拣"},
         {kAreaSeq, kFactory, "seq", "排序区"},
-        {"area.demo-north.sps", "fac.demo-north", "pick", "SPS（立库）"},
+        {"area.demo-north.sps", "fac.demo-north", "pick", "分拣"},
         {"area.demo-north.sort", "fac.demo-north", "seq", "排序区"},
-        {"area.demo-south.sps", "fac.demo-south", "pick", "SPS（立库）"},
+        {"area.demo-south.sps", "fac.demo-south", "pick", "分拣"},
         {"area.demo-south.sort", "fac.demo-south", "seq", "排序区"},
     };
     directory.plcs = {
         {kPlcPack, kAreaPick, "pack", "外装"},
         {kPlcMeter1, kAreaPick, "meter1", "仪表一"},
         {kPlcMeter2, kAreaPick, "meter2", "仪表二"},
-        {kPlcSeq1, kAreaSeq, "seq1", "排序一"},
-        {kPlcSeq2, kAreaSeq, "seq2", "排序二"},
-        {kPlcSeq3, kAreaSeq, "seq3", "排序三"},
-        {kPlcSeq4, kAreaSeq, "seq4", "排序四"},
+        {kPlcSeq1, kAreaSeq, "seq1", "排序区一"},
+        {kPlcSeq2, kAreaSeq, "seq2", "排序区二"},
+        {kPlcSeq3, kAreaSeq, "seq3", "排序区三"},
+        {kPlcSeq4, kAreaSeq, "seq4", "排序区四"},
         {"plc.cfg.demo-north", "area.demo-north.sps", "demo-n", "示例 PLC N"},
         {"plc.cfg.demo-south", "area.demo-south.sort", "demo-s", "示例 PLC S"},
+        {kPlcEmpty, "area.demo-north.sort", "demo-empty", "未配置示例"},
     };
-    // Station numbers are the given membership, in the source order. Names are those numbers.
+    // Station code is the 工位号. Name is the 工位名称. Only 140 carries the simulation stream.
     directory.stations = {
         {kStation140, kPlcPack, "140", "140", kStream},
         {kStation150, kPlcPack, "150", "150", ""},
@@ -51,29 +52,91 @@ Directory Directory::qiantang() {
         {kStation10, kPlcMeter2, "10", "10", ""},
         {kStation70, kPlcMeter2, "70", "70", ""},
         {kStation80, kPlcMeter2, "80", "80", ""},
-        {kStation210, kPlcSeq1, "210", "210", ""},
-        {kStation220, kPlcSeq1, "220", "220", ""},
+        {kStation170, kPlcSeq1, "170", "左后门手柄机械臂排序区", ""},
+        {kStation180, kPlcSeq1, "180", "右后门手柄机械臂排序区", ""},
+        {kStation190, kPlcSeq2, "190", "左前门手柄机械臂排序区", ""},
+        {kStation200, kPlcSeq2, "200", "右前门手柄机械臂排序区", ""},
+        {kStation210, kPlcSeq3, "210", "前悬架右前下摆臂总成", ""},
+        {kStation220, kPlcSeq3, "220", "前悬架左前下摆臂总成", ""},
+        {kStation230, kPlcSeq4, "230", "左后制动钳总成", ""},
+        {kStation240, kPlcSeq4, "240", "右后制动钳总成", ""},
         {"stn.demo-n1", "plc.cfg.demo-north", "N1", "示例工位 N1", ""},
         {"stn.demo-n2", "plc.cfg.demo-north", "N2", "示例工位 N2", ""},
         {"stn.demo-s1", "plc.cfg.demo-south", "S1", "示例工位 S1", ""},
     };
     directory.lines = {
-        {"line.demo-a", kAreaPick, "示例线 A", "示例立库 A", "示例库区 A"},
-        {"line.demo-b", kAreaPick, "示例线 B", "示例立库 B", "示例库区 B"},
-        {"line.demo-sort", kAreaSeq, "示例排序线", "不适用", "示例排序区"},
+        {"line.pack", kAreaPick, "外装", "待补映射", "分拣"},
+        {"line.meter1", kAreaPick, "仪表一", "待补映射", "分拣"},
+        {"line.meter2", kAreaPick, "仪表二", "待补映射", "分拣"},
+        {"line.seq1", kAreaSeq, "排序区一", "不适用", "排序区"},
+        {"line.seq2", kAreaSeq, "排序区二", "不适用", "排序区"},
+        {"line.seq3", kAreaSeq, "排序区三", "不适用", "排序区"},
+        {"line.seq4", kAreaSeq, "排序区四", "不适用", "排序区"},
         {"line.demo-north", "area.demo-north.sps", "北岸示例线", "示例立库 N", "示例库区 N"},
         {"line.demo-empty", "area.demo-north.sort", "预留空线", "不适用", "未配置"},
         {"line.demo-south", "area.demo-south.sort", "南湾示例线", "不适用", "示例排序区 S"},
     };
     directory.line_links = {
-        {"line.demo-a", kStation140}, {"line.demo-a", kStation150}, {"line.demo-b", kStation160},
-        {"line.demo-a", kStation20}, {"line.demo-a", kStation30}, {"line.demo-a", kStation90},
-        {"line.demo-b", kStation40}, {"line.demo-b", kStation10}, {"line.demo-b", kStation70}, {"line.demo-b", kStation80},
-        {"line.demo-sort", kStation210}, {"line.demo-sort", kStation220},
+        {"line.pack", kStation140}, {"line.pack", kStation150}, {"line.pack", kStation160},
+        {"line.meter1", kStation20}, {"line.meter1", kStation30}, {"line.meter1", kStation90},
+        {"line.meter2", kStation40}, {"line.meter2", kStation10}, {"line.meter2", kStation70}, {"line.meter2", kStation80},
+        {"line.seq1", kStation170}, {"line.seq1", kStation180},
+        {"line.seq2", kStation190}, {"line.seq2", kStation200},
+        {"line.seq3", kStation210}, {"line.seq3", kStation220},
+        {"line.seq4", kStation230}, {"line.seq4", kStation240},
         {"line.demo-north", "stn.demo-n1"}, {"line.demo-north", "stn.demo-n2"},
         {"line.demo-south", "stn.demo-s1"},
     };
     return directory;
+}
+
+bool candidate_workbook(const std::string& station_id) {
+    return station_id==kStation170 || station_id==kStation180
+        || station_id==kStation190 || station_id==kStation200
+        || station_id==kStation230 || station_id==kStation240;
+}
+
+namespace {
+struct DrawingParts { const char* id; const char* first; const char* second; };
+const DrawingParts kDrawingParts[]={
+    {kStation140, "随车手册套装（单层）", nullptr},
+    {kStation150, "前保右安装支架总成（多层）", "后保右安装支架总成（多层）"},
+    {kStation160, "通风窗盖板右端盖总成（多层）", nullptr},
+    {kStation20, "转向管柱下护罩总成（单层）", "屏幕装饰罩盖板总成（单层）"},
+    {kStation30, "8.88英寸仪表显示屏总成", "屏幕装饰罩总成（多层）"},
+    {kStation90, "4G集成天线总成", "DAB主机总成（多层）"},
+    {kStation40, "仪表扬声器罩总成（多层）", nullptr},
+    {kStation10, "T-BOXLP-TBOX041-AA（单层）", nullptr},
+    {kStation70, "转向管柱上护罩总成（单层）", "组合仪表装饰罩盖板总成（单层）"},
+    {kStation80, "中饰板饰条（单层）", "组合仪表盖板（单层）"},
+};
+}
+
+std::vector<std::string> drawing_names(const std::string& station_id) {
+    for (const auto& row : kDrawingParts) {
+        if (station_id!=row.id) continue;
+        std::vector<std::string> names;
+        if (row.first && row.first[0]) names.emplace_back(row.first);
+        if (row.second && row.second[0]) names.emplace_back(row.second);
+        return names;
+    }
+    return {};
+}
+
+bool pack_workbook(const std::string& station_id) {
+    return station_id==kStation150 || station_id==kStation160;
+}
+
+bool drawing_without_points(const std::string& station_id) {
+    return station_id==kStation20 || station_id==kStation30 || station_id==kStation90
+        || station_id==kStation40 || station_id==kStation10 || station_id==kStation70 || station_id==kStation80;
+}
+
+const char* shop_layout(const std::string& plc_id) {
+    if (plc_id==kPlcPack) return "pack-right";
+    if (plc_id==kPlcSeq3) return "seq3-sides";
+    if (plc_id==kPlcMeter1 || plc_id==kPlcMeter2) return "meter-order";
+    return "";
 }
 
 std::string Directory::validate(const Directory& directory) {
@@ -128,6 +191,17 @@ std::string Directory::validate(const Directory& directory) {
         if (std::find(linked.begin(), linked.end(), link.station_id)!=linked.end()) return "multiple-lines";
         linked.push_back(link.station_id);
     }
+    std::vector<std::pair<std::string, std::string>> line_plc, plc_line;
+    for (const auto& link : directory.line_links) {
+        const auto* station=directory.find_station(link.station_id);
+        if (!station) return "dangling-ref";
+        const auto known_plc=std::find_if(line_plc.begin(), line_plc.end(), [&](const auto& row){ return row.first==link.line_id; });
+        if (known_plc!=line_plc.end() && known_plc->second!=station->plc_id) return "line-spans-plcs";
+        if (known_plc==line_plc.end()) line_plc.emplace_back(link.line_id, station->plc_id);
+        const auto known_line=std::find_if(plc_line.begin(), plc_line.end(), [&](const auto& row){ return row.first==station->plc_id; });
+        if (known_line!=plc_line.end() && known_line->second!=link.line_id) return "plc-split-across-lines";
+        if (known_line==plc_line.end()) plc_line.emplace_back(station->plc_id, link.line_id);
+    }
     return {};
 }
 
@@ -150,22 +224,13 @@ Selection Directory::reconcile(Selection proposed) const {
     for (auto* item : area_rows) if (item->id==proposed.area_id) area=item;
     if (!area) area=area_rows.front();
     resolved.area_id=area->id;
-    if (const auto* line=find_line(proposed.line_id); line && line->area_id==resolved.area_id) {
-        resolved.line_id=line->id;
-        const auto rows=stations_on_line(line->id);
-        if (rows.empty()) return resolved;
-        const auto it=std::find_if(rows.begin(), rows.end(), [&](auto* row){ return row->id==proposed.station_id; });
-        const auto* station=it!=rows.end() ? *it : rows.front();
-        resolved.station_id=station->id;
-        resolved.plc_id=station->plc_id;
-        return resolved;
-    }
     if (!find_plc(proposed.plc_id) || find_plc(proposed.plc_id)->area_id!=resolved.area_id) {
-        const auto choices=lines_of(resolved.area_id);
-        if (!choices.empty()) {
-            resolved.line_id=choices.front()->id;
-            return reconcile(resolved);
-        }
+        const auto choices=plcs_of(resolved.area_id);
+        if (choices.empty()) return resolved;
+        resolved.plc_id=choices.front()->id;
+        resolved.station_id.clear();
+        resolved.line_id.clear();
+        return reconcile(resolved);
     }
     auto plc_rows=plcs_of(resolved.area_id);
     if (plc_rows.empty()) return resolved;

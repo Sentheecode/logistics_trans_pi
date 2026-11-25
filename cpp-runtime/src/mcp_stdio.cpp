@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char** argv) {
+int mcp_main(int argc, char** argv) {
     if (argc != 2) {
         std::cerr << "Usage: logistics-mcp DATA_DIR\n";
         return 2;

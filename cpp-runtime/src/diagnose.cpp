@@ -66,7 +66,7 @@ bool execute(const std::filesystem::path& dir,const std::string& line){
     std::cout<<sim::render(sim::read(dir,command,limit));return true;
 }
 }
-int main(int argc,char** argv){
+int diagnose_main(int argc,char** argv){
     if (argc<2||argc>7) {
         std::cerr<<"Usage: diagnose DATA_DIR [command [limit]]\n"
                  <<"       diagnose DATA_DIR snapshot-json [limit]\n"

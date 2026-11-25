@@ -9,12 +9,12 @@
 class QCheckBox;
 class QComboBox;
 class QFrame;
-class QDialog;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QStackedWidget;
 class QTableWidget;
-class QTabWidget;
+class QTabBar;
 class SchematicView;
 
 class Workbench final : public QMainWindow {
@@ -46,6 +46,9 @@ private:
     void showPointDetail();
     void applyLogFilter();
     void showLogDetail();
+protected:
+    void showEvent(QShowEvent* event) override;
+private:
     void refillLogs(const std::vector<sim::LogRecord>& logs);
     static QString comboId(const QComboBox* box);
     std::filesystem::path directory_;
@@ -54,17 +57,18 @@ private:
     sim::View view_;
     std::future<sim::View> read_;
     std::future<std::string> command_;
-    bool waiting_confirmation_=false, available_=false, updating_=false;
+    bool waiting_confirmation_=false, available_=false, updating_=false, logFollow_=true, applyingLogSelection_=false;
     std::int64_t command_revision_=0, last_seq_=0;
     std::string last_mode_, cards_plc_;
     int observations_=0;
-    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
-    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr;
+    QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QLabel *acquisitionOwner_=nullptr, *previewHint_=nullptr, *readinessNote_=nullptr;
     QLabel *stationMeta_=nullptr, *interfaceLine_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
-    QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
-    QTabWidget* moduleTabs_=nullptr;
-    QDialog* diagnostics_=nullptr;
+    QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr, *logFollowButton_=nullptr;
+    QTabBar* moduleTabs_=nullptr;
+    QStackedWidget* moduleStack_=nullptr;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
     QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QLabel *logEmpty_=nullptr, *logDetail_=nullptr, *collectOwner_=nullptr, *collectLive_=nullptr;
@@ -75,9 +79,15 @@ private:
     QTableWidget* logTable_=nullptr;
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
-    QWidget *cardRow_=nullptr;
-    QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
+    QTableWidget *stationBoard_=nullptr;
+    QLabel *stageGuide_=nullptr, *simOrder_=nullptr, *progressLabel_=nullptr, *pageScope_=nullptr;
     QTableWidget *resultTable_=nullptr;
+    QWidget *liveFace_=nullptr;
+    QWidget *shopPlan_=nullptr;
+    QWidget *roundRack_=nullptr;
+    QLabel *rackNote_=nullptr;
+    QString boardSignature_, expandedId_, expandedPlc_;
     void showStageResult();
+    void presentStations(bool live, bool good, const std::vector<const catalog::Station*>& rows);
     SchematicView* schematic_=nullptr;
 };
