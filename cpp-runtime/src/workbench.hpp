@@ -46,6 +46,9 @@ private:
     void showPointDetail();
     void applyLogFilter();
     void showLogDetail();
+protected:
+    void showEvent(QShowEvent* event) override;
+private:
     void refillLogs(const std::vector<sim::LogRecord>& logs);
     static QString comboId(const QComboBox* box);
     std::filesystem::path directory_;

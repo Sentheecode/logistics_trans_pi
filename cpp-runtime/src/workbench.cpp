@@ -37,7 +37,15 @@
 #include <QToolButton>
 #include <QTableWidget>
 #include <QTimeZone>
+#include <QShowEvent>
 #include <QTimer>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dwmapi.h>
+#endif
 #include <QVBoxLayout>
 #include <algorithm>
 #include <iostream>
@@ -509,6 +517,24 @@ void pinText(QWidget* root) {
     }
 }
 QString loadedUiFamily;
+// Windows 11 can sample the wallpaper once into the native frame (Mica).
+// The client workspace stays an opaque #F5F6F8 paint. Failure leaves that paint unchanged.
+void applyLightWindowBackdrop(QWidget* widget) {
+#ifdef Q_OS_WIN
+    if (!widget || !widget->windowHandle()) return;
+    const auto handle=reinterpret_cast<HWND>(widget->windowHandle()->winId());
+    if (!handle) return;
+    const BOOL dark=FALSE;
+    DwmSetWindowAttribute(handle, 20, &dark, sizeof(dark));
+    const COLORREF canvas=RGB(245, 246, 248);
+    DwmSetWindowAttribute(handle, 35, &canvas, sizeof(canvas));
+    DwmSetWindowAttribute(handle, 34, &canvas, sizeof(canvas));
+    const int mica=2;
+    DwmSetWindowAttribute(handle, 38, &mica, sizeof(mica));
+#else
+    (void)widget;
+#endif
+}
 // 浅色工作台：安静底、4px 节奏、圆角。不使用渐变、发光或玻璃效果。
 struct Tone {
     const char* canvas="#f5f6f8";
@@ -2786,6 +2812,10 @@ void Workbench::showStageResult() {
     fitRows(resultTable_, 24);
 }
 
+void Workbench::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    applyLightWindowBackdrop(this);
+}
 void Workbench::unavailable(const QString& reason) {
     available_=false;
     feedback_->setText(reason);
