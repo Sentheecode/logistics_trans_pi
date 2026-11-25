@@ -309,7 +309,7 @@ QPushButton* station_button(QWidget& window, const char* id) {
     for (int row=0; row<table->rowCount(); ++row) {
         auto* item=table->item(row, 0);
         if (!item || item->data(Qt::UserRole).toString()!=QString::fromUtf8(id)) continue;
-        auto* cell=table->cellWidget(row, 3);
+        auto* cell=table->cellWidget(row, 4);
         auto* button=cell ? cell->findChild<QPushButton*>() : nullptr;
         if (!button) throw std::runtime_error(std::string("missing station detail button ")+id);
         return button;
@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
             const int sourceLeft=board->mapTo(&window, QPoint(board->horizontalHeader()->sectionViewportPosition(3), 0)).x();
             if (sourceLeft-stageBox.right()>64)
                 throw std::runtime_error(("stage table does not use the station detail width source "+std::to_string(sourceLeft)+" stageRight "+std::to_string(stageBox.right())+" stageW "+std::to_string(stageBox.width())+" boardW "+std::to_string(boardBox.width())).c_str());
-            for (int column=0; column<std::min(3, board->columnCount()); ++column) {
+            for (int column=0; column<std::min(4, board->columnCount()); ++column) {
                 auto* item=board->item(0, column);
                 auto* header=board->horizontalHeader();
                 if (!item || !header || std::abs(board->visualItemRect(item).x()-header->sectionViewportPosition(column))>3)
@@ -830,12 +830,13 @@ int main(int argc, char** argv) {
         if (snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
             throw std::runtime_error("point filter changed collector ownership");
         show_page(window, "采集");
+        int packCollectTitle=-1, packCollectPanel=-1;
         for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
             window.resize(size);
             pump(250);
             if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
             check_labels(window);
-            for (auto name : {"factoryCombo", "plcCombo", "modeButton", "primary", "disconnectButton", "commandPane", "scopeBanner", "controlReason"}) assert_inside(window, name);
+            for (auto name : {"factoryCombo", "plcCombo", "modeButton", "primary", "disconnectButton", "commandPane", "controlReason"}) assert_inside(window, name);
             auto* reason=window.findChild<QLabel*>("controlReason");
             if (!reason || reason->text().isEmpty()) throw std::runtime_error("automatic mode hid the control reason");
             bool saw140=false;
@@ -843,6 +844,14 @@ int main(int argc, char** argv) {
                 if (label->isVisible() && label->text()=="140") saw140=true;
             }
             if (!saw140) throw std::runtime_error("pack collection roster hid station 140");
+            if (size==QSize(1100, 650)) {
+                auto* heading=window.findChild<QLabel*>("pageTitle");
+                auto* panel=window.findChild<QWidget*>("collectWorkspace");
+                for (auto* label : window.findChildren<QLabel*>("pageTitle")) if (label->isVisible()) heading=label;
+                if (!heading || !panel) throw std::runtime_error("missing collect title or panel");
+                packCollectTitle=heading->mapTo(&window, QPoint(0, 0)).y();
+                packCollectPanel=panel->mapTo(&window, QPoint(0, 0)).y();
+            }
         }
         show_page(window, "运行");
         choose(area, catalog::kAreaSeq);
@@ -897,7 +906,17 @@ int main(int argc, char** argv) {
                 auto* scope=window.findChild<QLabel*>("pointScope");
                 if (!scope || !scope->text().contains("工位对应待确认") || scope->text().contains("已绑定") || scope->text().contains("未由用户点名确认"))
                     throw std::runtime_error("point page did not keep workbook correspondence in the audit");
+                window.resize(1100, 650);
                 show_page(window, "采集");
+                pump(80);
+                auto* heading=window.findChild<QLabel*>("pageTitle");
+                for (auto* label : window.findChildren<QLabel*>("pageTitle")) if (label->isVisible()) heading=label;
+                auto* panel=window.findChild<QWidget*>("collectWorkspace");
+                if (!heading || !panel || packCollectTitle<0) throw std::runtime_error("missing preview collect alignment");
+                const int titleY=heading->mapTo(&window, QPoint(0, 0)).y();
+                const int panelY=panel->mapTo(&window, QPoint(0, 0)).y();
+                if (std::abs(titleY-packCollectTitle)>4 || std::abs(panelY-packCollectPanel)>8)
+                    throw std::runtime_error(("preview collect drifted title "+std::to_string(titleY)+" panel "+std::to_string(panelY)+" pack "+std::to_string(packCollectTitle)+"/"+std::to_string(packCollectPanel)).c_str());
                 for (auto* label : window.findChildren<QLabel*>()) {
                     if (!label->isVisible()) continue;
                     if (label->text().contains("140") || label->text().contains("sim.three-cart"))

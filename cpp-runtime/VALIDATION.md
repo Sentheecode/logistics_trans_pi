@@ -12,7 +12,7 @@ cmake --build /tmp/logistics-qt -j$(nproc)
 ctest --test-dir /tmp/logistics-qt --output-on-failure
 ```
 
-结果：**11/11** 通过。`widgets_controls` 仍走外装自动、手动、单步、断链和恢复，并检查排序区四的来源是「已登记点表 · 未接入」、点表页有「工位对应待确认」、采集页不出现 140。截图用 xvfb/xcb 分次抓取，帧号不是同一次：外装运行 1280 约 seq 7、1100 约 seq 13，采集 1280 约 seq 35、1100 约 seq 41，日志更晚。排序区三和四的预览没有模拟帧。这不是 Windows 实机，也不是 DPI 验收。Windows 内部包仍由 `windows-preview.yml` 生成 `windows-preview-verified`，本段写下时这次提交的 Windows 构建尚未结束。公开 Release 不更新。
+结果：**11/11** 通过。`widgets_controls` 仍走外装自动、手动、单步、断链和恢复，并检查排序区四的来源是「已登记点表 · 未接入」、点表页有「工位对应待确认」、采集页不出现 140。外装采集和排序区四采集在 1100 宽下标题与面板顶对齐。截图用 xvfb/xcb 分次抓取，帧号不是同一次。这不是 Windows 实机，也不是 DPI 验收，也不是视觉验收通过。公开 Release 不更新。
 
 ## 此前记录
 
