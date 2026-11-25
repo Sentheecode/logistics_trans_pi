@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 class QCheckBox;
+class QProgressBar;
 class QComboBox;
 class QFrame;
 class QDialog;
@@ -70,11 +71,16 @@ private:
     QTableWidget *collectChanges_=nullptr, *recentTable_=nullptr;
     QComboBox *historyFilter_=nullptr, *logCategory_=nullptr, *logLevel_=nullptr;
     QLineEdit *pointSearch_=nullptr, *logSearch_=nullptr;
+    QProgressBar* progress_=nullptr;
+    QCheckBox* pointReserved_=nullptr;
     QCheckBox* pointDoubtsOnly_=nullptr;
     QTableWidget* logTable_=nullptr;
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
     bool stagePinned_=false;
+    QLabel* recordsHeading_=nullptr;
+    QTableWidget* sourceTable_=nullptr;
+    QPushButton* recordAction_=nullptr;
     QLabel *mapHeading_=nullptr, *stageHeading_=nullptr;
     QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
     QTableWidget *resultTable_=nullptr;

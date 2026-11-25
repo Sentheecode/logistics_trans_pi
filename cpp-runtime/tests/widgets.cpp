@@ -298,6 +298,12 @@ int main(int argc, char** argv) {
         for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
         if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
         if (cell(detail, "业务模式")==cell(detail, "运行模式") || !cell(detail, "实时范围").contains(QString::fromUtf8(catalog::kStream))) throw std::runtime_error("area and runtime modes not independent");
+        auto* reserved=window.findChild<QCheckBox*>("pointReserved");
+        auto visiblePoints=[&] { int n=0; for (int i=0;i<points->rowCount();++i) if (!points->isRowHidden(i)) ++n; return n; };
+        if (!reserved || visiblePoints()!=75) throw std::runtime_error("named point count mismatch");
+        reserved->setChecked(true);
+        if (visiblePoints()!=116) throw std::runtime_error("raw point rows not retained");
+        reserved->setChecked(false);
         if (points->rowCount()<10) throw std::runtime_error("station 140 audit missing");
         if (window.controllerPeerIds().size()!=3 || schematic->markerColor(QString::fromUtf8(catalog::kStation140))==schematic->markerColor(QString::fromUtf8(catalog::kStation150)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation150)).isValid() || schematic->markerColor(QString::fromUtf8(catalog::kStation210)).isValid())
             throw std::runtime_error("plc highlight incorrect");
@@ -368,7 +374,7 @@ int main(int argc, char** argv) {
         if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
         logs->setCurrentCell(0,0);
         const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
-        if (!schematic->showsCarts() || !order->text().contains("模拟 LWMS 分拣单"))
+        if (!schematic->showsCarts() || !order->text().contains("模拟分拣任务") || order->text().contains("SIM-SPS-01"))
             throw std::runtime_error("live order or separate cart lane missing");
         const int target=schematic->targetCart();
         if (target>=0 && !order->text().contains(QString("料车 %1").arg(target+1)))
@@ -407,9 +413,9 @@ int main(int argc, char** argv) {
         wait([&]{ return step->isEnabled() && window.liveScope(); });
         const auto held=snap(directory);
         choose(area, catalog::kAreaSeq);
-        choose(plc, catalog::kPlcSeq1);
+        choose(plc, catalog::kPlcSeq3);
         click_station(schematic, catalog::kStation220);
-        if (window.selectedStationId()!=catalog::kStation220 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq1)
+        if (window.selectedStationId()!=catalog::kStation220 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq3)
             throw std::runtime_error("svg click did not sync dropdowns");
         if (schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().size()!=2)
             throw std::runtime_error("sequence layout still showed another PLC");
@@ -439,8 +445,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("plc peer list incorrect");
         if (step->isEnabled() || history->rowCount()!=0) throw std::runtime_error("sibling station repeated the live frame");
         assert_no_live_leak(window);
-        choose(area, catalog::kAreaSeq);
-        choose(plc, catalog::kPlcSeq2);
+        window.prepareCapture("empty");
         if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
             throw std::runtime_error("empty plc was not unconfigured");
         pump(80);
@@ -457,6 +462,7 @@ int main(int argc, char** argv) {
         if (top>220 || bottom-top>140) throw std::runtime_error("unconfigured run state is not a short block at the top y="+std::to_string(top)+" span="+std::to_string(bottom-top));
         if (window.findChild<QLabel*>("emptyTitle")->text()!="尚未配置工位" || window.findChild<QLabel*>("emptySource")->text()!="当前 PLC 未绑定模拟源" || window.findChild<QLabel*>("emptyAction")->text()!="暂无法执行模拟操作")
             throw std::runtime_error("unconfigured copy changed");
+        choose(factory, catalog::kFactory);
         for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
         if (area->currentData().toString()!=catalog::kAreaPick || window.selectedStationId()!=catalog::kStation140)
             throw std::runtime_error("parent switch did not select a legal child by id");
@@ -533,7 +539,7 @@ int main(int argc, char** argv) {
         for (int row=0; row<points->rowCount(); ++row) {
             auto* name=points->item(row, 0);
             const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
-            if (points->isRowHidden(row)==has) throw std::runtime_error("doubt filter did not follow source doubts");
+            if (points->isRowHidden(row)==(has && !name->data(Qt::UserRole+2).toBool())) throw std::runtime_error("doubt filter did not follow source doubts");
         }
         doubts->setChecked(false);
         if (snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
@@ -570,11 +576,11 @@ int main(int argc, char** argv) {
             for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
         }
         const auto before_empty=snap(directory);
-        for (auto plc_id : {catalog::kPlcSeq2, catalog::kPlcSeq3, catalog::kPlcSeq4}) {
+        for (auto plc_id : {catalog::kPlcSeq1, catalog::kPlcSeq2, catalog::kPlcSeq3, catalog::kPlcSeq4}) {
             choose(area, catalog::kAreaSeq);
             choose(plc, plc_id);
-            if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
-                throw std::runtime_error("empty sequence plc showed another layout");
+            if (window.selectedStationId().isEmpty() || schematic->shapeIds().size()!=2 || points->rowCount()!=0 || step->isEnabled())
+                throw std::runtime_error("sorting PLC scope mismatch");
             check_labels(window);
         }
         const auto after_empty=snap(directory);

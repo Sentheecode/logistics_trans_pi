@@ -21,6 +21,7 @@
 #include <QPainter>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QProgressBar>
 #include <QScrollArea>
 #include <QMenu>
 #include <QDialogButtonBox>
@@ -97,6 +98,11 @@ void setRows(QTableWidget* table, const std::vector<std::pair<QString, QString>>
         table->setItem(i, 0, key);
         table->setItem(i, 1, value);
     }
+}
+QString stationCaption(const catalog::Station& station) {
+    const auto code=QString::fromStdString(station.code);
+    const auto name=QString::fromStdString(station.name);
+    return name.contains(code) ? name : code+" · "+name;
 }
 QString joinedIds(const std::vector<const catalog::Station*>& rows) {
     QStringList parts;
@@ -199,26 +205,29 @@ QString consoleStyle() {
         QWidget { font-size:13px; color:%3; }
         QMainWindow, QWidget#centralRoot { background:%1; color:%3; }
         QWidget#identityBar, QWidget#catalogPane { background:%2; }
-        QWidget#identityBar { background:#163441; border-bottom:2px solid #338778; }
-        QWidget#identityBar QLabel { color:#f2faf9; }
+        QWidget#identityBar { background:white; border-bottom:1px solid #e4e8f1; }
+        QWidget#identityBar QLabel { color:#192847; }
+        QWidget#identityBar QLabel#simBadge { background:#edf1ff; color:#3c51af; border-radius:9px; padding:3px 9px; }
+        QProgressBar#cartProgress { background:#cbd4ee; border:none; border-radius:3px; }
+        QProgressBar#cartProgress::chunk { background:#4964cb; border-radius:3px; }
         QWidget#commandPane { background:#fafcfc; border-top:1px solid #afc3c6; }
         QWidget#catalogPane { border-bottom:1px solid %4; }
-        QWidget#runPanel { background:%2; border:1px solid #cbd7db; border-radius:4px; }
-        QWidget#taskSummary { background:#e0efed; border-left:4px solid %6; }
+        QWidget#runPanel { background:%2; border:1px solid #dce3ee; border-radius:10px; }
+        QWidget#taskSummary { background:#eaf0ff; border:1px solid #d8e2fa; border-radius:10px; }
         QLabel#panelTitle { color:#163d49; font-size:16px; font-weight:700; }
         QLabel#scopeMeta { color:#425762; font-size:12px; }
-        QLabel#scopeBanner { background:#eef4f4; color:#294951; padding:4px 8px; border-left:3px solid #749797; font-weight:600; }
+        QLabel#scopeBanner { background:#f9fbff; color:#354779; padding:4px 10px; border-radius:7px; font-weight:600; }
         QLabel#scopeBanner[state="warn"] { background:#fff0cc; color:#784405; border-left:3px solid #b97000; }
         QLabel#stageGuide { color:%5; font-size:12px; }
         QLabel#recordSource { color:%5; font-size:12px; }
-        QLabel#simOrder { color:#0d4849; font-size:15px; font-weight:600; }
-        QTableWidget#stageTable::item:selected { background:#d1e9e7; color:#123d42; }
+        QLabel#simOrder { color:#223a77; font-size:18px; font-weight:600; }
+        QTableWidget#stageTable::item:selected { background:#e5ecff; color:#243d8a; }
         QLabel#currentStation { font-size:15px; font-weight:700; padding:0 8px; }
-        QLabel#runtimeState { background:#29535b; border:1px solid #47717a; padding:2px 9px; font-weight:600; }
+        QLabel#runtimeState { background:#f0f4fd; border:1px solid #dbe3f8; border-radius:8px; padding:2px 9px; font-weight:600; }
         QLabel#runtimeState[mode="manual"] { background:#d6eeeb; color:#123d42; }
-        QPushButton#diagnosticButton { background:#f1f7f7; color:#123d42; min-height:20px; }
+        QPushButton#diagnosticButton { background:#f4f6fc; color:#334b83; border-radius:6px; min-height:20px; }
         QWidget#surface { background:%2; border:1px solid %4; border-radius:3px; }
-        QLabel#title { font-size:19px; font-weight:600; color:#ffffff; }
+        QLabel#title { font-size:20px; font-weight:700; color:#192847; }
         QLabel#pageTitle, QLabel#emptyTitle { font-size:18px; font-weight:600; color:%3; }
         QLabel#emptySource, QLabel#emptyAction { color:%5; font-size:13px; }
         QLabel#fieldLabel { color:%5; font-size:12px; }
@@ -231,16 +240,20 @@ QString consoleStyle() {
         QLabel#statusChip { background:%1; color:%5; padding:1px 6px; font-size:12px; font-weight:600; }
         QLabel#statusChip[state="sim"] { background:%7; color:%6; }
         QLabel#statusChip[state="wait"] { background:%9; color:%8; }
-        QComboBox { background:%2; border:1px solid %4; border-radius:3px; padding:2px 8px; min-height:26px; }
+        QComboBox { background:%2; border:1px solid #d2dbed; border-radius:6px; padding:2px 8px; min-height:26px; }
         QComboBox:hover, QComboBox:focus { border:1px solid %6; }
         QPushButton { background:%2; border:1px solid %4; border-radius:3px; padding:4px 12px; min-height:28px; color:%3; }
         QPushButton:hover { background:%7; }
         QPushButton:focus { border:1px solid %6; }
-        QPushButton#primary, QPushButton#modeButton[emphasis="yes"] { background:#245e9a; color:#ffffff; border:none; }
+        QPushButton#primary, QPushButton#modeButton[emphasis="yes"] { background:#405dcb; color:#ffffff; border:none; }
+        QPushButton#recordAction { color:#3655ae; background:transparent; border:none; min-height:18px; padding:0 4px; font-weight:600; }
+        QPushButton#recordAction:hover { background:#ecf1ff; }
         QPushButton#textLink { background:transparent; border:none; color:%6; font-weight:600; min-height:24px; padding:2px 6px; }
         QPushButton#textLink:hover { background:%7; }
         QPushButton:disabled, QPushButton#primary:disabled, QPushButton#modeButton:disabled { background:%1; color:#8b96a6; border:none; }
         QTableWidget { background:%2; alternate-background-color:#f7f8fa; gridline-color:transparent; border:1px solid %4; border-radius:3px; font-size:13px; selection-background-color:%7; selection-color:%3; outline:none; }
+        QTableWidget#runResultTable, QTableWidget#recentTable, QTableWidget#stationSourceTable, QTableWidget#stageTable { border:none; background:#ffffff; alternate-background-color:#f7f9fd; }
+        QTableWidget#runResultTable::item, QTableWidget#recentTable::item, QTableWidget#stationSourceTable::item { border-bottom:1px solid #edf0f6; }
         QTableWidget:focus { border:1px solid %6; }
         QTableWidget::item { padding:2px 8px; border:none; }
         QTableWidget::item:hover { background:#eef1f4; }
@@ -252,7 +265,7 @@ QString consoleStyle() {
         QListWidget::item { padding:8px 12px; border:none; }
         QListWidget::item:hover { background:#eef1f4; }
         QListWidget::item:selected { background:%7; color:%3; }
-        QLineEdit { background:%2; border:1px solid %4; border-radius:3px; padding:2px 8px; min-height:26px; color:%3; }
+        QLineEdit { background:%2; border:1px solid #d2dbed; border-radius:6px; padding:2px 8px; min-height:26px; color:%3; }
         QLineEdit:focus { border:1px solid %6; }
         QCheckBox { color:%3; spacing:6px; }
         QToolButton { background:transparent; color:%6; border:none; font-weight:600; padding:2px 4px; }
@@ -506,7 +519,7 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* summary=new QWidget(workspace);
     summary->setObjectName("taskSummary");
     auto* summaryLayout=new QHBoxLayout(summary);
-    summaryLayout->setContentsMargins(12, 6, 10, 6);
+    summaryLayout->setContentsMargins(14, 6, 12, 6);
     summaryLayout->setSpacing(14);
     auto* summaryText=new QVBoxLayout;
     summaryText->setSpacing(1);
@@ -516,6 +529,13 @@ Workbench::Workbench(std::filesystem::path directory)
     summaryText->addWidget(simOrder_);
     summaryText->addWidget(stationMeta_);
     summaryLayout->addLayout(summaryText, 1);
+    progress_=new QProgressBar(summary);
+    progress_->setObjectName("cartProgress");
+    progress_->setRange(0,3);
+    progress_->setTextVisible(false);
+    progress_->setFixedSize(108,6);
+    progress_->setAccessibleName("本工位已完成料车数");
+    summaryLayout->addWidget(progress_);
     summaryLayout->addWidget(scopeBanner_);
     workspaceLayout->addWidget(summary);
 
@@ -525,7 +545,7 @@ Workbench::Workbench(std::filesystem::path directory)
         auto* panel=new QWidget(workspace);
         panel->setObjectName("runPanel");
         auto* layout=new QVBoxLayout(panel);
-        layout->setContentsMargins(10, 6, 10, 8);
+        layout->setContentsMargins(14, 7, 14, 8);
         layout->setSpacing(4);
         auto* heading=new QLabel(title, panel);
         heading->setObjectName("panelTitle");
@@ -541,7 +561,23 @@ Workbench::Workbench(std::filesystem::path directory)
     runColumns->addWidget(stageLayout->parentWidget(), 6);
     workspaceLayout->addLayout(runColumns, 3);
 
-    auto* recordsLayout=addPanel("近期运行记录");
+    auto* recordsLayout=addPanel("近期运行记录",&recordsHeading_);
+    recordsLayout->removeWidget(recordsHeading_);
+    auto* recordHeader=new QHBoxLayout;
+    recordHeader->addWidget(recordsHeading_);
+    recordHeader->addStretch();
+    recordAction_=new QPushButton;
+    recordAction_->setObjectName("recordAction");
+    recordHeader->addWidget(recordAction_);
+    recordsLayout->addLayout(recordHeader);
+    connect(recordAction_,&QPushButton::clicked,this,[this]{openDiagnostic(liveScope() ? "日志" : "点表");});
+    sourceTable_=new QTableWidget(workspace);
+    sourceTable_->setObjectName("stationSourceTable");
+    prepareTable(sourceTable_,{"目录工位","资料核对"});
+    sourceTable_->horizontalHeader()->setSectionResizeMode(0,QHeaderView::Fixed);
+    sourceTable_->setColumnWidth(0,150);
+    sourceTable_->verticalHeader()->setDefaultSectionSize(24);
+    recordsLayout->addWidget(sourceTable_,1);
     recentTable_=new QTableWidget(workspace);
     recentTable_->setObjectName("recentTable");
     prepareTable(recentTable_, {"时间", "记录"});
@@ -549,12 +585,7 @@ Workbench::Workbench(std::filesystem::path directory)
     recentTable_->setColumnWidth(0,104);
     recentTable_->setMinimumHeight(60);
     recentTable_->verticalHeader()->setDefaultSectionSize(26);
-    auto* recentScope=new QLabel("所选工位尚无运行记录。", workspace);
-    recentScope->setObjectName("recentScope");
-    recentScope->hide();
-    recordsLayout->addWidget(recentScope);
-    recordsLayout->addWidget(recentTable_, 1);
-    recentScope->setAlignment(Qt::AlignTop);
+    recordsLayout->addWidget(recentTable_,1);
     recordsLayout->setAlignment(Qt::AlignTop);
     workspaceLayout->addWidget(recordsLayout->parentWidget(), 2);
 
@@ -655,6 +686,10 @@ Workbench::Workbench(std::filesystem::path directory)
     auto* pointTools=new QHBoxLayout;
     pointTools->addWidget(pointSearch_);
     pointTools->addWidget(pointDoubtsOnly_);
+    pointReserved_=new QCheckBox("含预留与空名行");
+    pointReserved_->setObjectName("pointReserved");
+    pointTools->addWidget(pointReserved_);
+    connect(pointReserved_, &QCheckBox::toggled, this, [this]{ applyPointFilter(); });
     pointTools->addStretch(1);
     auto* detailBox=new QWidget;
     detailBox->setObjectName("surface");
@@ -700,7 +735,7 @@ Workbench::Workbench(std::filesystem::path directory)
     interfaceList->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     struct InterfaceItem { QString name, chip, summary, detail; };
     const InterfaceItem interfaces[]={
-        {"SPS 分拣单", "模拟演示", "分拣单包含单号、物料、取料工位和目标料车。", "主屏从选中工位的本地模拟帧生成示例单。质量不可用时，目标与进度显示未知。尚无 LWMS 查单回执。"},
+        {"SPS 分拣单", "模拟演示", "分拣单包含单号、物料、取料工位和目标料车。", "当前帧仅提供阶段信息，单号与物料缺少来源。质量不可用时，目标与进度显示未知。尚无 LWMS 查单回执。"},
         {"排序任务", "字段待核对", "任务包含单号、料箱、物料和计划数量。完成数量需要单独的执行回执。", "排序区只展示模拟目录。任务关联、回执来源和完成条件仍待确认，当前没有排序进度。"},
         {"仓储目录", "仅有目录", "工位可以关联仓库、库区和库位。库存与补料完成量需要独立记录。", "工作台展示选中范围的示例仓库与库区。库存数量和补料回执均无采集证据。"},
         {"设备点表", "候选映射", "需逐项核对点表的工位归属、信号方向和含义。相同模板可能用于多个工位。", "可在“点表”诊断中审阅静态记录。候选映射尚未验证，设备在线状态、现场值与动作回执均未知。"},
@@ -1094,13 +1129,14 @@ void Workbench::applyPointFilter() {
         auto* name=pointTable_->item(row, 0);
         auto* address=pointTable_->item(row, 1);
         const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
-        const bool match=(!only || has) && (query.isEmpty() || (name && name->text().contains(query, Qt::CaseInsensitive)) || (address && address->text().contains(query, Qt::CaseInsensitive)));
+        const bool named=name && !name->data(Qt::UserRole+2).toBool();
+        const bool match=(pointReserved_->isChecked() || named) && (!only || has) && (query.isEmpty() || (name && name->text().contains(query, Qt::CaseInsensitive)) || (address && address->text().contains(query, Qt::CaseInsensitive)));
         pointTable_->setRowHidden(row, !match);
         if (match) ++visible;
     }
     if (pointEmpty_) {
         pointEmpty_->setVisible(pointTable_->rowCount()==0 || visible==0);
-        if (pointTable_->rowCount()==0) pointEmpty_->setText("本工位没有已登记的点表。");
+        if (pointTable_->rowCount()==0) pointEmpty_->setText("当前范围没有可逐行查看的点位。");
         else if (visible==0) pointEmpty_->setText("没有符合筛选的点。源表没有删除。");
     }
     showPointDetail();
@@ -1245,7 +1281,9 @@ void Workbench::syncModuleChrome() {
     if (recentTable_) {
         const bool live=liveScope();
         recentTable_->setVisible(live);
-        if (auto* note=findChild<QLabel*>("recentScope")) note->setVisible(!live);
+        sourceTable_->setVisible(!live);
+        recordsHeading_->setText(live ? "近期运行记录" : "同组工位资料");
+        recordAction_->setText(live ? "全部日志  ›" : "查看所选工位点表  ›");
     }
     auto setFact=[&](const char* name, const QString& text){ if(auto* label=findChild<QLabel*>(name)) label->setText(text); };
     if(collectOwner_) collectOwner_->setText(available_ ? "独立采集进程 · 心跳正常" : "独立采集进程 · 心跳不可用");
@@ -1279,7 +1317,7 @@ void Workbench::refill() {
     for (auto* row : catalog_.areas_of(selection_.factory_id)) areas.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.plcs_of(selection_.area_id)) plcs.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
     for (auto* row : catalog_.lines_of(selection_.area_id)) lines.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
-    for (auto* row : catalog_.stations_on_line(selection_.line_id)) stations.emplace_back(QString::fromStdString(row->id), QString::fromStdString(row->name));
+    for (auto* row : catalog_.stations_on_line(selection_.line_id)) stations.emplace_back(QString::fromStdString(row->id), stationCaption(*row));
     fillCombo(lineCombo_, lines, QString::fromStdString(selection_.line_id));
     fillCombo(stationCombo_, stations, QString::fromStdString(selection_.station_id));
     fillCombo(factoryCombo_, factories, QString::fromStdString(selection_.factory_id));
@@ -1440,6 +1478,12 @@ void Workbench::render() {
     else if (available_ && view_.runtime.mode=="automatic") runtimeValue="自动";
     std::vector<const catalog::Station*> peer_rows;
     if (plc) peer_rows=catalog_.stations_of(plc->id);
+    if (!live) {
+        std::vector<std::pair<QString,QString>> sources;
+        for (auto* peer : peer_rows) sources.emplace_back(QString::fromStdString(peer->code+"  ·  "+peer->name),
+            peer->stream.empty() ? QString::fromStdString(peer->reference_note) : "本地模拟 · 可查看基线点表");
+        setRows(sourceTable_,sources);
+    }
     const QString peers=joinedIds(peer_rows);
     const auto* frame=stationFrame();
     const bool good=frame && frame->quality=="good" && frame->link=="up";
@@ -1450,13 +1494,13 @@ void Workbench::render() {
         scope="模拟流 "+QString::fromStdString(catalog::kStream);
         sim_quality=view_.rows.empty() || !available_ ? "未知" : good ? "正常" : "不可用";
     }
-    stationBadge_->setText("当前工位  "+(station ? QString::fromStdString(station->name) : QString("未配置")));
+    stationBadge_->setText("当前工位  "+(station ? stationCaption(*station) : QString("未配置")));
     stationBadge_->setMinimumWidth(stationBadge_->fontMetrics().horizontalAdvance(stationBadge_->text())+26);
     const auto* line=catalog_.find_line(selection_.line_id);
     const QString lineName=line ? QString::fromStdString(line->name) : "未配置";
     const QString storage=line ? QString::fromStdString(line->storage) : "未配置";
     const QString zone=line ? QString::fromStdString(line->zone) : "未配置";
-    stationMeta_->setText(lineName+" · "+storage+" · "+zone);
+    stationMeta_->setText((station ? "目录工位 "+QString::fromStdString(station->code)+"   /   " : QString())+lineName+" · "+storage+" · "+zone);
     stationMeta_->setToolTip(plc ? QString::fromStdString(plc->name)+" · 目录关联，现场状态未知" : "PLC 未配置");
     interfaceLine_->setText(area && area->code=="seq" ? "排序任务与完成回执均未配置"
         : live ? "LWMS 未接入 · 库位映射待核对" : "本工位未绑定模拟源");
@@ -1471,18 +1515,20 @@ void Workbench::render() {
         if (raw=="scanning" || raw=="sorting" || raw=="blocked") lane.target=index;
         if (raw=="station_complete") ++completed;
     }
+    progress_->setVisible(good);
+    progress_->setValue(good ? completed : 0);
     const QString target=lane.target>=0 ? QString("料车 %1").arg(lane.target+1)
         : good ? "当前无活动料车" : "目标未知";
     const QString progress=good ? QString("%1 / 3 台工位完成").arg(completed) : "进度未知";
     mapHeading_->setText(live ? "工位与共享料车" : "关联工位");
     stageHeading_->setText(live ? "作业阶段与采集结果" : "工位数据来源");
-    simOrder_->setText(live ? QString("模拟 LWMS 分拣单  SIM-SPS-01   ·   %1").arg(target)
+    simOrder_->setText(live ? QString("模拟分拣任务   ·   %1").arg(target)
                             : area ? QString::fromStdString(area->name)+"   ·   工位目录" : QString("工位目录"));
     if (live) simOrder_->setText(simOrder_->text()+"   ·   "+progress);
-    if (live) stationMeta_->setText(QString("模拟物料 A   ·   取料工位 %1   ·   %2").arg(QString::fromStdString(station->name),stationMeta_->text()));
+    if (live) stationMeta_->setText(QString("单号及物料待接入   ·   %1").arg(stationMeta_->text()));
     std::vector<StationGlyph> glyphs;
     for (auto* item : catalog_.stations_of(selection_.plc_id))
-        glyphs.push_back({item->id,QString::fromStdString(item->name)});
+        glyphs.push_back({item->id,stationCaption(*item)});
     schematic_->setMinimumHeight(live ? 142 : 100);
     schematic_->setMaximumHeight(242);
     schematic_->setScene(plc ? QString::fromStdString(plc->name) : QString(), glyphs, selection_.station_id,lane);
@@ -1514,7 +1560,10 @@ void Workbench::render() {
         }
     }
     const auto audit_rows=audit::for_station(selection_.station_id);
-    pointScope_->setText(audit_rows.empty() ? "本工位没有已登记的点表。" : "只读资料 · 可查看字段、来源和待核对项。");
+    const auto named=std::count_if(audit_rows.begin(),audit_rows.end(),[](const audit::Row& r){ return !r.reserved; });
+    pointScope_->setText(audit_rows.empty()
+        ? (station ? QString::fromStdString(station->reference_note) : "未配置工位")
+        : QString("只读点表   ·   %1 条命名点位   /   %2 条原始记录").arg(named).arg(audit_rows.size()));
     pointTable_->setRowCount(static_cast<int>(audit_rows.size()));
     for (int i=0; i<static_cast<int>(audit_rows.size()); ++i) {
         const auto& row=audit_rows[static_cast<std::size_t>(i)];
@@ -1535,6 +1584,7 @@ void Workbench::render() {
             if (column==0) {
                 item->setData(Qt::UserRole, detail);
                 item->setData(Qt::UserRole+1, codes);
+                item->setData(Qt::UserRole+2, row.reserved);
             }
             if (!codes.isEmpty() && column==2) item->setForeground(QColor("#8a5a12"));
             pointTable_->setItem(i, column, item);

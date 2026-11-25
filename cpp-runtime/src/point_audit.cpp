@@ -1,13 +1,16 @@
 #include "point_audit.hpp"
+#include <iomanip>
+#include <sstream>
 
 namespace audit {
 namespace {
-int sequence=0;
 void add(std::vector<Row>& rows, const std::string& section, const std::string& name, const std::string& address,
          const std::string& type_text, const std::string& direction, const std::string& length_text,
          const std::string& note, bool reserved, bool duplicate, const std::string& doubts) {
     Row row;
-    row.source_row="S140-"+std::to_string(++sequence);
+    std::ostringstream id;
+    id << "140-" << std::setw(3) << std::setfill('0') << rows.size()+1;
+    row.source_row=id.str();
     row.section=section;
     row.name=name;
     row.address=address;
@@ -31,7 +34,6 @@ void add_span(std::vector<Row>& rows, const std::string& section, const std::str
 }
 
 std::vector<Row> station_140_template() {
-    sequence=0;
     std::vector<Row> rows;
     const std::string read="PLC→PC";
     const std::string read_text="上位机读取";
@@ -58,7 +60,7 @@ std::vector<Row> station_140_template() {
     add_span(rows, read, "", "DB1900", 7, 0, 5, "BOOL", read_text, "空白名保留", true, "blank-name;reserved");
     add(rows, read, "", "DB1900.DBX7.6", "BOOL", read_text, "1", "空白名", true, false, "blank-name;reserved");
     add(rows, read, "", "DB1900.DBX7.6", "BOOL", read_text, "1", "原文再次出现 7.6，不改地址", true, true, "duplicate-address;blank-name;reserved");
-    add(rows, read, "报警代码", "DB1900.DBX8.0", "int", read_text, "1", "原文类型 int，不是 BOOL", false, false, "dbx-non-bool;length-unit-unconfirmed");
+    add(rows, read, "报警 代码", "DB1900.DBX8.0", "int", read_text, "1", "原文类型 int，不是 BOOL", false, false, "dbx-non-bool;length-unit-unconfirmed");
     add(rows, read, "小车二维码信息", "DB1900.DBX10.0", "string", read_text, "40", "三台小车公用一个地址", false, false, "dbx-non-bool;shared-cart;length-unit-unconfirmed;clear-handshake-unconfirmed");
 
     add(rows, write_section, "////////", "DB1901.DBX0.0", "BOOL", "写入", "1", "保留", true, false, std::string("reserved;")+no_write);

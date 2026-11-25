@@ -24,11 +24,17 @@ int main() {
         expect(catalog::Directory::validate(invalidLine), "line-scope");
         CHECK(directory.plcs_of(catalog::kAreaPick).size()==3);
         CHECK(directory.plcs_of(catalog::kAreaSeq).size()==4);
-        CHECK(directory.stations_of(catalog::kPlcSeq2).empty());
-        CHECK(directory.stations_of(catalog::kPlcSeq3).empty());
-        CHECK(directory.stations_of(catalog::kPlcSeq4).empty());
-        CHECK(directory.empty_plc_id()==catalog::kPlcSeq2);
-        CHECK(directory.stations.size()==15);
+        int stationCode=170;
+        for (auto plc : {catalog::kPlcSeq1,catalog::kPlcSeq2,catalog::kPlcSeq3,catalog::kPlcSeq4}) {
+            auto pair=directory.stations_of(plc);
+            CHECK(pair.size()==2);
+            for (auto station : pair) {
+                CHECK(station->code==std::to_string(stationCode));
+                CHECK(!directory.is_live(station->id));
+                stationCode+=10;
+            }
+        }
+        CHECK(directory.stations.size()==21);
         int live=0;
         for (auto& station : directory.stations) if (directory.is_live(station.id)) ++live;
         CHECK(live==1);
@@ -51,17 +57,13 @@ int main() {
 
         catalog::Selection kept{catalog::kFactory, catalog::kAreaPick, catalog::kPlcPack, catalog::kStation160};
         CHECK(directory.reconcile(kept).station_id==catalog::kStation160);
-        catalog::Selection emptied=kept;
-        emptied.plc_id=catalog::kPlcSeq2;
-        emptied.area_id=catalog::kAreaSeq;
-        auto empty_plc=directory.reconcile(emptied);
-        CHECK(empty_plc.plc_id==catalog::kPlcSeq2);
-        CHECK(empty_plc.station_id.empty());
+        auto reserve=directory.selection_for_plc(directory.empty_plc_id());
+        CHECK(reserve && reserve->station_id.empty());
         catalog::Selection switched=directory.live_selection();
         switched.area_id=catalog::kAreaSeq;
         auto sort_area=directory.reconcile(switched);
         CHECK(directory.area_of_station(sort_area.station_id)->code=="seq");
-        CHECK(sort_area.station_id==catalog::kStation210);
+        CHECK(sort_area.station_id=="stn.170");
         CHECK(!directory.is_live(sort_area.station_id));
         catalog::Selection named=directory.live_selection();
         named.station_id=catalog::kStation210;

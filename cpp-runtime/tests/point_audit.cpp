@@ -24,7 +24,8 @@ int main() {
         CHECK(count_address(rows, "DB1900.DBX3.7")==0);
         CHECK(count_address(rows, "DB1900.DBX3.6")>=3);
         CHECK(count_address(rows, "DB1900.DBX7.6")==2);
-        auto* alarm=find_name(rows, "报警代码");
+        CHECK(rows.front().source_row=="140-001" && rows.back().source_row=="140-116");
+        auto* alarm=find_name(rows, "报警 代码");
         CHECK(alarm && alarm->type_text=="int");
         CHECK(alarm->doubts.find("dbx-non-bool")!=std::string::npos);
         auto* code=find_name(rows, "小车二维码信息");
