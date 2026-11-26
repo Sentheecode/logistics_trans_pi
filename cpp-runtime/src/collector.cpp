@@ -7,7 +7,7 @@
 namespace { volatile std::sig_atomic_t stopped=0; void stop(int){stopped=1;} }
 namespace {
 int collect(const std::filesystem::path& dir,int count,int interval,const sim::Pulse& pulse){
-    sim::Writer writer(dir);sim::SimulationAdapter source;source.resume_after(writer.last_phase());
+    sim::Writer writer(dir);sim::SimulationAdapter source;source.resume_after(writer.last_phase(),writer.last_frame_was_manual_disconnect());
     sim::initialize_control(dir);
     pulse();
     std::cout<<"SIMULATION_ONLY: independent collector; dedicated SQLite writer\n"<<std::flush;
@@ -32,9 +32,7 @@ int collect(const std::filesystem::path& dir,int count,int interval,const sim::P
                 next=std::chrono::steady_clock::now()+std::chrono::milliseconds(interval);
             }else{
                 if(info.mode!="manual")return reject("manual_required");
-                sim::Observation observation;
-                if(request.command=="step")observation=source.next();
-                else{observation.phase=writer.last_phase();observation.available=false;observation.quality="bad";observation.reason="disconnected";observation.link="down";observation.alarm="unknown";observation.event="SIM_MANUAL_DISCONNECT";}
+                const auto observation=request.command=="step" ? source.next() : source.disconnect();
                 writer.publish(&observation,"manual",true,audit("ok"));++samples;
             }
             return std::string("ok");

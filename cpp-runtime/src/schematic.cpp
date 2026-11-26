@@ -11,10 +11,11 @@ SchematicView::SchematicView(QWidget* parent): QWidget(parent) {
     setMouseTracking(false);
     error_="未选择 PLC";
 }
-void SchematicView::setScene(const std::vector<StationGlyph>& stations, const std::string& focusId, bool exterior) {
+void SchematicView::setScene(const std::vector<StationGlyph>& stations, const std::string& focusId, bool exterior, const QString& placementNote) {
     stations_=stations;
     focus_=focusId;
     exterior_=exterior;
+    placementNote_=placementNote;
     scene_set_=true;
     error_.clear();
     update();
@@ -37,7 +38,7 @@ QStringList SchematicView::shapeIds() const {
 std::vector<SchematicView::Bay> SchematicView::bays() const {
     std::vector<Bay> out;
     if (stations_.empty() || width()<80 || height()<80) return out;
-    const QRectF field=QRectF(rect()).adjusted(10,8,-10,-8);
+    const QRectF field=QRectF(rect()).adjusted(10,31,-10,-8);
     const int count=static_cast<int>(stations_.size());
     const bool joinedExterior=exterior_ && count==3;
     const double reserved=joinedExterior ? 36.0 : (count-1)*8.0;
@@ -125,7 +126,10 @@ void SchematicView::drawBay(QPainter& painter, const Bay& bay, const StationGlyp
     painter.drawText(box.adjusted(12,10,-12,0),Qt::AlignTop|Qt::AlignRight,glyph.status);
     painter.setPen(QColor("#344058"));
     painter.drawText(box.adjusted(12,34,-12,0),Qt::AlignTop|Qt::AlignLeft|Qt::TextWordWrap,glyph.labels.join("\n"));
-    if (exterior_) drawEquipment(painter,box.adjusted(12,75,-12,-7),ink);
+    if (exterior_) {
+        const double iconWidth=std::min(82.0,box.width()*0.25);
+        drawEquipment(painter,QRectF(box.right()-iconWidth-8,box.bottom()-29,iconWidth,25),ink);
+    }
     painter.restore();
 }
 
@@ -140,6 +144,19 @@ void SchematicView::paintEvent(QPaintEvent*) {
     }
     const auto layout=bays();
     for (std::size_t index=0;index<layout.size();++index) drawBay(painter,layout[index],stations_[index]);
+    if (exterior_ && layout.size()==3) {
+        const auto left=layout[0].rect;
+        const auto right=layout[1].rect.united(layout[2].rect);
+        painter.setPen(QColor("#58637A"));
+        painter.drawText(QRectF(left.left(),3,left.width(),23),Qt::AlignCenter,"左侧工位");
+        painter.drawText(QRectF(right.left(),3,right.width(),23),Qt::AlignCenter,"右侧 · 150 与 160 端部相接");
+        const double seam=layout[1].rect.right();
+        painter.setPen(QPen(QColor("#8190AC"),1,Qt::DashLine));
+        painter.drawLine(QPointF(seam,right.top()+8),QPointF(seam,right.bottom()-8));
+    } else {
+        painter.setPen(QColor("#58637A"));
+        painter.drawText(QRectF(10,3,width()-20,23),Qt::AlignVCenter|Qt::AlignLeft,placementNote_);
+    }
 }
 
 void SchematicView::mousePressEvent(QMouseEvent* event) {

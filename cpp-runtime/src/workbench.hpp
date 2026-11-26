@@ -63,6 +63,7 @@ private:
     int observations_=0;
     QComboBox *areaCombo_=nullptr, *plcCombo_=nullptr;
     QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QLabel* pageScope_=nullptr;
     QLabel *stationMeta_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;

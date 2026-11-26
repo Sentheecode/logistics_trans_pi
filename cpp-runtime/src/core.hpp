@@ -56,6 +56,7 @@ public:
     void note(const std::string& level, const std::string& category, const std::string& object, const std::string& text, std::int64_t frame_seq=-1);
     RuntimeInfo info() const;
     int last_phase() const;
+    bool last_frame_was_manual_disconnect() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> p;

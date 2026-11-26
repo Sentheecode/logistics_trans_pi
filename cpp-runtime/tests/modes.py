@@ -70,10 +70,16 @@ with tempfile.TemporaryDirectory(prefix='cpp-modes-') as tmp:
         assert p.poll() is None and snapshot(d)[1]==n
         put(d,'R malformed')
         wait(lambda:(d/'control.mailbox').read_text()=='')
+        with closing(sqlite3.connect(d/'simulation.sqlite')) as db:
+            before_disconnect=db.execute('select phase,cart1,cart2,cart3,link from frames order by seq desc limit 1').fetchone()
         run(client,str(d),'disconnect')
         with closing(sqlite3.connect(d/'simulation.sqlite')) as db:
             assert db.execute('select cart1,quality,link from frames order by seq desc limit 1').fetchone()==(None,'bad','down')
         run(client,str(d),'step')
+        if before_disconnect[4]=='up' and all(v is not None for v in before_disconnect[1:4]):
+            with closing(sqlite3.connect(d/'simulation.sqlite')) as db:
+                restored=db.execute('select phase,cart1,cart2,cart3,link,event from frames order by seq desc limit 1').fetchone()
+                assert restored == (*before_disconnect,'SIM_MANUAL_LINK_RECOVERED')
         # Contending clients are serialized/rejected; each successful request advances once.
         n=snapshot(d)[1][0]
         clients=[subprocess.Popen([client,str(d),'step'],stdout=subprocess.PIPE,stderr=subprocess.PIPE) for _ in range(8)]

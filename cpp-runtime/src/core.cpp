@@ -130,6 +130,9 @@ void Writer::note(const std::string& level, const std::string& category, const s
 }
 Writer::~Writer()=default;
 RuntimeInfo Writer::info() const{return p->info;}
+bool Writer::last_frame_was_manual_disconnect() const {
+    return scalar(*p->db,"SELECT COALESCE((SELECT event='SIM_MANUAL_DISCONNECT' FROM frames ORDER BY seq DESC LIMIT 1),0)")!=0;
+}
 int Writer::last_phase() const{
     auto phase=scalar(*p->db,"SELECT COALESCE((SELECT phase FROM frames ORDER BY seq DESC LIMIT 1),-1)");
     if(phase < -1 || phase > 15)throw std::runtime_error("invalid persisted simulation phase");

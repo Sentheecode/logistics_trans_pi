@@ -42,6 +42,8 @@ with tempfile.TemporaryDirectory(prefix="cpp-simulation-") as tmp:
     assert r[6][2:5] == (None, None, None) and r[6][5:7] == ("bad", "source_bad")
     assert r[10][5:10] == ("bad", "disconnected", "down", "unknown", None)
     assert r[12][5:8] == ("good", "simulated", "up")
+    assert r[12][2:5] == r[9][2:5], "recovery advanced the business stage"
+    assert r[13][2:5] == ("station_complete", "station_complete", "sorting")
     assert r[15][2:5] == ("station_complete",) * 3
     output = run(diagnose, str(d), "history", "200").stdout
     assert "UNKNOWN" in output and "coverage=unknown" in output and "more=false" in output

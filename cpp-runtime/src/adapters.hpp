@@ -12,8 +12,15 @@ struct Observation {
 class SampleSource { public: virtual ~SampleSource()=default; virtual Observation next()=0; };
 class HistorySink { public: virtual ~HistorySink()=default; virtual void append(const Observation&)=0; };
 class SimulationAdapter final : public SampleSource {
-public: Observation next() override;
-    void resume_after(int last_phase){for(int i=0;i<=last_phase;++i)next();}
-private: int phase=0; domain::State state;
+public:
+    Observation next() override;
+    Observation disconnect();
+    void resume_after(int lastPhase, bool manualDisconnect=false);
+private:
+    Observation observe(const char* event) const;
+    int nextPhase_=0;
+    int lastPhase_=-1;
+    bool manuallyDisconnected_=false;
+    domain::State state_;
 };
 }

@@ -1,4 +1,5 @@
 #include "point_audit.hpp"
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 namespace {
@@ -14,12 +15,25 @@ const audit::Row* find_name(const std::vector<audit::Row>& rows, const std::stri
 }
 }
 
-int main() {
+int main(int argc,char** argv) {
     try {
         CHECK(audit::for_station("stn.150").empty());
         CHECK(audit::for_station("stn.210").empty());
         const auto rows=audit::station_140_template();
-        CHECK(!rows.empty());
+        CHECK(rows.size()==116);
+        CHECK(argc==2);
+        std::ifstream baseline(argv[1]);
+        CHECK(baseline.good());
+        std::string source;
+        CHECK(static_cast<bool>(std::getline(baseline,source)));
+        for (const auto& row : rows) {
+            CHECK(static_cast<bool>(std::getline(baseline,source)));
+            if (!source.empty() && source.back()=='\r') source.pop_back();
+            const auto exported=row.source_row+","+row.section+",140,"+row.name+","+row.address+","+
+                row.type_text+","+row.length_text+","+row.direction_text+","+row.note;
+            CHECK(exported==source);
+        }
+        CHECK(!std::getline(baseline,source));
         for (auto& row : rows) CHECK(!row.executable_write);
         CHECK(count_address(rows, "DB1900.DBX3.7")==0);
         CHECK(count_address(rows, "DB1900.DBX3.6")>=3);
