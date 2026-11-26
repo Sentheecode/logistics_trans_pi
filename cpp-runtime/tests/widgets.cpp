@@ -22,6 +22,7 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QTableWidget>
 #include <QThread>
 #include <QTimer>
@@ -65,17 +66,18 @@ void check_labels(QWidget& window) {
         if (!label->fontMetrics().inFont(QChar(0x6a21))) throw std::runtime_error("missing Chinese glyph");
     }
 }
-QDialog* open_diagnostic(QWidget& window, const QString& name) {
-    auto* button=window.findChild<QPushButton*>("diagnosticButton");
-    auto* dialog=window.findChild<QDialog*>("diagnosticsDialog");
-    if (!button || !button->menu() || !dialog) throw std::runtime_error("missing diagnostic menu");
-    for (auto* action : button->menu()->actions()) {
-        if (action->text()!=name) continue;
-        action->trigger();
-        if (!dialog->isVisible()) throw std::runtime_error("diagnostic did not open");
-        return dialog;
+void open_diagnostic(QWidget& window, const QString& name) {
+    auto* nav=window.findChild<QTabBar*>("workbenchNavigation");
+    auto* tabs=window.findChild<QTabWidget*>("moduleTabs");
+    if (!nav || !tabs) throw std::runtime_error("missing navigation");
+    for (int index=0;index<nav->count();++index) {
+        if (nav->tabText(index)!=name) continue;
+        nav->setCurrentIndex(index);
+        if (tabs->tabText(tabs->currentIndex())!=name) throw std::runtime_error("wrong page");
+        pump(40);
+        return;
     }
-    throw std::runtime_error("missing diagnostic action");
+    throw std::runtime_error("missing diagnostic tab");
 }
 void assert_point_detail_reachable(QWidget& window) {
     auto* tabs=window.findChild<QTabWidget*>("moduleTabs");
@@ -83,19 +85,19 @@ void assert_point_detail_reachable(QWidget& window) {
     auto* scroll=window.findChild<QScrollArea*>("pointDetailScroll");
     auto* label=window.findChild<QLabel*>("pointDetail");
     if (!tabs || !points || !scroll || !label || points->rowCount()<1) throw std::runtime_error("missing point detail scroll");
-    auto* dialog=open_diagnostic(window,"点表");
+    open_diagnostic(window,"点表");
     points->selectRow(0);
     pump(100);
     if (!label->text().contains("审计码")) throw std::runtime_error("point detail has no audit line");
-    const QPoint origin=scroll->mapTo(dialog, QPoint(0, 0));
-    if (!scroll->isVisible() || origin.y()<0 || origin.y()+scroll->height()>dialog->height()+2)
+    const QPoint origin=scroll->mapTo(&window, QPoint(0, 0));
+    if (!scroll->isVisible() || origin.y()<0 || origin.y()+scroll->height()>window.height()+2)
         throw std::runtime_error("point detail scroll is outside the window");
     const int need=label->heightForWidth(std::max(1, scroll->viewport()->width()));
     if (label->height()+2<need) throw std::runtime_error("point detail label is shorter than its wrapped text");
     const int hidden=label->height()-scroll->viewport()->height();
     if (hidden>4 && scroll->verticalScrollBar()->maximum()+4<hidden)
         throw std::runtime_error("point detail scroll cannot reach the last line");
-    dialog->close();
+    open_diagnostic(window,"运行");
 }
 void assert_inside(QWidget& window, const char* name) {
     auto* widget=window.findChild<QWidget*>(name);
@@ -104,32 +106,31 @@ void assert_inside(QWidget& window, const char* name) {
     if (point.x()<0 || point.y()<0 || point.x()+widget->width()>window.width()+2 || point.y()+widget->height()>window.height()+2)
         throw std::runtime_error(std::string("control outside window: ")+name);
 }
-void assert_no_live_leak(Workbench& window) {
-    auto* history=window.findChild<QTableWidget*>("historyTable");
-    auto* stage=window.findChild<QTableWidget*>("stageTable");
-    auto* detail=window.findChild<QTableWidget*>("detailTable");
-    auto* peers=window.findChild<QTableWidget*>("peerTable");
-    auto* banner=window.findChild<QLabel*>("scopeBanner");
-    if (!history || history->rowCount()!=0) throw std::runtime_error("non-live station showed history");
-    auto* diagnosticLink=window.findChild<QLabel*>("collectLink");
-    auto* diagnosticMode=window.findChild<QLabel*>("collectMode");
-    if (!diagnosticLink || diagnosticLink->text()!="未绑定" || !diagnosticMode || diagnosticMode->text()!="不作用于本工位")
-        throw std::runtime_error("non-live station showed a bound diagnostic link or mode");
-    if (!stage || stage->isVisible() || stage->rowCount()!=0) throw std::runtime_error("non-live station showed stages");
-    const auto scope=cell(detail, "实时范围");
-    if (scope!="未接入" && scope!="未配置") throw std::runtime_error(("unexpected scope "+scope).toStdString());
-    if (cell(detail, "模拟质量")=="正常") throw std::runtime_error("non-live station reused simulation quality");
-    if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知") throw std::runtime_error("fabricated device or stock value");
-    const QStringList banned={"扫码中", "分拣中", "工位完成", "模拟阻塞"};
-    for (auto* table : {history, stage, detail, peers}) {
-        if (!table) continue;
-        for (int row=0; row<table->rowCount(); ++row) for (int column=0; column<table->columnCount(); ++column) {
-            auto* item=table->item(row, column);
-            if (!item) continue;
-            for (const auto& word : banned) if (item->text().contains(word)) throw std::runtime_error(("leaked live text "+word).toStdString());
+void assert_no_live_leak(Workbench& window, bool boundPlc=false) {
+    const auto table=[&](const char* id) { return window.findChild<QTableWidget*>(id); };
+    const auto label=[&](const char* id) { return window.findChild<QLabel*>(id)->text(); };
+    if (table("pointAuditTable")->rowCount() || table("historyTable")->rowCount()
+        || table("logTable")->rowCount() || table("collectChanges")->rowCount()) {
+        throw std::runtime_error("diagnostics borrowed another station's rows");
+    }
+    if (!label("pointScope").contains("不套用 140") || !label("collectUnbound").contains("PLC 在线状态未探测")
+        || label("collectLink")!="未绑定" || label("collectMode")!="不作用于本工位")
+        throw std::runtime_error("point or collection scope language is missing");
+    for (const auto& page : {"采集","日志","点表"}) {
+        open_diagnostic(window,QString::fromUtf8(page));
+        for (auto* child : window.findChildren<QLabel*>()) {
+            if (!child->isVisible()) continue;
+            const auto value=child->text();
+            for (const auto& fragment : {"扫码中","分拣中","本轮完成","三车模拟流","DB1900"}) {
+                if (value.contains(QString::fromUtf8(fragment)))
+                    throw std::runtime_error("unbound diagnostic leaked a bound frame");
+            }
         }
     }
-    if (banner) for (const auto& word : banned) if (banner->text().contains(word)) throw std::runtime_error("leaked live banner");
+    open_diagnostic(window,"运行");
+    if (!boundPlc && (table("stageTable")->isVisible() || table("stageTable")->rowCount()
+        || !label("simOrder").contains("未接入")))
+        throw std::runtime_error("run page borrowed another PLC's frame");
 }
 void check_bad_svg() {
     SchematicView blank;
@@ -160,13 +161,13 @@ void check_station_evidence(Workbench& window, const std::filesystem::path& dire
         sim::Writer writer(directory);
         writer.publish(&sample,"manual");
         wait([&]{return step->isEnabled() && quality->text()=="正常";});
-        auto* dialog=open_diagnostic(window,"采集");
+        open_diagnostic(window,"采集");
         const auto held=frame->text();
         QElapsedTimer clock; clock.start();
         while (clock.elapsed()<3300) { writer.publish(nullptr,"manual"); pump(150); }
         if (!step->isEnabled() || quality->text()!="正常" || mode->text()!="手动" || frame->text()!=held)
             throw std::runtime_error("manual idle lost the held same-session step");
-        dialog->close();
+        open_diagnostic(window,"运行");
     }
     {
         sim::Writer restarted(directory);
@@ -181,6 +182,7 @@ void check_station_evidence(Workbench& window, const std::filesystem::path& dire
     sqlite3* fixture=nullptr;
     const auto file=(directory/"simulation.sqlite").u8string();
     const int opened=sqlite3_open_v2(file.c_str(),&fixture,SQLITE_OPEN_READWRITE,nullptr);
+    if (opened==SQLITE_OK) sqlite3_busy_timeout(fixture,2000);
     const int changed=opened==SQLITE_OK ? sqlite3_exec(fixture,"PRAGMA user_version=99",nullptr,nullptr,nullptr) : opened;
     sqlite3_close(fixture);
     if (changed!=SQLITE_OK) throw std::runtime_error("unable to create incompatible fixture");
@@ -208,423 +210,142 @@ int main(int argc, char** argv) {
             std::cout<<"PASS session, held step and failed read evidence\n";
             return 0;
         }
-        if (std::string(argv[2])=="offline") {
-            pump(700);
-            auto* factory=window.findChild<QComboBox*>("factoryCombo");
-            auto* schematic=window.findChild<SchematicView*>("schematicView");
-            if (!factory || factory->count()!=3 || !factory->isEnabled()) throw std::runtime_error("offline catalog disabled");
-            if (!schematic || !schematic->loaded()) throw std::runtime_error("offline schematic missing");
-            if (mode->isEnabled() || step->isEnabled()) throw std::runtime_error("offline controls enabled");
-            auto* quality=window.findChild<QLabel*>("collectQuality");
-            auto* link=window.findChild<QLabel*>("collectLink");
-            auto* modeText=window.findChild<QLabel*>("collectMode");
-            if (!quality || quality->text()!="未知" || !link || link->text()!="未知" || !modeText || modeText->text()!="未知")
-                throw std::runtime_error("offline diagnostic reported current evidence");
-            std::cout<<"PASS offline controls disabled\n";
-            return 0;
-        }
-        auto* factory=window.findChild<QComboBox*>("factoryCombo");
         auto* area=window.findChild<QComboBox*>("areaCombo");
         auto* plc=window.findChild<QComboBox*>("plcCombo");
-        auto* detail=window.findChild<QTableWidget*>("detailTable");
-        auto* history=window.findChild<QTableWidget*>("historyTable");
-        auto* points=window.findChild<QTableWidget*>("pointAuditTable");
         auto* schematic=window.findChild<SchematicView*>("schematicView");
-        if (!factory || !area || !plc || !detail || !history || !points || !schematic) throw std::runtime_error("missing native chrome");
-        auto* line=window.findChild<QComboBox*>("lineCombo");
-        auto* station=window.findChild<QComboBox*>("stationCombo");
-        if (!line || !station) throw std::runtime_error("missing line or station selection");
-        if (!window.findChild<QWidget*>("catalogPane") || !window.findChild<QWidget*>("commandPane"))
-            throw std::runtime_error("missing context or operations");
-        if (window.findChild<QWidget*>("sideNav")) throw std::runtime_error("sidebar still exists");
-        if (QString(schematic->metaObject()->className())!="SchematicView" || !schematic->loaded())
-            throw std::runtime_error("schematic resource did not load");
-        auto* stages=window.findChild<QTableWidget*>("stageTable");
-        auto* result=window.findChild<QTableWidget*>("runResultTable");
-        auto* order=window.findChild<QLabel*>("simOrder");
-        if (!stages || !result || !order) throw std::runtime_error("missing stage or result view");
-        const auto shown=schematic->shapeIds();
-        if (shown.size()!=3 || !shown.contains(catalog::kStation140) || !shown.contains(catalog::kStation150) || !shown.contains(catalog::kStation160) || shown.contains(catalog::kStation210) || shown.contains(catalog::kStation20))
-            throw std::runtime_error("layout showed stations outside the current PLC");
-        wait([&]{ return mode->isEnabled(); });
-        wait([&]{ return history->rowCount()>0; });
-        stages->setCurrentCell(1,0);
-        pump(200);
-        if (!cell(result,"所选步骤").contains("小车2") || stages->currentRow()!=1)
-            throw std::runtime_error("stage selection did not survive refresh");
-        for (auto size : {QSize(1100,650), QSize(1280,800)}) {
+        auto* source=window.findChild<QTableWidget*>("stationSourceTable");
+        auto* points=window.findChild<QTableWidget*>("pointAuditTable");
+        auto* disconnect=window.findChild<QPushButton*>("disconnectButton");
+        auto* nav=window.findChild<QTabBar*>("workbenchNavigation");
+        auto* context=window.findChild<QWidget*>("catalogPane");
+        if (!area || !plc || !schematic || !source || !points || !disconnect || !nav || !context)
+            throw std::runtime_error("missing workbench controls");
+        if (window.findChild<QComboBox*>("stationCombo") || window.findChild<QComboBox*>("lineCombo")
+            || window.findChild<QPushButton*>("diagnosticButton") || nav->y()>=context->y())
+            throw std::runtime_error("scope shortcuts or legacy diagnostics still visible");
+        if (std::string(argv[2])=="offline") {
+            pump(700);
+            if (mode->isEnabled() || step->isEnabled() || window.confirmedMode()!="unknown")
+                throw std::runtime_error("offline collector exposed controls");
+            choose(plc,catalog::kPlcMeter1);
+            assert_no_live_leak(window);
+            return 0;
+        }
+
+        wait([&]{return mode->isEnabled() && window.confirmedMode()=="automatic";});
+        for (auto size : {QSize(1100,650),QSize(1280,800)}) {
             window.resize(size);
             pump(120);
-            for (auto name : {"diagnosticButton","currentStation","runtimeState","catalogPane","stageTable","schematicView","scopeBanner","simOrder","runResultTable","recentTable","commandPane"})
+            for (const auto name : {"workbenchNavigation","plcCombo","schematicView","stageTable","stationSourceTable","scopeBanner","commandPane"})
                 assert_inside(window,name);
+            check_labels(window);
+            if (disconnect->isVisible()) throw std::runtime_error("disconnect leaked onto run page");
         }
-        auto* liveDialog=open_diagnostic(window,"日志");
-        auto* module=window.findChild<QTabWidget*>("moduleTabs");
-        if (module->tabText(module->currentIndex())!="日志" || !stages->isVisible())
-            throw std::runtime_error("diagnostic displaced run view");
-        liveDialog->close();
-        if (stages->currentRow()!=1 || !window.liveScope())
-            throw std::runtime_error("closing diagnostics changed station or stage");
-        window.resize(1100,650);
-        if (stages->verticalScrollBar()->maximum()!=0 || result->verticalScrollBar()->maximum()!=0)
-            throw std::runtime_error("current stages or results require scrolling");
-        if (window.confirmedMode()!="automatic" || step->isEnabled() || !window.liveScope()) throw std::runtime_error("auto mode controls incorrect");
-        auto* title=window.findChild<QLabel*>("title");
-        if (!title) throw std::runtime_error("missing workbench title");
-        auto checkGlyphs=[](QWidget* widget, const QString& text) {
-            const auto metrics=widget->fontMetrics();
-            for (const auto ch : text) {
-                if (!ch.isSpace() && !metrics.inFont(ch))
-                    throw std::runtime_error(("missing glyph in "+widget->objectName()+": "+ch).toStdString());
-            }
-        };
-        checkGlyphs(title, title->text());
-        checkGlyphs(mode, mode->text());
-        checkGlyphs(points, points->horizontalHeaderItem(0)->text());
-        for (auto* box : {factory, area, line, station, plc}) {
-            box->showPopup();
-            QCoreApplication::processEvents();
-            auto* list=box->view();
-            if (!list->isVisible()) throw std::runtime_error("catalog popup did not open");
-            for (int row=0; row<box->count(); ++row) {
-                const auto text=box->itemText(row);
-                checkGlyphs(list, text);
-                if (list->viewport()->width()<list->fontMetrics().horizontalAdvance(text))
-                    throw std::runtime_error("catalog popup clips an option");
-            }
-            box->hidePopup();
+
+        const auto before=snap(directory);
+        const auto ids=schematic->shapeIds();
+        if (ids!=QStringList{catalog::kStation140,catalog::kStation150,catalog::kStation160} || source->rowCount()!=3)
+            throw std::runtime_error("exterior roster sequence");
+        const auto left=schematic->stationRect(ids[0]);
+        const auto middle=schematic->stationRect(ids[1]);
+        const auto right=schematic->stationRect(ids[2]);
+        if (!(left.right()<middle.left() && middle.right()==right.left())) throw std::runtime_error("exterior anchors");
+        for (auto id : {catalog::kStation150,catalog::kStation160}) {
+            click_station(schematic,id);
+            if (plc->currentData().toString()!=catalog::kPlcPack || !window.liveScope())
+                throw std::runtime_error("detail changed PLC context");
+            auto* table=window.findChild<QTableWidget*>("detailTable");
+            const auto name=cell(table,"图纸标注");
+            if ((id==catalog::kStation150 && (!name.contains("前保右") || !name.contains("后保右")))
+                || (id==catalog::kStation160 && !name.contains("通风窗")))
+                throw std::runtime_error("missing exterior drawing label");
+            assert_no_live_leak(window,true);
         }
-        if (factory->count()!=3 || area->count()!=2 || plc->count()!=3) throw std::runtime_error("catalog dropdowns incomplete");
-        for (int i=0; i<area->count(); ++i) if (area->itemText(i).contains("手动") || area->itemText(i).contains("自动")) throw std::runtime_error("runtime mode mixed into area dropdown");
-        if (cell(detail, "设备连接")!="未探测" || cell(detail, "库存")!="未知" || cell(detail, "库位")!="待补映射") throw std::runtime_error("live station fabricated mapping");
-        if (cell(detail, "业务模式")==cell(detail, "运行模式") || !cell(detail, "实时范围").contains(QString::fromUtf8(catalog::kStream))) throw std::runtime_error("area and runtime modes not independent");
+        choose(plc,catalog::kPlcMeter1);
+        if (schematic->shapeIds()!=QStringList{catalog::kStation20,catalog::kStation30,catalog::kStation90})
+            throw std::runtime_error("meter 1 placement");
+        for (auto id : {catalog::kStation20,catalog::kStation30,catalog::kStation90}) {
+            click_station(schematic,id);
+            if (!window.findChild<QLabel*>("pointScope")->text().contains("缺 PLC-PC"))
+                throw std::runtime_error("meter 1 point evidence missing");
+            assert_no_live_leak(window);
+        }
+        choose(plc,catalog::kPlcMeter2);
+        if (schematic->shapeIds()!=QStringList{catalog::kStation40,catalog::kStation10,catalog::kStation70,catalog::kStation80})
+            throw std::runtime_error("meter 2 placement");
+        assert_no_live_leak(window);
+        choose(area,catalog::kAreaSeq);
+        const QStringList sortingIds={catalog::kPlcSeq1,catalog::kPlcSeq2,catalog::kPlcSeq3,catalog::kPlcSeq4};
+        for (int index=0;index<sortingIds.size();++index) {
+            choose(plc,sortingIds[index].toUtf8().constData());
+            const QString prefix=QString("stn.%1").arg(170+20*index);
+            const QString next=QString("stn.%1").arg(180+20*index);
+            if (schematic->shapeIds()!=QStringList{prefix,next}) throw std::runtime_error("sorting placement");
+            assert_no_live_leak(window);
+        }
+        const auto after=snap(directory);
+        if (after.boot!=before.boot || after.revision!=before.revision || after.mode!="automatic")
+            throw std::runtime_error("directory browsing mutated collector");
+
+        choose(area,catalog::kAreaPick);
+        choose(plc,catalog::kPlcPack);
         auto* reserved=window.findChild<QCheckBox*>("pointReserved");
-        auto visiblePoints=[&] { int n=0; for (int i=0;i<points->rowCount();++i) if (!points->isRowHidden(i)) ++n; return n; };
+        auto visiblePoints=[&] {
+            int count=0;
+            for (int row=0;row<points->rowCount();++row) if (!points->isRowHidden(row)) ++count;
+            return count;
+        };
+        open_diagnostic(window,"点表");
         if (!reserved || visiblePoints()!=75) throw std::runtime_error("named point count mismatch");
         reserved->setChecked(true);
-        if (visiblePoints()!=116) throw std::runtime_error("raw point rows not retained");
+        if (visiblePoints()!=116) throw std::runtime_error("original rows lost");
         reserved->setChecked(false);
-        if (points->rowCount()<10) throw std::runtime_error("station 140 audit missing");
-        if (window.controllerPeerIds().size()!=3 || schematic->markerColor(QString::fromUtf8(catalog::kStation140))==schematic->markerColor(QString::fromUtf8(catalog::kStation150)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation150)).isValid() || schematic->markerColor(QString::fromUtf8(catalog::kStation210)).isValid())
-            throw std::runtime_error("plc highlight incorrect");
-        mode->click();
-        wait([&]{ return window.confirmedMode()=="manual" && step->isEnabled(); });
-        auto before=snap(directory);
-        step->click(); step->click(); step->click();
-        wait([&]{ return step->isEnabled(); });
-        auto after=snap(directory);
-        if (after.seq!=before.seq+1 || after.revision!=before.revision+1) throw std::runtime_error("rapid clicks advanced more than once");
-        auto* logs=window.findChild<QTableWidget*>("logTable");
-        auto* logCategory=window.findChild<QComboBox*>("logCategory");
-        if (!logs || !logCategory) throw std::runtime_error("missing log view");
-        if (logs->rowCount()>80) throw std::runtime_error("log query exceeded 80 rows");
-        if (!logs->horizontalHeaderItem(0) || logs->horizontalHeaderItem(0)->text().contains("北京")) throw std::runtime_error("timezone belongs in the page note, not each column");
-        wait([&]{
-            for (int row=0; row<logs->rowCount(); ++row) {
-                auto* item=logs->item(row, 0);
-                if (item && item->data(Qt::UserRole+3).toString().contains("step") && item->data(Qt::UserRole+1).toString()=="audit") return true;
-            }
-            return false;
-        });
-        const auto before_scope=snap(directory);
-        choose(line, "line.demo-b");
-        if (window.selectedStationId()!=catalog::kStation160 || schematic->selectedId()!=catalog::kStation160)
-            throw std::runtime_error("line did not update station and topology");
-        assert_no_live_leak(window);
-        if (!cell(result,"资料范围").contains("未导入") || cell(result,"采集质量")!="未绑定模拟源" || logs->rowCount()!=0 || step->isEnabled())
-            throw std::runtime_error("line selection leaked collector projection");
-        click_station(schematic,catalog::kStation150);
-        if (line->currentData().toString()!="line.demo-a" || station->currentData().toString()!=catalog::kStation150)
-            throw std::runtime_error("topology did not update line and station");
-        choose(factory,"fac.demo-north");
-        if (station->currentData().toString()!="stn.demo-n1" || cell(detail,"仓库")!="示例立库 N")
-            throw std::runtime_error("factory did not update station and warehouse");
-        assert_no_live_leak(window);
-        choose(area,"area.demo-north.sort");
-        if (line->currentData().toString()!="line.demo-empty" || !window.selectedStationId().isEmpty())
-            throw std::runtime_error("empty line retained another scope");
-        assert_no_live_leak(window);
-        choose(factory,"fac.demo-south");
-        if (!window.selectedStationId().isEmpty()) throw std::runtime_error("empty business mode retained a station");
-        choose(area,"area.demo-south.sort");
-        if (station->currentData().toString()!="stn.demo-s1" || !cell(result,"资料范围").contains("候选")) throw std::runtime_error("south station missing");
-        assert_no_live_leak(window);
-        choose(factory,catalog::kFactory);
-        choose(station,catalog::kStation140);
-        wait([&]{return logs->rowCount()>0;});
-        const auto after_scope=snap(directory);
-        if (after_scope.mode!=before_scope.mode || after_scope.seq!=before_scope.seq || after_scope.revision!=before_scope.revision)
-            throw std::runtime_error("catalog navigation altered collector");
-        const auto before_log_filter=snap(directory);
-        choose(logCategory, "audit");
-        pump(40);
-        for (int row=0; row<logs->rowCount(); ++row) {
-            auto* item=logs->item(row, 0);
-            if (!logs->isRowHidden(row) && (!item || item->data(Qt::UserRole+1).toString()!="audit")) throw std::runtime_error("log category filter leaked another category");
-        }
-        choose(logCategory, "all");
-        if (snap(directory).revision!=before_log_filter.revision || snap(directory).boot!=before_log_filter.boot || snap(directory).mode!=before_log_filter.mode)
-            throw std::runtime_error("log filter changed collector ownership");
-        pump(1700);
-        if (!step->isEnabled() || snap(directory).seq!=after.seq) throw std::runtime_error("manual wait treated as disconnected or advanced");
-        auto* link=window.findChild<QPushButton*>("disconnectButton");
-        auto* banner=window.findChild<QLabel*>("scopeBanner");
-        auto* clock=window.findChild<QLabel*>("heartbeatState");
-        if (!link || !link->isEnabled() || !banner || !clock) throw std::runtime_error("missing disconnect or clock");
-        if (!clock->text().contains("北京") && !clock->text().contains("UTC")) throw std::runtime_error("clock has no timezone");
-        logs->setCurrentCell(0,0);
-        const auto selectedLog=logs->item(0,0)->data(Qt::UserRole+4);
-        if (!schematic->showsCarts() || !order->text().contains("模拟分拣任务") || order->text().contains("SIM-SPS-01"))
-            throw std::runtime_error("live order or separate cart lane missing");
-        const int target=schematic->targetCart();
-        if (target>=0 && !order->text().contains(QString("料车 %1").arg(target+1)))
-            throw std::runtime_error("order target and diagram diverged");
-        const auto before_break=snap(directory);
-        link->click();
-        wait([&]{ return link->isEnabled() && snap(directory).seq==before_break.seq+1; });
-        if (!selectedLog.isValid() || logs->currentRow()<=0 ||
-            logs->item(logs->currentRow(),0)->data(Qt::UserRole+4)!=selectedLog)
-            throw std::runtime_error("new logs changed the selected record");
-        if (schematic->targetCart()!=-1 || !order->text().contains("进度未知") || !order->text().contains("目标未知"))
-            throw std::runtime_error("bad frame reported an inferred target or progress");
-        auto broken=snap(directory);
-        if (broken.mode!="manual" || broken.revision!=before_break.revision+1 || broken.boot!=before_break.boot || !banner->text().contains("模拟链路断开"))
-            throw std::runtime_error("manual disconnect did not stay on the same collector");
-        for (int guard=0; guard<4 && banner->text().contains("模拟链路断开"); ++guard) {
-            const auto current=snap(directory);
-            step->click();
-            wait([&]{ return step->isEnabled() && snap(directory).seq==current.seq+1; });
-        }
-        if (banner->text().contains("模拟链路断开") || snap(directory).mode!="manual" || snap(directory).boot!=before_break.boot)
-            throw std::runtime_error("step after disconnect did not resume the same manual collector");
-        click_station(schematic, catalog::kStation150);
-        pump(120);
-        auto* reason=window.findChild<QLabel*>("controlReason");
-        if (step->isEnabled() || !reason || !reason->text().contains("A1")) throw std::runtime_error("station 150 looked like the control target");
-        if (schematic->showsCarts() || schematic->targetCart()!=-1 || order->text()!=area->currentText()+"   ·   工位目录")
-            throw std::runtime_error("unbound station borrowed the order or carts");
-        const auto frozen=snap(directory);
-        step->click();
-        pump(400);
-        const auto still=snap(directory);
-        if (still.seq!=frozen.seq || still.revision!=frozen.revision || still.mode!="manual" || still.boot!=frozen.boot)
-            throw std::runtime_error("disabled step on station 150 advanced station 140");
-        click_station(schematic, catalog::kStation140);
-        wait([&]{ return step->isEnabled() && window.liveScope(); });
-        const auto held=snap(directory);
-        choose(area, catalog::kAreaSeq);
-        choose(plc, catalog::kPlcSeq3);
-        click_station(schematic, catalog::kStation220);
-        if (window.selectedStationId()!=catalog::kStation220 || area->currentData().toString()!=catalog::kAreaSeq || plc->currentData().toString()!=catalog::kPlcSeq3)
-            throw std::runtime_error("svg click did not sync dropdowns");
-        if (schematic->shapeIds().contains(catalog::kStation140) || schematic->shapeIds().size()!=2)
-            throw std::runtime_error("sequence layout still showed another PLC");
-        if (window.confirmedMode()!="manual" || step->isEnabled() || mode->isEnabled()) throw std::runtime_error("non-live station enabled control");
-        if (cell(detail, "业务模式")!="排序区" || cell(detail, "运行模式")!="手动") throw std::runtime_error("sequence selection changed runtime mode");
-        if (points->rowCount()!=0) throw std::runtime_error("140 point sheet applied outside station 140");
-        assert_no_live_leak(window);
-        step->click(); mode->click();
-        QPointF miss;
-        bool found_miss=false;
-        for (int y=0; y<schematic->height() && !found_miss; y+=9) for (int x=0; x<schematic->width() && !found_miss; x+=9)
-            if (schematic->stationAt(QPointF(x, y)).isEmpty()) { miss=QPointF(x, y); found_miss=true; }
-        if (!found_miss) throw std::runtime_error("no schematic miss point");
-        const auto selected=window.selectedStationId();
-        QMouseEvent miss_press(QEvent::MouseButtonPress, miss, QPointF(schematic->mapToGlobal(miss.toPoint())), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(schematic, &miss_press);
-        if (window.selectedStationId()!=selected) throw std::runtime_error("miss click changed selection");
-        choose(area, catalog::kAreaPick);
-        choose(plc, catalog::kPlcPack);
-        click_station(schematic, catalog::kStation150);
-        if (schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
-            throw std::runtime_error("pack layout showed another PLC");
-        if (schematic->selectedId()!=catalog::kStation150 || schematic->markerColor(QString::fromUtf8(catalog::kStation150))==schematic->markerColor(QString::fromUtf8(catalog::kStation140)) || !schematic->markerColor(QString::fromUtf8(catalog::kStation160)).isValid())
-            throw std::runtime_error("diagram click did not focus the station");
-        const auto peers=cell(detail, "关联工位");
-        if (!peers.contains(catalog::kStation140) || !peers.contains(catalog::kStation150) || !peers.contains(catalog::kStation160) || peers.contains(catalog::kStation210))
-            throw std::runtime_error("plc peer list incorrect");
-        if (step->isEnabled() || history->rowCount()!=0) throw std::runtime_error("sibling station repeated the live frame");
-        assert_no_live_leak(window);
-        window.prepareCapture("empty");
-        if (!window.selectedStationId().isEmpty() || !schematic->shapeIds().isEmpty() || cell(detail, "实时范围")!="未配置" || step->isEnabled())
-            throw std::runtime_error("empty plc was not unconfigured");
-        pump(80);
-        auto* emptyRun=window.findChild<QWidget*>("emptyRun");
-        auto* runHint=window.findChild<QLabel*>("runHint");
-        auto* runWorkspace=window.findChild<QWidget*>("runWorkspace");
-        if (!emptyRun || !emptyRun->isVisible() || (runHint && runHint->isVisible()) || (runWorkspace && runWorkspace->isVisible()))
-            throw std::runtime_error("unconfigured plc still showed the live run card");
-        auto* emptyTitle=window.findChild<QLabel*>("emptyTitle");
-        auto* emptyAction=window.findChild<QLabel*>("emptyAction");
-        if (!emptyTitle || !emptyAction) throw std::runtime_error("unconfigured copy missing");
-        const int top=emptyTitle->mapTo(&window, QPoint(0, 0)).y();
-        const int bottom=emptyAction->mapTo(&window, QPoint(0, emptyAction->height())).y();
-        if (top>220 || bottom-top>140) throw std::runtime_error("unconfigured run state is not a short block at the top y="+std::to_string(top)+" span="+std::to_string(bottom-top));
-        if (window.findChild<QLabel*>("emptyTitle")->text()!="尚未配置工位" || window.findChild<QLabel*>("emptySource")->text()!="当前 PLC 未绑定模拟源" || window.findChild<QLabel*>("emptyAction")->text()!="暂无法执行模拟操作")
-            throw std::runtime_error("unconfigured copy changed");
-        choose(factory, catalog::kFactory);
-        for (int i=0; i<20; ++i) choose(area, i%2 ? catalog::kAreaPick : catalog::kAreaSeq);
-        if (area->currentData().toString()!=catalog::kAreaPick || window.selectedStationId()!=catalog::kStation140)
-            throw std::runtime_error("parent switch did not select a legal child by id");
-        const auto browsed=snap(directory);
-        if (browsed.mode!=held.mode || browsed.revision!=held.revision || browsed.seq!=held.seq || browsed.boot!=held.boot)
-            throw std::runtime_error("directory browsing changed collector state");
-        if (!step->isEnabled() || !window.liveScope()) throw std::runtime_error("live control did not return");
-        const auto before_step=snap(directory);
-        step->click();
-        wait([&]{ return step->isEnabled() && snap(directory).seq==before_step.seq+1; });
-        if (snap(directory).revision!=before_step.revision+1) throw std::runtime_error("returned live step did not commit once");
-        QTimer::singleShot(50, [&]{ auto* box=window.findChild<QMessageBox*>("confirmAutomatic"); if (box) box->button(QMessageBox::No)->click(); });
-        mode->click();
-        pump(300);
-        if (window.confirmedMode()!="manual") throw std::runtime_error("cancel resumed automatic");
-        QTimer::singleShot(50, [&]{ auto* box=window.findChild<QMessageBox*>("confirmAutomatic"); if (box) box->button(QMessageBox::Yes)->click(); });
-        mode->click();
-        wait([&]{ return window.confirmedMode()=="automatic" && mode->isEnabled(); });
-        if (step->isEnabled()) throw std::runtime_error("step enabled in automatic");
-        const auto running=snap(directory);
-        choose(area, catalog::kAreaSeq);
-        wait([&]{
-            if (history->rowCount()!=0) throw std::runtime_error("sequence view showed live history");
-            const auto now=snap(directory);
-            if (now.mode!="automatic" || now.revision!=running.revision || now.boot!=running.boot) throw std::runtime_error("browsing changed automatic collector");
-            return now.seq>running.seq;
-        });
-        choose(area, catalog::kAreaPick);
-        choose(plc, catalog::kPlcPack);
-        click_station(schematic, catalog::kStation140);
-        wait([&]{ return history->rowCount()>0 && window.liveScope(); });
-        auto* filter=window.findChild<QComboBox*>("historyFilter");
         auto* search=window.findChild<QLineEdit*>("pointSearch");
-        auto* doubts=window.findChild<QCheckBox*>("pointDoubtsOnly");
-        auto* detailText=window.findChild<QLabel*>("pointDetail");
-        if (!filter || !search || !doubts || !detailText) throw std::runtime_error("missing filter controls");
-        const auto before_filter=snap(directory);
-        choose(filter, "bad");
-        pump(50);
-        int bad_visible=0;
-        for (int row=0; row<history->rowCount(); ++row) {
-            auto* quality=history->item(row, 3);
-            const bool hidden=history->isRowHidden(row);
-            if (!hidden) {
-                if (!quality || quality->text()!="不可用") throw std::runtime_error("history filter kept a good frame");
-                ++bad_visible;
-            }
-        }
-        if (bad_visible==0) throw std::runtime_error("history filter matched nothing");
-        choose(filter, "all");
-        pump(50);
-        for (int row=0; row<history->rowCount(); ++row) if (history->isRowHidden(row)) throw std::runtime_error("history filter did not restore rows");
-        if (snap(directory).mode!=before_filter.mode || snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
-            throw std::runtime_error("history filter changed collector ownership");
         search->setText("DB1900.DBX0.0");
-        pump(50);
-        int matched=0;
-        for (int row=0; row<points->rowCount(); ++row) if (!points->isRowHidden(row)) ++matched;
-        if (matched!=1 || !points->item(0, 0) || points->item(0, 0)->text()!="设备运行中") throw std::runtime_error("point search did not isolate one address");
-        points->selectRow(0);
-        pump(30);
-        if (!detailText->text().contains("plc-auto-not-host-mode") || !detailText->text().contains("DB1900.DBX0.0")) throw std::runtime_error("point detail hid the source code");
-        for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
-            window.resize(size);
-            pump(200);
-            assert_point_detail_reachable(window);
-        }
-        search->setText("没有这个地址ZZZ");
-        pump(30);
-        for (int row=0; row<points->rowCount(); ++row) if (!points->isRowHidden(row)) throw std::runtime_error("point search kept a row");
+        if (visiblePoints()!=1) throw std::runtime_error("point search crossed the named-row filter");
         search->clear();
-        doubts->setChecked(true);
-        pump(30);
-        for (int row=0; row<points->rowCount(); ++row) {
-            auto* name=points->item(row, 0);
-            const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
-            if (points->isRowHidden(row)==(has && !name->data(Qt::UserRole+2).toBool())) throw std::runtime_error("doubt filter did not follow source doubts");
-        }
-        doubts->setChecked(false);
-        if (snap(directory).revision!=before_filter.revision || snap(directory).boot!=before_filter.boot)
-            throw std::runtime_error("point filter changed collector ownership");
-        for (auto size : {QSize(1100, 650), QSize(1280, 800)}) {
-            window.resize(size);
-            pump(250);
-            if (window.size()!=size) throw std::runtime_error("size not applied: "+std::to_string(window.width())+"x"+std::to_string(window.height()));
-            check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
-        }
-        choose(area, catalog::kAreaSeq);
-        window.resize(1100, 650);
-        pump(200);
-        check_labels(window);
-        choose(plc, catalog::kPlcSeq2);
-        pump(150);
-        check_labels(window);
-        choose(area, catalog::kAreaPick);
-        choose(plc, catalog::kPlcMeter2);
-        const auto meter=schematic->shapeIds();
-        if (meter.size()!=4 || !meter.contains(catalog::kStation40) || !meter.contains(catalog::kStation10) || !meter.contains(catalog::kStation70) || !meter.contains(catalog::kStation80) || meter.contains(catalog::kStation140))
-            throw std::runtime_error("meter2 layout was not exactly its four stations");
-        click_station(schematic, catalog::kStation80);
-        if (window.selectedStationId()!=catalog::kStation80 || schematic->selectedId()!=catalog::kStation80) throw std::runtime_error("meter2 graphic click missed station 80");
-        choose(station,catalog::kStation10);
-        if (schematic->selectedId()!=catalog::kStation10 || cell(detail,"工位").contains(catalog::kStation140) || points->rowCount()!=0)
-            throw std::runtime_error("station selector reused another station");
-        assert_no_live_leak(window);
-        for (auto size : {QSize(1280, 800), QSize(1100, 650)}) {
-            window.resize(size);
-            pump(200);
-            check_labels(window);
-            for (auto name : {"factoryCombo", "areaCombo", "lineCombo", "stationCombo", "plcCombo", "modeButton", "primary", "disconnectButton"}) assert_inside(window, name);
-        }
-        const auto before_empty=snap(directory);
-        for (auto plc_id : {catalog::kPlcSeq1, catalog::kPlcSeq2, catalog::kPlcSeq3, catalog::kPlcSeq4}) {
-            choose(area, catalog::kAreaSeq);
-            choose(plc, plc_id);
-            if (window.selectedStationId().isEmpty() || schematic->shapeIds().size()!=2 || points->rowCount()!=0 || step->isEnabled())
-                throw std::runtime_error("sorting PLC scope mismatch");
-            check_labels(window);
-        }
-        const auto after_empty=snap(directory);
-        if (after_empty.mode!=before_empty.mode || after_empty.revision!=before_empty.revision || after_empty.boot!=before_empty.boot)
-            throw std::runtime_error("empty plc switching changed collector ownership");
-        choose(area, catalog::kAreaPick);
-        choose(plc, catalog::kPlcPack);
-        click_station(schematic, catalog::kStation150);
-        pump(150);
-        check_labels(window);
-        assert_no_live_leak(window);
-        if (step->isEnabled() || !window.findChild<QLabel*>("controlReason") || !window.findChild<QLabel*>("controlReason")->text().contains("A1"))
-            throw std::runtime_error("focused sibling still looked controllable");
-        auto* modules=window.findChild<QTabWidget*>("moduleTabs");
-        if (!modules || modules->count()!=6) throw std::runtime_error("module tabs missing");
-        const auto tabbed=window.selectedStationId();
-        const auto before_tabs=snap(directory);
-        for (auto title : {"工位", "事件", "点表", "接口", "日志", "采集"}) {
-            auto* dialog=open_diagnostic(window,QString::fromUtf8(title));
-            pump(80);
-            if (modules->tabText(modules->currentIndex())!=QString::fromUtf8(title))
-                throw std::runtime_error("diagnostic action opened wrong page");
-            if (modules->tabText(modules->currentIndex())=="接口") {
-                auto* list=dialog->findChild<QListWidget*>("interfaceList");
-                auto* summary=dialog->findChild<QLabel*>("interfaceSummary");
-                if (!list || !summary) throw std::runtime_error("missing diagnostic evidence");
-                const auto matches=list->findItems("排序任务",Qt::MatchExactly);
-                if (matches.size()!=1) throw std::runtime_error("sorting evidence missing");
-                list->setCurrentItem(matches.front());
-                if (!summary->text().contains("计划数量") || !summary->text().contains("回执"))
-                    throw std::runtime_error("sorting plan and completion evidence conflated");
-            }
-            dialog->close();
-            if (step->isEnabled()) throw std::runtime_error("diagnostic changed controls");
-            if (window.selectedStationId()!=tabbed || schematic->shapeIds().contains(catalog::kStation210) || schematic->shapeIds().size()!=3)
-                throw std::runtime_error("module switch changed the PLC scope");
-            if (history->rowCount()!=0 || points->rowCount()!=0) throw std::runtime_error("module switch copied station 140 records");
-        }
-        const auto after_tabs=snap(directory);
-        if (after_tabs.mode!=before_tabs.mode || after_tabs.revision!=before_tabs.revision || after_tabs.boot!=before_tabs.boot)
-            throw std::runtime_error("module switch changed collector ownership");
-        std::cout<<"PASS widgets: Qiantang navigation, manual/automatic retained, svg sync, plc fan-out, simulated scope\n";
+        assert_point_detail_reachable(window);
+
+        wait([&]{return mode->isEnabled();});
+        mode->click();
+        wait([&]{return step->isEnabled() && window.confirmedMode()=="manual";});
+        const auto held=snap(directory);
+        pump(850);
+        if (snap(directory).seq!=held.seq) throw std::runtime_error("manual continued automatically");
+        step->click();
+        step->click();
+        wait([&]{return step->isEnabled() && snap(directory).seq==held.seq+1;});
+        open_diagnostic(window,"采集");
+        if (!disconnect->isVisible() || !disconnect->isEnabled()) throw std::runtime_error("missing acquisition actions");
+        disconnect->click();
+        wait([&]{return window.findChild<QLabel*>("collectLink")->text()=="模拟断开";});
+        auto* logs=window.findChild<QTableWidget*>("logTable");
+        open_diagnostic(window,"日志");
+        wait([&]{return logs->rowCount()>0;});
+        if (logs->horizontalHeaderItem(4)->text()!="关联帧")
+            throw std::runtime_error("log page still presents message bodies");
+        logs->selectRow(0);
+        const auto* logDetail=window.findChild<QLabel*>("logDetail");
+        if (!logDetail->text().contains("本机 diagnose"))
+            throw std::runtime_error("log detail does not identify the local CLI");
+
+
+        open_diagnostic(window,"运行");
+        const auto confirm=[&](bool accept) {
+            QTimer::singleShot(100,&window,[&]{
+                if (auto* dialog=window.findChild<QMessageBox*>("confirmAutomatic"))
+                    dialog->button(accept ? QMessageBox::Yes : QMessageBox::No)->click();
+            });
+            mode->click();
+        };
+        wait([&]{return mode->isEnabled();});
+        confirm(false);
+        if (window.confirmedMode()!="manual") throw std::runtime_error("cancel changed mode");
+        confirm(true);
+        wait([&]{return window.confirmedMode()=="automatic";});
+        std::cout<<"PASS PLC scope, static placement, point audit, automatic isolation and manual controls\n";
         return 0;
-    } catch (const std::exception& error) {
+    } catch(const std::exception& error) {
         std::cerr<<error.what()<<'\n';
         return 1;
     }

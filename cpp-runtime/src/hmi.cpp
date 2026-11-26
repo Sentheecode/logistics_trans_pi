@@ -1,7 +1,6 @@
 #include "workbench.hpp"
 #include <QApplication>
 #include <QComboBox>
-#include <QDialog>
 #include <QTimer>
 #include <QWidget>
 #include <iostream>
@@ -12,7 +11,7 @@ int main(int argc,char** argv){
         int smoke=argc>=3?sim::number(argv[2],500,60000):0;
         QString capture=argc>=4?QString::fromUtf8(argv[3]):QString(),kind=argc>=5?argv[4]:"normal";
         if(kind!="normal"&&kind!="manual"&&kind!="alarm"&&kind!="unavailable"&&kind!="sort"&&kind!="peers"&&kind!="south"&&kind!="demo-north"&&kind!="meter2"&&kind!="roster"&&kind!="stations"&&kind!="events"&&kind!="eventbad"&&kind!="points"&&kind!="pointfind"&&kind!="boundary"&&kind!="logs"&&kind!="collect"&&kind!="collectdown"&&kind!="empty"&&kind!="emptystations"&&kind!="dropdown")throw std::runtime_error("invalid capture kind");
-        Workbench window(std::filesystem::u8path(argv[1]));if(argc==6){if(std::string(argv[5])!="compact")throw std::runtime_error("invalid size");window.resize(1100,650);}
+        Workbench window(std::filesystem::u8path(argv[1]),smoke>0);if(argc==6){if(std::string(argv[5])!="compact")throw std::runtime_error("invalid size");window.resize(1100,650);}
         window.prepareCapture(kind);
         bool captured=false;QTimer timer;
         QObject::connect(&timer,&QTimer::timeout,&window,[&]{
@@ -34,8 +33,7 @@ int main(int argc,char** argv){
                 if(!popup_saved)captured=false;
                 return;
             }
-            auto* diagnostic=window.findChild<QDialog*>("diagnosticsDialog");
-            captured=(diagnostic && diagnostic->isVisible() ? diagnostic->grab() : window.grab()).save(capture);
+            captured=window.grab().save(capture);
         });timer.start(100);
         window.show();
         if(smoke)QTimer::singleShot(smoke,&window,[&]{std::cout<<"rendered_observations="<<window.observations()<<'\n';app.exit(window.observations()>=2&&(capture.isEmpty()||captured)?0:1);});

@@ -43,8 +43,8 @@ Directory Directory::qiantang() {
     // Stable IDs and codes are used by diagnostics. The UI shows synthetic names.
     directory.stations = {
         {kStation140, kPlcPack, "140", "A1", kStream},
-        {kStation150, kPlcPack, "150", "A2", "", "示例清单列有点表，未导入"},
-        {kStation160, kPlcPack, "160", "A3", "", "示例清单列有点表，未导入"},
+        {kStation150, kPlcPack, "150", "A2", "", "已登记点表，未导入"},
+        {kStation160, kPlcPack, "160", "A3", "", "已登记点表，未导入"},
         {kStation20, kPlcMeter1, "20", "B1", "", "已登记布置图与交接表，缺 PLC-PC 点表"},
         {kStation30, kPlcMeter1, "30", "B2", "", "已登记布置图与交接表，缺 PLC-PC 点表"},
         {kStation90, kPlcMeter1, "90", "B3", "", "已登记布置图与交接表，缺 PLC-PC 点表"},
@@ -56,8 +56,8 @@ Directory Directory::qiantang() {
         {"stn.180", kPlcSeq1, "180", "D2", "", "后门点表已登记，左右映射待核对"},
         {"stn.190", kPlcSeq2, "190", "E1", "", "前门点表已登记，新旧表映射待核对"},
         {"stn.200", kPlcSeq2, "200", "E2", "", "前门点表已登记，新旧表映射待核对"},
-        {kStation210, kPlcSeq3, "210", "F1", "", "已登记点表与布置图，未导入"},
-        {kStation220, kPlcSeq3, "220", "F2", "", "已登记点表与布置图，未导入"},
+        {kStation210, kPlcSeq3, "210", "前悬架右前下摆臂总成", "", "已登记点表与布置图，未导入"},
+        {kStation220, kPlcSeq3, "220", "前悬架左前下摆臂总成", "", "已登记点表与布置图，未导入"},
         {"stn.230", kPlcSeq4, "230", "G1", "", "点表内容与其他模板重合，待核对"},
         {"stn.240", kPlcSeq4, "240", "G2", "", "点表内容与其他模板重合，待核对"},
         {"stn.demo-n1", "plc.cfg.demo-north", "N1", "示例工位 N1", ""},

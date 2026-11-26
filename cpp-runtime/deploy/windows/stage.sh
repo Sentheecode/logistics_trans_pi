@@ -18,7 +18,7 @@ fi
 mkdir -- "$stage"
 mkdir -p -- "$stage/plugins/platforms" "$stage/licenses"
 
-for name in collector hmi diagnose simulation-archive logistics-mcp; do
+for name in Logistics collector hmi diagnose simulation-archive logistics-mcp; do
     cp -- "$build/$name.exe" "$stage/"
 done
 plugins=$(cygpath -u "$(qmake6 -query QT_INSTALL_PLUGINS | tr -d '\r')")

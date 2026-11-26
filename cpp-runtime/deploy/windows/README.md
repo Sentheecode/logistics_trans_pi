@@ -24,4 +24,4 @@ Expand-Archive .\Logistics-Preview-Windows-x64.zip -DestinationPath '.\Logistics
 python cpp-runtime/deploy/windows/smoke.py '.\Logistics clean preview'
 ```
 
-只在通过验收的 ZIP 上发布，并附同名 `.sha256` 文件。发布前核对 `BUILD-INFO.txt`、`FILES.txt`、验证构建的源码 SHA、依赖归属和第三方许可证。解压后双击 `START.cmd`，或按随包 `README.txt` 启动。仅 ASCII 路径中的空格有自动化覆盖。厂区、服务安装和受保护 HTTPS 部署仍需单独验收。
+只在通过验收的 ZIP 上发布，并附同名 `.sha256` 文件。发布前核对 `BUILD-INFO.txt`、`FILES.txt`、验证构建的源码 SHA、依赖归属和第三方许可证。解压后双击 `Logistics.exe`，按随包 `README.txt` 查看后台日志及采集进程 PID。`START.cmd` 作为脚本兼容入口。Windows CI 也从启动器验证隐藏采集、写入本地输出和关闭 HMI 后继续采样。仅 ASCII 路径中的空格有自动化覆盖。厂区、服务安装和受保护 HTTPS 部署仍需单独验收。

@@ -8,35 +8,26 @@
 class QMouseEvent;
 class QPaintEvent;
 
-enum class CartMark { none, wait, run, done, alert };
-
 struct StationGlyph {
     std::string id;
     QString number;
-};
-struct CartLane {
-    bool visible=false;
-    int target=-1;
-    QString states[3];
-    CartMark marks[3]{};
+    QStringList labels;
+    QString status;
 };
 
-// Figurative layout of one PLC. Not a measured site plan and not a numbered box row.
 class SchematicView final : public QWidget {
     Q_OBJECT
 public:
     explicit SchematicView(QWidget* parent=nullptr);
     bool loaded() const { return scene_set_; }
     QString loadError() const { return error_; }
-    void setScene(const QString& plcName, const std::vector<StationGlyph>& stations, const std::string& focusId, const CartLane& lane);
+    void setScene(const std::vector<StationGlyph>& stations, const std::string& focusId, bool exterior);
     QString selectedId() const { return QString::fromStdString(focus_); }
     QStringList peerIds() const;
     QColor markerColor(const QString& id) const;
     QString stationAt(const QPointF& widgetPoint) const;
     QRectF stationRect(const QString& id) const;
     QStringList shapeIds() const;
-    int targetCart() const { return lane_.target; }
-    bool showsCarts() const { return lane_.visible; }
     QSize sizeHint() const override { return {480, 175}; }
 signals:
     void stationActivated(const QString& stationId);
@@ -47,11 +38,9 @@ private:
     struct Bay { std::string id; QRectF rect; };
     std::vector<Bay> bays() const;
     void drawBay(QPainter& painter, const Bay& bay, const StationGlyph& glyph) const;
-    void drawLane(QPainter& painter) const;
-    CartLane lane_;
+    bool exterior_=false;
     bool scene_set_=false;
     QString error_;
-    QString plc_name_;
     std::vector<StationGlyph> stations_;
     std::string focus_;
 };

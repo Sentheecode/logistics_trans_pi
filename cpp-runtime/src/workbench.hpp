@@ -4,13 +4,14 @@
 #include <QMainWindow>
 #include <QStringList>
 #include <future>
+#include <optional>
 #include <utility>
 #include <vector>
 class QCheckBox;
 class QProgressBar;
 class QComboBox;
 class QFrame;
-class QDialog;
+class QTabBar;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -20,7 +21,8 @@ class SchematicView;
 
 class Workbench final : public QMainWindow {
 public:
-    explicit Workbench(std::filesystem::path directory);
+    void openDiagnostic(const QString& title);
+    explicit Workbench(std::filesystem::path directory, bool trace=false);
     bool captureReady(const QString& kind) const;
     int observations() const { return observations_; }
     QString confirmedMode() const;
@@ -30,7 +32,7 @@ public:
     bool liveScope() const;
     void activateSchematicStation(const QString& id);
 private:
-    void openDiagnostic(const QString& title);
+    bool diagnosticLive() const;
     void refresh();
     void display(const sim::View& view);
     void render();
@@ -54,21 +56,24 @@ private:
     sim::View view_;
     std::future<sim::View> read_;
     std::future<std::string> command_;
+    bool trace_=false;
     bool waiting_confirmation_=false, available_=false, updating_=false;
     std::int64_t command_revision_=0, last_seq_=0;
     std::string last_mode_;
     int observations_=0;
-    QComboBox *factoryCombo_=nullptr, *areaCombo_=nullptr, *plcCombo_=nullptr, *lineCombo_=nullptr, *stationCombo_=nullptr;
-    QLabel *stationBadge_=nullptr, *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
-    QLabel *stationMeta_=nullptr, *interfaceLine_=nullptr;
+    QComboBox *areaCombo_=nullptr, *plcCombo_=nullptr;
+    QLabel *processLabel_=nullptr, *runtimeLabel_=nullptr, *heartbeatLabel_=nullptr;
+    QLabel *stationMeta_=nullptr;
     QLabel *scopeBanner_=nullptr, *feedback_=nullptr, *controlReason_=nullptr, *eventNote_=nullptr, *pointScope_=nullptr;
     QPushButton *modeButton_=nullptr, *step_=nullptr, *disconnect_=nullptr;
     QTabWidget* moduleTabs_=nullptr;
-    QDialog* diagnostics_=nullptr;
+    QTabBar* navigation_=nullptr;
+    std::string detailStation_;
+    std::optional<std::string> displayedPointStation_;
     QTableWidget *detailTable_=nullptr, *peerTable_=nullptr, *stageTable_=nullptr, *historyTable_=nullptr, *pointTable_=nullptr;
     QLabel *stationEmpty_=nullptr, *historyEmpty_=nullptr, *eventSource_=nullptr, *pointEmpty_=nullptr, *pointDetail_=nullptr;
     QLabel *logEmpty_=nullptr, *logDetail_=nullptr, *collectOwner_=nullptr, *collectLive_=nullptr;
-    QTableWidget *collectChanges_=nullptr, *recentTable_=nullptr;
+    QTableWidget *collectChanges_=nullptr;
     QComboBox *historyFilter_=nullptr, *logCategory_=nullptr, *logLevel_=nullptr;
     QLineEdit *pointSearch_=nullptr, *logSearch_=nullptr;
     QProgressBar* progress_=nullptr;
@@ -78,11 +83,9 @@ private:
     std::int64_t shown_log_id_=-1;
     int shown_log_count_=-1;
     bool stagePinned_=false;
-    QLabel* recordsHeading_=nullptr;
     QTableWidget* sourceTable_=nullptr;
-    QPushButton* recordAction_=nullptr;
     QLabel *mapHeading_=nullptr, *stageHeading_=nullptr;
-    QLabel *stageGuide_=nullptr, *simOrder_=nullptr;
+    QLabel *simOrder_=nullptr;
     QTableWidget *resultTable_=nullptr;
     void showStageResult();
     const sim::Row* stationFrame() const;
