@@ -47,8 +47,21 @@ def main(package):
         if path.suffix.lower() in {".exe", ".dll"}:
             check_x64(path)
         else:
-            require(name in {"README.txt", "BUILD-INFO.txt", "START.cmd", "qt.conf"}
+            require(name in {"README.txt", "BUILD-INFO.txt", "START.cmd", "qt.conf", "point-table.sqlite"}
                     or name.startswith("licenses/"), f"Unexpected package file {name}")
+    require("point-table.sqlite" in files, "Missing point table database")
+    with closing(sqlite3.connect((package / "point-table.sqlite").as_uri()+"?mode=ro", uri=True)) as points:
+        identity = points.execute("pragma application_id").fetchone()[0]
+        count = points.execute("select count(*) from points").fetchone()[0]
+        named = points.execute("select count(*) from points where reserved=0").fetchone()[0]
+        both = points.execute("select count(*) from points where read_db is not null and write_db is not null").fetchone()[0]
+        other = points.execute("select count(*) from points where station_id!='stn.140'").fetchone()[0]
+        conflict = points.execute(
+            "select count(*) from points where name like '%补料完成%' and address_text like 'DB1900.%' "
+            "and write_db=1900 and executable_write=0").fetchone()[0]
+        require(identity == 1280594004, "Point table database id is wrong")
+        require(count == 116 and named == 75 and both == 0 and other == 0, "Point table baseline drifted")
+        require(conflict == 15, "Write-section replenish rows were rewritten")
 
     environment = {key: value for key, value in os.environ.items()
                    if not key.upper().startswith(("QT_", "QML_", "MSYS", "MINGW"))}

@@ -21,6 +21,11 @@ mkdir -p -- "$stage/plugins/platforms" "$stage/licenses"
 for name in Logistics collector hmi diagnose simulation-archive logistics-mcp; do
     cp -- "$build/$name.exe" "$stage/"
 done
+if [[ ! -f $build/point-table.sqlite ]]; then
+    echo 'Missing point-table.sqlite next to the preview executables' >&2
+    exit 1
+fi
+cp -- "$build/point-table.sqlite" "$stage/point-table.sqlite"
 plugins=$(cygpath -u "$(qmake6 -query QT_INSTALL_PLUGINS | tr -d '\r')")
 platform_plugin="$plugins/platforms/qwindows.dll"
 cp -- "$platform_plugin" "$stage/plugins/platforms/"

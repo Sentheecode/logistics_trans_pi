@@ -296,6 +296,25 @@ int main(int argc, char** argv) {
             return count;
         };
         open_diagnostic(window,"点表");
+        QStringList pointHeaders;
+        for (int column=0; column<points->columnCount(); ++column) {
+            auto* header=points->horizontalHeaderItem(column);
+            if (!header) throw std::runtime_error("missing point header");
+            pointHeaders<<header->text();
+        }
+        if (pointHeaders!=QStringList{"源行","代码","名称","读DB","读起始","读偏移","读长度","写DB","写起始","写偏移","写长度","疑点摘要"})
+            throw std::runtime_error("point columns drifted");
+        const auto pointCell=[&](int column) {
+            auto* item=points->item(0, column);
+            if (!item) throw std::runtime_error("missing first point cell");
+            return item->text();
+        };
+        if (pointCell(0)!="140-001" || !pointCell(1).isEmpty() || pointCell(2)!="设备运行中"
+            || pointCell(3)!="1900" || pointCell(4)!="0" || pointCell(5)!="0" || pointCell(6)!="1"
+            || !pointCell(7).isEmpty() || !pointCell(8).isEmpty() || !pointCell(9).isEmpty() || !pointCell(10).isEmpty())
+            throw std::runtime_error("first point row did not keep split read fields");
+        if (points->font().pixelSize()>0 && points->font().pixelSize()<14)
+            throw std::runtime_error("point table type was reduced");
         if (!reserved || visiblePoints()!=75) throw std::runtime_error("named point count mismatch");
         reserved->setChecked(true);
         if (visiblePoints()!=116) throw std::runtime_error("original rows lost");

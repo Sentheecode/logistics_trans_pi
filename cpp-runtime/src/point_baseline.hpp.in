@@ -1,6 +1,0 @@
-#pragma once
-#include <string_view>
-
-namespace audit {
-inline constexpr std::string_view station140Csv=R"POINTS(@STATION140_CSV@)POINTS";
-}

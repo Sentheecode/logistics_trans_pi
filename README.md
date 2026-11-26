@@ -12,6 +12,8 @@ cmake --build build-logistics -j4
 ctest --test-dir build-logistics --output-on-failure
 ```
 
+构建会在 `build-logistics/point-table.sqlite` 生成物流点表，并复制到 `hmi` 旁边。工作台只从该文件读取 140 点表。采集数据仍只写入 `DATA_DIR/simulation.sqlite`。点表文件缺失或无法读取时，工作台直接退出。
+
 打开独立终端。采集器启动后将实际临时目录复制给界面和诊断。
 
 ```bash

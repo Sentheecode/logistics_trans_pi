@@ -23,6 +23,7 @@
 #include <QProgressBar>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStringList>
 #include <QSizePolicy>
 #include <QStackedWidget>
 #include <QStatusBar>
@@ -618,25 +619,24 @@ Workbench::Workbench(std::filesystem::path directory, bool trace)
 
     pointTable_=new QTableWidget;
     pointTable_->setObjectName("pointAuditTable");
-    prepareTable(pointTable_, {"源行", "点位名称", "原始地址", "类型 / 长度", "原表方向", "核对项"});
+    prepareTable(pointTable_, {"源行", "代码", "名称", "读DB", "读起始", "读偏移", "读长度", "写DB", "写起始", "写偏移", "写长度", "疑点摘要"});
     pointTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     pointTable_->setSelectionMode(QAbstractItemView::SingleSelection);
     pointTable_->setFocusPolicy(Qt::StrongFocus);
+    pointTable_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    pointTable_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
     pointTable_->horizontalHeader()->setStretchLastSection(false);
     auto* pointHeader=pointTable_->horizontalHeader();
-    pointHeader->setSectionResizeMode(0,QHeaderView::ResizeToContents);
-    pointHeader->setSectionResizeMode(1,QHeaderView::Stretch);
-    pointHeader->setSectionResizeMode(2,QHeaderView::ResizeToContents);
-    pointHeader->setSectionResizeMode(3,QHeaderView::ResizeToContents);
-    pointHeader->setSectionResizeMode(4,QHeaderView::ResizeToContents);
-    pointHeader->setSectionResizeMode(5,QHeaderView::ResizeToContents);
+    pointHeader->setMinimumSectionSize(48);
+    for (int column=0; column<pointTable_->columnCount(); ++column)
+        pointHeader->setSectionResizeMode(column, column==2 ? QHeaderView::Stretch : QHeaderView::ResizeToContents);
     pointTable_->verticalHeader()->setDefaultSectionSize(28);
     pointScope_=new QLabel;
     pointScope_->setObjectName("pointScope");
     pointScope_->setWordWrap(true);
     pointSearch_=new QLineEdit;
     pointSearch_->setObjectName("pointSearch");
-    pointSearch_->setPlaceholderText("搜索源行、名称或地址");
+    pointSearch_->setPlaceholderText("搜索源行、代码、名称或地址");
     pointSearch_->setClearButtonEnabled(true);
     pointSearch_->setMinimumWidth(208);
     pointSearch_->setMaximumWidth(280);
@@ -1068,12 +1068,16 @@ void Workbench::applyPointFilter() {
     int visible=0;
     int firstMatch=-1;
     for (int row=0; row<pointTable_->rowCount(); ++row) {
-        auto* name=pointTable_->item(row, 0);
-        auto* title=pointTable_->item(row, 1);
-        auto* address=pointTable_->item(row, 2);
-        const bool has=name && !name->data(Qt::UserRole+1).toString().isEmpty();
-        const bool named=name && !name->data(Qt::UserRole+2).toBool();
-        const bool match=(pointReserved_->isChecked() || named) && (!only || has) && (query.isEmpty() || (name && name->text().contains(query, Qt::CaseInsensitive)) || (title && title->text().contains(query, Qt::CaseInsensitive)) || (address && address->text().contains(query, Qt::CaseInsensitive)));
+        auto* anchor=pointTable_->item(row, 0);
+        const bool has=anchor && !anchor->data(Qt::UserRole+1).toString().isEmpty();
+        const bool named=anchor && !anchor->data(Qt::UserRole+2).toBool();
+        bool textMatch=query.isEmpty();
+        if (!textMatch && anchor && anchor->data(Qt::UserRole+3).toString().contains(query, Qt::CaseInsensitive)) textMatch=true;
+        for (int column=0; column<pointTable_->columnCount() && !textMatch; ++column) {
+            auto* cell=pointTable_->item(row, column);
+            if (cell && cell->text().contains(query, Qt::CaseInsensitive)) textMatch=true;
+        }
+        const bool match=(pointReserved_->isChecked() || named) && (!only || has) && textMatch;
         pointTable_->setRowHidden(row, !match);
         if (match) {
             if (firstMatch<0) firstMatch=row;
@@ -1489,32 +1493,56 @@ void Workbench::render() {
         const auto named=std::count_if(audit_rows.begin(),audit_rows.end(),[](const audit::Row& r){ return !r.reserved; });
         pointScope_->setText(audit_rows.empty()
             ? (details ? QString::fromStdString(details->code)+" · "+evidenceState(*details)+" · "+QString::fromStdString(details->reference_note)+" · 不套用 140 点表" : "未配置工位")
-            : QString("只读点表   ·   %1 条命名点位   /   %2 条原始记录").arg(named).arg(audit_rows.size()));
+            : QString("只读点表   ·   point-table.sqlite   ·   %1 条命名点位   /   %2 条原始记录").arg(named).arg(audit_rows.size()));
         pointTable_->setRowCount(static_cast<int>(audit_rows.size()));
+        const auto sideText=[](const audit::AddressFields& side) {
+            if (!side.present) return QString("无");
+            return QString("DB %1 · 起始 %2 · 偏移 %3 · 长度 %4 · 类型 %5 · 方向 %6")
+                .arg(side.db).arg(side.start).arg(side.offset).arg(side.length)
+                .arg(QString::fromStdString(side.type_text))
+                .arg(QString::fromStdString(side.direction_text));
+        };
+        const auto sideNumber=[](const audit::AddressFields& side, int value) {
+            return side.present ? QString::number(value) : QString();
+        };
         for (int i=0; i<static_cast<int>(audit_rows.size()); ++i) {
             const auto& row=audit_rows[static_cast<std::size_t>(i)];
             const auto name=row.name.empty() ? QString("（空白名）") : QString::fromStdString(row.name);
             const auto address=QString::fromStdString(row.address);
             const auto codes=QString::fromStdString(row.doubts);
             const auto summary=doubtSummary(codes);
-            const auto detail=QString("名称：%1\n地址：%2\n段：%3 · 来源行：%4\n类型：%5 · 方向：%6 · 长度：%7\n备注：%8\n疑点：%9\n审计码：%10")
-                .arg(name, address, QString::fromStdString(row.section), QString::fromStdString(row.source_row),
-                     QString::fromStdString(row.type_text), QString::fromStdString(row.direction_text),
-                     QString::fromStdString(row.length_text), row.note.empty() ? "无" : QString::fromStdString(row.note),
-                     summary, codes.isEmpty() ? "无" : codes);
-            const QStringList columns={QString::fromStdString(row.source_row),name,address,
-                QString::fromStdString(row.type_text+" / "+row.length_text),
-                QString::fromStdString(row.direction_text),codes.isEmpty() ? "—" : "待核对"};
+            const auto code=row.code.empty() ? QString() : QString::fromStdString(row.code);
+            const auto detail=QStringList{
+                "代码："+(row.code.empty() ? QString("（基线未提供）") : code),
+                "名称："+name,
+                "源行："+QString::fromStdString(row.source_row),
+                "段："+QString::fromStdString(row.section),
+                "原地址："+address,
+                "读："+sideText(row.read),
+                "写："+sideText(row.write),
+                "备注："+(row.note.empty() ? QString("无") : QString::fromStdString(row.note)),
+                "疑点："+summary,
+                "审计码："+(codes.isEmpty() ? QString("无") : codes),
+            }.join("\n");
+            const QStringList columns={
+                QString::fromStdString(row.source_row), code, name,
+                sideNumber(row.read, row.read.db), sideNumber(row.read, row.read.start),
+                sideNumber(row.read, row.read.offset), sideNumber(row.read, row.read.length),
+                sideNumber(row.write, row.write.db), sideNumber(row.write, row.write.start),
+                sideNumber(row.write, row.write.offset), sideNumber(row.write, row.write.length),
+                summary,
+            };
             for (int column=0; column<columns.size(); ++column) {
                 auto* item=new QTableWidgetItem(columns[column]);
                 item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-                item->setToolTip(columns[column]);
+                item->setToolTip(column==1 && code.isEmpty() ? QString("基线没有动作编码") : columns[column]);
                 if (column==0) {
                     item->setData(Qt::UserRole, detail);
                     item->setData(Qt::UserRole+1, codes);
                     item->setData(Qt::UserRole+2, row.reserved);
+                    item->setData(Qt::UserRole+3, address);
                 }
-                if (!codes.isEmpty() && column==5) item->setForeground(QColor("#8a5a12"));
+                if (!codes.isEmpty() && column==columns.size()-1) item->setForeground(QColor("#8a5a12"));
                 pointTable_->setItem(i, column, item);
             }
         }
