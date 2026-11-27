@@ -1,7 +1,0 @@
-{
-  "entries": 15541,
-  "tree_equal": true,
-  "method": "local tar extraction; no npm invocation; network not isolated",
-  "platform": "linux-x64",
-  "node": "v24.22.1"
-}

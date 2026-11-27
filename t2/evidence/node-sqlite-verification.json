@@ -1,8 +1,0 @@
-{
-  "node": "v24.22.1",
-  "sqlite": "3.53.4",
-  "journal": "wal",
-  "synchronous": 2,
-  "foreignKeys": 1,
-  "integrity": "ok"
-}

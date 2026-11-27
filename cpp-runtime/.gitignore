@@ -1,0 +1,7 @@
+/build*/
+/var/
+__pycache__/
+*.sqlite*
+*.png
+control.mailbox
+writer.lease*

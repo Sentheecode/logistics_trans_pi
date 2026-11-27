@@ -1,5 +1,6 @@
 node_modules/
 .npm-cache/
 *.tar.gz
-t0/offline-restore/
 runtime/var/
+/build-logistics/
+/build-mcp/

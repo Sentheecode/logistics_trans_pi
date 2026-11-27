@@ -43,3 +43,9 @@
 - `contracts/point-table.ts`：同一行两组列的类型表达，尚未成为数据库迁移或运行配置。
 
 code 在示例中留空，不借用旧项目 FunctionCode，不把来源行号或 DB 地址冒充业务编码。正式 code 的唯一范围尚未明确，当前不擅自加“全厂唯一”约束。process 与 tag 的关系仍待用户继续提供；不把每行 code 自动等同 process code。
+
+## 运行时数据库
+
+工作台读取程序同目录的 `point-table.sqlite`，不把点表编进可执行文件，也不把点位写入采集库 `simulation.sqlite`。构建程序 `point_table_build` 只在构建期读取 `data/baselines/station-140.csv`，生成这个文件。
+
+地址在每一侧拆成 `db`（DB 块）、`start`（起始字节）、`offset`（位偏移）、`length`，并保留来源里的区域文本（当前均为 `DBX`）和整段原地址。`code` 与 `name` 分列。读侧、写侧各有一组字段。基线没有给出可以确认的同一动作读写配对，因此 116 条来源行仍然是 116 条单侧记录：`PLC给上位机` 填读侧，`上位机给PLC` 填写侧。写段里地址仍是 DB1900、方向仍写着读取的行保持原值，`executable_write` 为 0。动作编码列为空，来源行号放在 `source_row_id`，不拿来冒充 code。150 与 160 没有行。文件缺失或结构不符时加载失败。
